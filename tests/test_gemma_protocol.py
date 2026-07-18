@@ -175,6 +175,39 @@ def test_next_step_nudge_silent_otherwise():
     assert next_step_nudge(observed_fail=True, has_repro_md=True) is None
 
 
+# --- is_repro_run (r20-r22: heredoc write terhitung "run gagal" phantom) ----
+
+def test_is_repro_run_true_for_actual_runs():
+    from harness.stages.gemma_protocol import is_repro_run
+    assert is_repro_run("python /testbed/.pipe/repro.py")
+    assert is_repro_run("python3 /testbed/.pipe/repro.py 2>&1 | tail -20")
+    assert is_repro_run("cd /testbed && python .pipe/repro.py")
+
+
+def test_is_repro_run_false_for_writes_and_reads():
+    from harness.stages.gemma_protocol import is_repro_run
+    assert not is_repro_run("cat << 'EOF' > /testbed/.pipe/repro.py\nx\nEOF")
+    assert not is_repro_run("cat /testbed/.pipe/repro.py")
+    assert not is_repro_run("ls -la /testbed/.pipe/repro.py")
+
+
+# --- repeated_error_note (r21: error identik 6x berturut-turut) -------------
+
+def test_repeated_error_note_fires_on_identical_consecutive_why():
+    from harness.stages.gemma_protocol import repeated_error_note
+    why = "repro run exited 1 without REPRO_STATUS: FAIL; last output line: TypeError: bad kwarg"
+    note = repeated_error_note(why, why)
+    assert note is not None
+    assert "again" in note
+    assert "TypeError: bad kwarg" in note
+
+
+def test_repeated_error_note_silent_on_first_or_different():
+    from harness.stages.gemma_protocol import repeated_error_note
+    assert repeated_error_note(None, "x") is None
+    assert repeated_error_note("a", "b") is None
+
+
 # --- retry_reason (telemetri: alasan spesifik per retry di events.jsonl) ----
 
 def test_retry_reason_carries_exit_code_and_last_line():

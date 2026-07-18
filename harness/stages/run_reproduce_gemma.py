@@ -25,11 +25,13 @@ from harness.stages import rule_catalog
 from harness.stages.gemma_protocol import (done_rejection_reason,
                                            format_reminder,
                                            fresh_pair_rejection, has_done,
-                                           has_fences, next_step_nudge,
+                                           has_fences, is_repro_run,
+                                           next_step_nudge,
                                            observable_candidates,
                                            observable_rejection,
                                            parse_actions,
                                            parse_pass_observable,
+                                           repeated_error_note,
                                            retry_reason)
 from harness.stages.repro_sandbox_runner import run_once
 from harness.stages.reproduce_gates import compose_repro_md
@@ -166,16 +168,19 @@ def observable_in_container(container: str, observable: str) -> bool:
     return "FOUND" in out
 
 
-def fresh_sandbox_output(container: str, image: str, timeout: int = 300) -> str:
+def fresh_sandbox_output(container: str, image: str,
+                         timeout: int = 300) -> tuple[str, int]:
     """Salin repro.py dari work container, jalankan sekali di container
-    segar (tanpa patch); kembalikan output-nya."""
+    segar (tanpa patch); kembalikan (output, exit)."""
     body, code = docker_exec(container, "cat /testbed/.pipe/repro.py")
     if code != 0:
-        return "[pre-check] /testbed/.pipe/repro.py missing in work container"
+        return ("[pre-check] /testbed/.pipe/repro.py missing in work "
+                "container", 2)
     tmpdir = tempfile.mkdtemp(prefix="fresh-check-")
     repro = Path(tmpdir) / "repro.py"
     repro.write_text(body, encoding="utf-8", newline="\n")
-    return run_once(image, tmpdir, timeout)["output"]
+    result = run_once(image, tmpdir, timeout)
+    return result["output"], result["exit"]
 
 
 def emit_abort(em: Emitter, reason: str) -> None:
@@ -233,6 +238,7 @@ def main() -> int:
     observed_fail = False
     self_check_prompted = False
     pass_observable: str | None = None
+    last_retry_why: str | None = None
     done = False
     try:
         for turn in range(1, args.max_turns + 1):
@@ -252,21 +258,35 @@ def main() -> int:
                     log(f"[driver] wrote {act.arg} ({len(act.body)} chars)")
                     feedback_parts.append(f"OK: file {act.arg} written.")
                 elif act.kind == "bash":
-                    out, code = docker_exec(container, act.body)
-                    log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
-                    feedback_parts.append(
-                        f"OUTPUT (exit {code}):\n{tail(out)}")
-                    if "repro.py" in act.body:
+                    if is_repro_run(act.body):
+                        # Vonis repro SELALU dari dunia segar (keputusan
+                        # Mirza 2026-07-19): feedback mid-loop = kebenaran
+                        # yang sama dengan gate, state bengkel tak menipu.
+                        out, code = fresh_sandbox_output(container, args.image)
+                        label = f"OUTPUT (fresh sandbox, exit {code})"
+                        log(f"[exec-fresh] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
+                        feedback_parts.append(f"{label}:\n{tail(out)}")
                         if "REPRO_STATUS: FAIL" in out:
                             observed_fail = True
                         else:
                             attempt += 1
+                            why = retry_reason(out, code)
                             em.event("reproduce", "retry", attempt=attempt,
                                      budget={"msg_used": turn, "msg_limit": args.max_turns},
-                                     detail={"why": retry_reason(out, code)})
+                                     detail={"why": why})
+                            note = repeated_error_note(last_retry_why, why)
+                            if note is not None:
+                                log("[driver] repeated-error note injected")
+                                feedback_parts.append(note)
+                            last_retry_why = why
                             if code != 0 and "REPRO_STATUS" not in out:
                                 feedback_parts.append(
                                     rule_catalog.inject("crash-repair"))
+                    else:
+                        out, code = docker_exec(container, act.body)
+                        log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
+                        feedback_parts.append(
+                            f"OUTPUT (exit {code}):\n{tail(out)}")
                 elif act.kind == "repro.md":
                     repro_md = act.body
                     log("[driver] repro.md candidate received")
@@ -295,8 +315,8 @@ def main() -> int:
                     feedback_parts.append(SELF_CHECK_MSG)
                 elif (pass_observable is not None
                       and observable_in_container(container, pass_observable)):
-                    fresh_out1 = fresh_sandbox_output(container, args.image)
-                    fresh_out2 = fresh_sandbox_output(container, args.image)
+                    fresh_out1, _ = fresh_sandbox_output(container, args.image)
+                    fresh_out2, _ = fresh_sandbox_output(container, args.image)
                     fresh_reject = fresh_pair_rejection(fresh_out1, fresh_out2)
                     if fresh_reject is None:
                         done = True

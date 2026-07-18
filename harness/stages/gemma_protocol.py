@@ -127,6 +127,33 @@ def observable_rejection(observable: str | None) -> str:
             "corrected PASS_OBSERVABLE line.")
 
 
+_REPRO_RUN_RE = re.compile(r"python[\d.]*\s+\S*repro\.py")
+
+
+def is_repro_run(cmd: str) -> bool:
+    """Apakah command bash ini benar-benar MENJALANKAN repro.py.
+
+    Deteksi lama ("repro.py" in cmd) menghitung aksi tulis-file heredoc
+    sebagai run gagal → retry phantom di events.jsonl (temuan analisa
+    r20–r22 bersama Mirza)."""
+    return _REPRO_RUN_RE.search(cmd) is not None
+
+
+def repeated_error_note(prev_why: str | None, why: str) -> str | None:
+    """Injeksi eskalatif saat retry membawa alasan IDENTIK dengan retry
+    sebelumnya (r21: TypeError yang sama 6× berturut-turut — feedback
+    traceback mentah saja tidak mengubah perilaku model)."""
+    if prev_why is None or prev_why != why:
+        return None
+    detail = why.split("last output line:", 1)
+    tail = detail[1].strip() if len(detail) == 2 else why
+    return (f"The same error occurred again: {tail}\n"
+            "Your previous edit did not change the failing code path. The "
+            "traceback names the exact file and line — open your script, "
+            "find that line, and change that specific line before running "
+            "again.")
+
+
 def retry_reason(output: str, exit_code: int, max_len: int = 200) -> str:
     """Ringkasan satu baris (English) untuk detail.why event retry —
     permintaan Mirza 2026-07-18: tiap retry membawa alasan aktualnya,
