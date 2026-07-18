@@ -93,15 +93,24 @@ def test_positive_control_rule_stays_in_core():
 
 def test_core_contract_keeps_core_rules_and_skeleton():
     core = rule_catalog.core_contract()
-    assert "inside the script itself" in core      # rule:self-contained tetap
-    assert "identical output" in core              # rule:repeatable tetap
     assert "REPRO_STATUS: FAIL" in core
     assert "SYMPTOM:" in core
     assert "Definition of done" in core
 
 
+def test_ultra_slim_self_contained_and_repeatable_are_detail_only():
+    # Eksperimen ULTRA-SLIM (antrian pasca-stabil, disetujui Mirza):
+    # keduanya kini di-enforce FISIKA (repro selalu-fresh + pre-check pair),
+    # jadi turun ke detail-only — CORE tinggal tujuan+output+protokol+
+    # invarian signal-less. Mulai r42.
+    core = rule_catalog.core_contract()
+    assert "inside the script itself" not in core
+    assert "identical output" not in core
+
+
 def test_detail_rules_are_extracted_for_injection():
     for rid in ("faithful-setup", "pass-fidelity", "source-pass-side",
-                "crash-repair", "positive-control"):
+                "crash-repair", "positive-control", "self-contained",
+                "repeatable"):
         assert rid in rule_catalog.RULES
         assert len(rule_catalog.RULES[rid]) > 50

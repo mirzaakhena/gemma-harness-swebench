@@ -13,10 +13,6 @@ script. The fix belongs to a later stage.
 ## Your outputs
 
 1. **Repro script at `/testbed/.pipe/repro.py`** with these properties:
-   - <!-- rule:self-contained -->It runs with `python /testbed/.pipe/repro.py` and nothing else: create
-     any settings, app, or fixtures it needs inside the script itself.<!-- /rule -->
-   - <!-- rule:repeatable -->It is repeatable: running it twice produces identical output; clean up
-     any state it creates.<!-- /rule -->
    - The LAST line of its output is exactly one of:
      - `REPRO_STATUS: FAIL` — the bug is visible (what you must observe at
        the base commit)
@@ -60,6 +56,16 @@ script. The fix belongs to a later stage.
      that goes undetected means your script has a setup problem — print a
      diagnostic instead of a REPRO_STATUS line and repair the script
      first.<!-- /rule -->
+
+<!-- detail:self-contained -->
+It runs with `python /testbed/.pipe/repro.py` and nothing else: create
+any settings, app, or fixtures it needs inside the script itself.
+<!-- /detail -->
+
+<!-- detail:repeatable -->
+It is repeatable: running it twice produces identical output; clean up
+any state it creates.
+<!-- /detail -->
 
 <!-- detail:faithful-setup -->
 FAITHFUL SETUP: obtain the thing under test the way real operation
