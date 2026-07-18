@@ -261,7 +261,7 @@ def main() -> int:
                             attempt += 1
                             em.event("reproduce", "retry", attempt=attempt,
                                      budget={"msg_used": turn, "msg_limit": args.max_turns},
-                                     detail={"why": "run repro.py tanpa REPRO_STATUS: FAIL"})
+                                     detail={"why": retry_reason(out, code)})
                 elif act.kind == "repro.md":
                     repro_md = act.body
                     log("[driver] repro.md candidate received")
@@ -270,9 +270,18 @@ def main() -> int:
             pass_observable = parse_pass_observable(reply) or pass_observable
 
             if has_done(reply):
+                def reject_event(why: str) -> None:
+                    em.event("reproduce", "retry", attempt=attempt,
+                             budget={"msg_used": turn, "msg_limit": args.max_turns},
+                             detail={"why": why})
+
                 reason = done_rejection_reason(has_repro_md=repro_md is not None,
                                                observed_fail=observed_fail)
                 if reason is not None:
+                    why = ("done-rejected: repro.md not submitted"
+                           if repro_md is None
+                           else "done-rejected: REPRO_STATUS: FAIL not observed yet")
+                    reject_event(why)
                     log(f"[driver] DONE rejected: {reason}")
                     feedback_parts.append(reason)
                 elif not self_check_prompted:
@@ -289,9 +298,14 @@ def main() -> int:
                             f"pass observable verified: {pass_observable!r}; "
                             "fresh-sandbox pre-check OK")
                         break
+                    reject_event("done-rejected: fresh-sandbox run without "
+                                 "REPRO_STATUS: FAIL (not self-contained)")
                     log("[driver] DONE rejected: fresh-sandbox pre-check failed")
                     feedback_parts.append(fresh_reject)
                 else:
+                    reject_event("done-rejected: PASS_OBSERVABLE "
+                                 + ("not declared" if pass_observable is None
+                                    else f"not found in source or script: {pass_observable!r}"))
                     msg = observable_rejection(pass_observable)
                     if pass_observable is not None:
                         pass_observable = None  # klaim gagal; wajib deklarasi ulang

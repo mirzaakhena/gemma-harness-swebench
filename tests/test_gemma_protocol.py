@@ -175,6 +175,27 @@ def test_next_step_nudge_silent_otherwise():
     assert next_step_nudge(observed_fail=True, has_repro_md=True) is None
 
 
+# --- retry_reason (telemetri: alasan spesifik per retry di events.jsonl) ----
+
+def test_retry_reason_carries_exit_code_and_last_line():
+    from harness.stages.gemma_protocol import retry_reason
+    why = retry_reason("Traceback ...\nTypeError: bad kwarg\n", 1)
+    assert "exited 1" in why
+    assert "TypeError: bad kwarg" in why
+
+
+def test_retry_reason_handles_empty_output():
+    from harness.stages.gemma_protocol import retry_reason
+    why = retry_reason("", 2)
+    assert "exited 2" in why
+
+
+def test_retry_reason_truncates_long_lines():
+    from harness.stages.gemma_protocol import retry_reason
+    why = retry_reason("x" * 500, 0, max_len=120)
+    assert len(why) <= 120
+
+
 # --- fresh-sandbox pre-check (r16: script bergantung state work container) --
 
 def test_fresh_check_rejection_none_when_fail_printed():

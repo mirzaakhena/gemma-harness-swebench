@@ -127,6 +127,21 @@ def observable_rejection(observable: str | None) -> str:
             "corrected PASS_OBSERVABLE line.")
 
 
+def retry_reason(output: str, exit_code: int, max_len: int = 200) -> str:
+    """Ringkasan satu baris (English) untuk detail.why event retry —
+    permintaan Mirza 2026-07-18: tiap retry membawa alasan aktualnya,
+    bukan label generik yang sama."""
+    last = ""
+    for line in reversed(output.splitlines()):
+        if line.strip():
+            last = line.strip()
+            break
+    why = f"repro run exited {exit_code} without REPRO_STATUS: FAIL"
+    if last:
+        why += f"; last output line: {last}"
+    return why if len(why) <= max_len else why[:max_len - 1] + "…"
+
+
 def fresh_check_rejection(fresh_output: str, tail_chars: int = 1500) -> str | None:
     """Vonis pre-check sandbox segar saat DONE (r16): script yang bergantung
     state work container (mis. project yang dibuat via aksi bash terpisah)
