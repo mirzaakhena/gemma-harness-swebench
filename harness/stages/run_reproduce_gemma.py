@@ -73,8 +73,16 @@ quoting evidence:
    name the entry point / command the user runs in the issue, and point to
    the line in YOUR script that runs that same path. If your script builds
    the state by hand instead, revise it to run the real path.
+3. When your PASS observable is an event a background mechanism must
+   notice (a reload, a watcher, a poller): name the line in YOUR script
+   that implements the contract's positive control — the same detection
+   machinery catching the event through a path that already works at the
+   base commit — and the line that lets the mechanism settle its baseline
+   (one full sampling interval after it reports ready) before any trigger
+   fires. If either line is missing, revise the script first. If no
+   background mechanism is involved, answer: not applicable.
 
-If both answers hold, declare DONE again. Otherwise revise your script,
+If all answers hold, declare DONE again. Otherwise revise your script,
 re-run it to see REPRO_STATUS: FAIL, then declare DONE."""
 
 
