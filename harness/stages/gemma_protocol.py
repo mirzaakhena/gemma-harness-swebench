@@ -39,8 +39,8 @@ def parse_actions(text: str) -> list[Action]:
         elif info.startswith("file:"):
             actions.append(Action(kind="file", arg=info[len("file:"):].strip(),
                                   body=body))
-        elif info == "repro.md":
-            actions.append(Action(kind="repro.md", arg=None, body=body))
+        elif info in ("repro.md", "localize.md"):
+            actions.append(Action(kind=info, arg=None, body=body))
     return actions
 
 
@@ -62,4 +62,19 @@ def done_rejection_reason(has_repro_md: bool, observed_fail: bool) -> str | None
                 "`python /testbed/.pipe/repro.py` yang mencetak "
                 "`REPRO_STATUS: FAIL` di sesi ini. Jalankan repro-mu, lihat "
                 "outputnya, perbaiki sampai FAIL terlihat — baru SELESAI.")
+    return None
+
+
+def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool) -> str | None:
+    """Aturan SELESAI stage LOCALIZE. None = diterima.
+
+    Evidensi minimal: model harus benar-benar melakukan eksplorasi (>=1 aksi
+    bash) sebelum menyerahkan peta — melarang localize buta dari prior.
+    """
+    if not has_localize_md:
+        return "Belum bisa SELESAI: blok ```localize.md belum kamu serahkan."
+    if not ran_any_bash:
+        return ("Belum bisa SELESAI: kamu belum melakukan eksplorasi apa pun "
+                "(nol aksi bash). Baca kode di sandbox dulu; localize tanpa "
+                "membuka file adalah tebakan.")
     return None

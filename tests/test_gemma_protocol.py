@@ -69,6 +69,13 @@ def test_multiline_file_body_preserved():
     assert parse_actions(text)[0].body == body
 
 
+def test_parse_localize_md_block():
+    text = "```localize.md\nchosen: 1\nfile: django/utils/autoreload.py\n```"
+    acts = parse_actions(text)
+    assert acts[0].kind == "localize.md"
+    assert acts[0].body.startswith("chosen: 1")
+
+
 # --- done_rejection_reason (aturan bukti-dulu-baru-SELESAI) -----------------
 
 def test_done_accepted_with_md_and_observed_fail():
@@ -86,3 +93,22 @@ def test_done_rejected_without_repro_md():
     from harness.stages.gemma_protocol import done_rejection_reason
     reason = done_rejection_reason(has_repro_md=False, observed_fail=True)
     assert reason is not None and "repro.md" in reason
+
+
+# --- done_rejection_localize (bukti eksplorasi dulu baru SELESAI) -----------
+
+def test_localize_done_accepted_with_md_and_exploration():
+    from harness.stages.gemma_protocol import done_rejection_localize
+    assert done_rejection_localize(has_localize_md=True, ran_any_bash=True) is None
+
+
+def test_localize_done_rejected_without_md():
+    from harness.stages.gemma_protocol import done_rejection_localize
+    reason = done_rejection_localize(has_localize_md=False, ran_any_bash=True)
+    assert reason is not None and "localize.md" in reason
+
+
+def test_localize_done_rejected_without_exploration():
+    from harness.stages.gemma_protocol import done_rejection_localize
+    reason = done_rejection_localize(has_localize_md=True, ran_any_bash=False)
+    assert reason is not None and "eksplorasi" in reason
