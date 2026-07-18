@@ -44,3 +44,33 @@ def test_inject_quotes_the_rule():
 def test_inject_unknown_id_raises():
     with pytest.raises(KeyError):
         rule_catalog.inject("nonexistent-rule")
+
+
+# --- dua-tier (keputusan Mirza 2026-07-19 dinihari): CORE vs DETAIL ---------
+
+def test_core_contract_has_no_marker_comments():
+    core = rule_catalog.core_contract()
+    assert "<!--" not in core
+
+
+def test_core_contract_drops_detail_rules():
+    core = rule_catalog.core_contract()
+    assert "FAITHFUL SETUP" not in core
+    assert "positive control" not in core
+    assert "Source the PASS side" not in core
+
+
+def test_core_contract_keeps_core_rules_and_skeleton():
+    core = rule_catalog.core_contract()
+    assert "inside the script itself" in core      # rule:self-contained tetap
+    assert "identical output" in core              # rule:repeatable tetap
+    assert "REPRO_STATUS: FAIL" in core
+    assert "SYMPTOM:" in core
+    assert "Definition of done" in core
+
+
+def test_detail_rules_are_extracted_for_injection():
+    for rid in ("faithful-setup", "pass-fidelity", "source-pass-side",
+                "crash-repair", "positive-control"):
+        assert rid in rule_catalog.RULES
+        assert len(rule_catalog.RULES[rid]) > 50

@@ -201,7 +201,7 @@ def main() -> int:
     args = ap.parse_args()
 
     problem = Path(args.problem_file).read_text(encoding="utf-8")
-    contract = Path(__file__).with_name("reproduce_prompt.md").read_text(encoding="utf-8")
+    contract = rule_catalog.core_contract()
 
     em = Emitter(args.artifacts, args.campaign, args.case, args.rerun)
     console = em.run_dir / "console.log"

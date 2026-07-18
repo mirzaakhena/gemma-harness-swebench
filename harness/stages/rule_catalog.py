@@ -1,13 +1,15 @@
 """RULE_CATALOG-R — injeksi aturan kontrak saat sinyal mekanis menyala.
 
-Keputusan Mirza 2026-07-18 malam (Telegram): formalisasi pola
-living-checklist P24 harness lama (architecture.md:30 — "model kecil
-mengabaikan prompt sekali-tembak; suntik ulang tepat saat sinyalnya
-menyala"), dengan prinsip tambahan darinya: KATALOG = SYSTEM PROMPT ITU
-SENDIRI. Setiap aturan ber-ID mengutip kalimat reproduce_prompt.md
-verbatim — satu sumber kebenaran, tanpa parafrase yang bisa drift.
-Drift-guard: tests/test_rule_catalog.py menolak quote yang tidak lagi
-ada di kontrak.
+Keputusan Mirza 2026-07-18/19 (Telegram): formalisasi pola living-checklist
+P24 harness lama, dengan dua prinsip darinya: (1) KATALOG = SYSTEM PROMPT
+ITU SENDIRI — aturan diambil verbatim dari reproduce_prompt.md, satu sumber
+kebenaran; (2) system prompt DIRAMPINGKAN — "jangan bebani Gemma dengan hal
+yang belum tentu dia hasilkan": blok DETAIL tidak dirender ke model dan
+hanya muncul via injeksi saat sinyalnya menyala.
+
+Marker di reproduce_prompt.md:
+  <!-- rule:id -->...<!-- /rule -->     tampil di CORE + bisa di-inject
+  <!-- detail:id -->...<!-- /detail --> TIDAK dirender; injeksi-only
 
 Detector (sinyal → rule_id) hidup di titik sinyal driver:
   - repro run crash (exit != 0, tanpa REPRO_STATUS)      → crash-repair
@@ -16,39 +18,47 @@ Detector (sinyal → rule_id) hidup di titik sinyal driver:
   - fresh-sandbox run tanpa REPRO_STATUS: FAIL           → self-contained
   - dua fresh-sandbox run tidak konsisten                → repeatable
     (+ positive-control bila output menyebut control)
+Drift-guard: tests/test_rule_catalog.py.
 """
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
-# Quote diambil verbatim dari reproduce_prompt.md (spasi/pemenggalan baris
-# dinormalisasi saat render — pembandingan drift juga ternormalisasi).
-RULES: dict[str, str] = {
-    "self-contained": (
-        "It runs with `python /testbed/.pipe/repro.py` and nothing else: create\n"
-        "     any settings, app, or fixtures it needs inside the script itself."),
-    "repeatable": (
-        "It is repeatable: running it twice produces identical output; clean up\n"
-        "     any state it creates."),
-    "early-draft": (
-        "Submit an early draft of `repro.md` as soon as your first probe succeeds, and\n"
-        "refine it as you learn — an early rough draft beats a polished one that never\n"
-        "gets submitted."),
-    "source-pass-side": (
-        "derive the exact expected\n"
-        "     observable — the precise log message, attribute, or value — by READING\n"
-        "     the repository source that produces it, and quote it exactly."),
-    "crash-repair": (
-        "If your scenario crashes for a reason that is not the reported symptom,\n"
-        "     repair the script — a crash counts as FAIL only when the crash IS the\n"
-        "     symptom the user reports."),
-    "positive-control": (
-        "When your predicate is \"event X never happens\", prove the absence is\n"
-        "     meaningful with a positive control: first make the SAME detection\n"
-        "     machinery catch the event triggered through a neighboring path that\n"
-        "     already works at the base commit, then trigger it through the path\n"
-        "     the issue complains about."),
-}
+_CONTRACT_PATH = Path(__file__).with_name("reproduce_prompt.md")
+
+_RULE_RE = re.compile(r"<!--\s*rule:([a-z-]+)\s*-->(.*?)<!--\s*/rule\s*-->",
+                      re.DOTALL)
+_DETAIL_RE = re.compile(r"<!--\s*detail:([a-z-]+)\s*-->(.*?)<!--\s*/detail\s*-->",
+                        re.DOTALL)
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _contract_text() -> str:
+    return _CONTRACT_PATH.read_text(encoding="utf-8")
+
+
+def _load_rules() -> dict[str, str]:
+    text = _contract_text()
+    rules: dict[str, str] = {}
+    for rx in (_RULE_RE, _DETAIL_RE):
+        for m in rx.finditer(text):
+            rules[m.group(1)] = m.group(2).strip()
+    return rules
+
+
+RULES: dict[str, str] = _load_rules()
+
+
+def core_contract() -> str:
+    """Kontrak yang DIRENDER ke model: blok detail dibuang, marker rule
+    di-unwrap, komentar lain dihapus, deret baris kosong dirapikan."""
+    text = _contract_text()
+    text = _DETAIL_RE.sub("", text)
+    text = _RULE_RE.sub(lambda m: m.group(2), text)
+    text = _COMMENT_RE.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip() + "\n"
 
 
 def _norm(s: str) -> str:
