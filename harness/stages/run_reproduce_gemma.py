@@ -27,6 +27,7 @@ from harness.stages.gemma_protocol import (done_rejection_reason,
                                            fresh_pair_rejection, has_done,
                                            has_fences, is_repro_run,
                                            literal_emitted_by_script,
+                                           mixed_block_note,
                                            next_step_nudge,
                                            observable_candidates,
                                            observable_rejection,
@@ -327,6 +328,10 @@ def main() -> int:
                         label = f"OUTPUT (fresh sandbox, exit {code})"
                         log(f"[exec-fresh] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
                         feedback_parts.append(f"{label}:\n{tail(out)}")
+                        mixed_note = mixed_block_note(act.body)
+                        if mixed_note is not None:
+                            log("[driver] mixed-block note injected")
+                            feedback_parts.append(mixed_note)
                         if "REPRO_STATUS: FAIL" in out:
                             if not observed_fail:
                                 # Checkpoint known-good (paket hardening,

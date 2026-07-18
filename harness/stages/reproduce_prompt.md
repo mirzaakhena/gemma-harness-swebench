@@ -49,7 +49,10 @@ script. The fix belongs to a later stage.
      action — it settles again and returns False when no reload came.
      Every line the app prints is echoed into your script's output with
      an `[app] ` prefix; `app.wait_for(text, timeout=...)` waits for any
-     other line; `app.stop()` shuts it down.<!-- /rule -->
+     other line; `app.stop()` shuts it down. `wait_ready` and `wait_for`
+     return True or False and never raise — check their return value
+     (`if not app.wait_for(...):`), a try/except around them catches
+     nothing.<!-- /rule -->
    - <!-- rule:positive-control -->When your predicate is "event X never
      happens", prove the absence is meaningful with a positive control:
      first make the SAME detection machinery catch the event through a

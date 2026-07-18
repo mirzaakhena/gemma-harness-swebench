@@ -179,6 +179,24 @@ def is_repro_run(cmd: str) -> bool:
     return _REPRO_RUN_RE.search(cmd) is not None
 
 
+def mixed_block_note(cmd: str) -> str | None:
+    """Blok bash yang MENJALANKAN repro.py tapi juga memuat perintah lain
+    (kelas r35: `sed ... && python repro.py`) — driver hanya mengeksekusi
+    repro run (di sandbox segar); perintah lain diam-diam tak pernah jalan
+    dan model tersesat mengira efeknya terjadi. Beri tahu eksplisit."""
+    extras = [
+        ln for ln in (l.strip() for l in cmd.splitlines())
+        if ln and not ln.startswith("#") and _REPRO_RUN_RE.search(ln) is None
+    ]
+    if not extras:
+        return None
+    return ("Note: only `python /testbed/.pipe/repro.py` was executed — "
+            "always in a fresh sandbox — and the other commands in that "
+            "block were not run. Put non-repro commands in their own "
+            "```bash block; changes to the repository cannot affect the "
+            "fresh-sandbox verdict anyway.")
+
+
 def repeated_error_note(prev_why: str | None, why: str) -> str | None:
     """Injeksi eskalatif saat retry membawa alasan IDENTIK dengan retry
     sebelumnya (r21: TypeError yang sama 6× berturut-turut — feedback

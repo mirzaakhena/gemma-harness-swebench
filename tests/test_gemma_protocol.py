@@ -392,3 +392,22 @@ def test_observable_rejection_not_found_names_the_string():
     msg = observable_rejection("Detected change")
     assert "Detected change" in msg
     assert "source" in msg
+
+
+# --- mixed bash block (kelas r35: sed + repro run dalam satu blok) ---------
+
+def test_mixed_block_note_fires_when_extra_commands_present():
+    from harness.stages.gemma_protocol import mixed_block_note
+    note = mixed_block_note(
+        "sed -i 's/x/y/' django/utils/autoreload.py\n"
+        "python /testbed/.pipe/repro.py")
+    assert note is not None
+    assert "fresh sandbox" in note
+    assert "were not run" in note
+
+
+def test_mixed_block_note_silent_for_pure_repro_run():
+    from harness.stages.gemma_protocol import mixed_block_note
+    assert mixed_block_note("python /testbed/.pipe/repro.py") is None
+    assert mixed_block_note(
+        "\n# comment\npython /testbed/.pipe/repro.py\n") is None

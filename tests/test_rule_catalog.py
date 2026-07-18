@@ -43,6 +43,10 @@ def test_app_runtime_rule_stays_in_core():
     core = rule_catalog.core_contract()
     assert "pipe_runtime" in core
     assert "wait_ready" in core
+    # Kelas r35: model membungkus wait_* dengan try/except seolah raise —
+    # padahal return bool; semantiknya WAJIB tegas di kontrak.
+    assert "never raise" in core
+    assert "check their return value" in core
 
 
 def test_settle_rule_stays_in_core():
