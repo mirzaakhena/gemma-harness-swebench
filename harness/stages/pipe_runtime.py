@@ -166,6 +166,10 @@ class App(object):
         A match that consumes a ready line also settles the baseline
         (same physics as wait_ready) — waiting for the ready line via
         wait_for instead of wait_ready must not reopen the race window.
+        A match is also given a short grace window: when a NEW ready line
+        follows the matched line (a restart announced just before the app
+        comes back up), it is consumed and settled before control returns
+        — so acting right after wait_for can never race a restart.
         """
         found = {"idx": -1}
 
@@ -185,6 +189,18 @@ class App(object):
                     1 for i in self._ready_idxs if i <= found["idx"])
                 if consumed_ready > self._ready_consumed:
                     self._ready_consumed = consumed_ready
+                    settle_needed = True
+            if not settle_needed:
+                # grace window: pengumuman restart bisa mendahului baris
+                # ready-nya (kelas r38) — bila ready baru menyusul sesaat
+                # setelah match, konsumsi + settle dulu.
+                target = self._ready_consumed + 1
+                if self._wait(lambda: self._ready_count >= target,
+                              self.settle):
+                    with self._cond:
+                        self._ready_consumed = self._ready_count
+                        self._cursor = max(self._cursor,
+                                           self._last_ready_idx + 1)
                     settle_needed = True
             if settle_needed:
                 time.sleep(self.settle)

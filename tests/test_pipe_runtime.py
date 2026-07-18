@@ -165,6 +165,24 @@ def test_wait_for_settles_when_match_consumes_ready_line(fake):
         app.stop()
 
 
+def test_wait_for_grace_settles_when_ready_follows_match(fake):
+    # Regresi r38: model menunggu baris PENGUMUMAN restart ("changed,
+    # reloading") yang tercetak SEBELUM baris ready — match sukses tanpa
+    # ready terkonsumsi, edit berikutnya jatuh saat mid-restart. Fisika:
+    # match wait_for diberi grace window; ready yang menyusul dikonsumsi
+    # + settle sebelum kontrol kembali ke script.
+    app = App(fake("l.py", READY_RELOAD), ready_token="APP READY",
+              interval=0.1, settle=0.5)
+    app.start(timeout=10)
+    try:
+        t0 = time.time()
+        assert app.wait_for("changed, reloading", timeout=5) is True
+        assert time.time() - t0 >= 0.5          # ready menyusul → settle
+        assert app.wait_ready(timeout=0.6) is False  # sudah dikonsumsi grace
+    finally:
+        app.stop()
+
+
 def test_start_raises_when_never_ready(fake):
     app = App(fake("f.py", NEVER_READY), ready_token="APP READY",
               interval=0.1, settle=0.1)
