@@ -65,28 +65,29 @@ def test_driver_module_has_no_unresolved_names():
     # NameError baru meledak saat runtime. Kompilasi + audit nama global
     # fungsi-fungsi modul menangkapnya tanpa menjalankan docker.
     import ast
-    import harness.stages.run_reproduce_gemma as drv
-    src = Path(drv.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(src)
     import builtins
-    known = set(dir(builtins)) | set(vars(drv).keys())
-    missing = set()
+    import harness.stages.run_reproduce_gemma as drv
+    tree = ast.parse(Path(drv.__file__).read_text(encoding="utf-8"))
 
-    class _V(ast.NodeVisitor):
-        def visit_FunctionDef(self, node):
-            local = {a.arg for a in node.args.args}
-            for n in ast.walk(node):
-                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
-                    local.add(n.id)
-                elif isinstance(n, (ast.For,)) and isinstance(n.target, ast.Name):
-                    local.add(n.target.id)
-            for n in ast.walk(node):
-                if (isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
-                        and n.id not in local and n.id not in known):
-                    missing.add(f"{node.name}: {n.id}")
-            self.generic_visit(node)
+    defined = set(dir(builtins)) | set(vars(drv).keys())
+    loads = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name):
+            (loads if isinstance(n.ctx, ast.Load) else defined).add(n.id)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(n.name)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                a = n.args
+                for arg in [*a.posonlyargs, *a.args, *a.kwonlyargs,
+                            *([a.vararg] if a.vararg else []),
+                            *([a.kwarg] if a.kwarg else [])]:
+                    defined.add(arg.arg)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            defined.add(n.name)
+        elif isinstance(n, ast.alias):
+            defined.add((n.asname or n.name).split(".")[0])
 
-    _V().visit(tree)
+    missing = loads - defined
     assert not missing, f"nama tak ter-resolve: {sorted(missing)}"
 
 
