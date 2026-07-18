@@ -209,6 +209,9 @@ def judge_review(endpoint: str, model: str, contract: str, problem: str,
     reply = chat(endpoint, model, messages)
     ok, issues = parse_review(reply)
     return ok, issues, reply
+
+
+def fresh_sandbox_output(container: str, image: str,
                          timeout: int = 300) -> tuple[str, int]:
     """Salin repro.py dari work container, jalankan sekali di container
     segar (tanpa patch); kembalikan (output, exit)."""
