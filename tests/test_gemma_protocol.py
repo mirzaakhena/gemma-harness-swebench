@@ -139,6 +139,26 @@ def test_rejection_messages_are_english():
             assert word not in m, f"pesan ke model masih ber-Indonesia: {m!r}"
 
 
+# --- format reminder (r11: fence non-action membakar 11 turn) ---------------
+
+def test_has_fences_true_for_python_fence():
+    from harness.stages.gemma_protocol import has_fences
+    assert has_fences("```python\nprint('x')\n```") is True
+
+
+def test_has_fences_false_without_fence():
+    from harness.stages.gemma_protocol import has_fences
+    assert has_fences("just prose, no blocks") is False
+
+
+def test_format_reminder_names_valid_forms():
+    from harness.stages.gemma_protocol import format_reminder
+    msg = format_reminder()
+    assert "```bash" in msg
+    assert "```file:" in msg
+    assert "```python" in msg  # menyebut bentuk yang TIDAK dieksekusi
+
+
 # --- PASS_OBSERVABLE (lever r10: klaim observable diverifikasi mekanis) -----
 
 def test_parse_pass_observable_found():

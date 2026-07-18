@@ -19,8 +19,9 @@ import urllib.request
 from pathlib import Path
 
 from harness.emit import Emitter
-from harness.stages.gemma_protocol import (done_rejection_reason, has_done,
-                                           observable_rejection,
+from harness.stages.gemma_protocol import (done_rejection_reason,
+                                           format_reminder, has_done,
+                                           has_fences, observable_rejection,
                                            parse_actions,
                                            parse_pass_observable)
 from harness.stages.reproduce_gates import compose_repro_md
@@ -259,9 +260,14 @@ def main() -> int:
                     feedback_parts.append(msg)
 
             if not actions and not feedback_parts:
-                feedback_parts.append(
-                    "No action block detected. Use ```bash / ```file:<path> / "
-                    "```repro.md per the protocol, or close with DONE.")
+                if has_fences(reply):
+                    log("[driver] fenced block(s) present but none parsed as "
+                        "action; format reminder sent")
+                    feedback_parts.append(format_reminder())
+                else:
+                    feedback_parts.append(
+                        "No action block detected. Use ```bash / ```file:<path> / "
+                        "```repro.md per the protocol, or close with DONE.")
             messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
     except Exception as e:
         log(f"[driver] crash: {e!r}")

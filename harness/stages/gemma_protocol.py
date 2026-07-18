@@ -99,6 +99,26 @@ def observable_rejection(observable: str | None) -> str:
             "corrected PASS_OBSERVABLE line.")
 
 
+def has_fences(text: str) -> bool:
+    """Ada minimal satu fenced block (apa pun info-string-nya)."""
+    return _FENCE_RE.search(text) is not None
+
+
+def format_reminder() -> str:
+    """Pengingat bentuk aksi yang sah — dikirim saat reply berisi fence tapi
+    NOL aksi ter-parse. Lahir dari r11 (11422): Gemma memakai
+    `<|tool_call>` + fence ```python selama ~11 turn; file tak pernah
+    tertulis dan feedback generik tidak menyebut bentuk yang benar."""
+    return ("None of your fenced blocks were executed. Only these forms are "
+            "executed, chosen by the text right after the opening backticks:\n"
+            "```bash            -> run a shell command\n"
+            "```file:/abs/path  -> write that file with the block's content\n"
+            "```repro.md        -> submit the repro.md artifact\n"
+            "A ```python block is NOT executed — to create a script, put its "
+            "content in a ```file:/testbed/.pipe/repro.py block, then run it "
+            "with a ```bash block.")
+
+
 def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool) -> str | None:
     """Aturan SELESAI stage LOCALIZE. None = diterima.
 
