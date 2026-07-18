@@ -51,11 +51,29 @@ nyata r7–r29 (riwayat: vault `R-dev Log — fase REPRODUCE`):
   known-good (`files/repro-first-fail.py`), telemetri retry beralasan
 - gate + flip: `run_repro_gates.py --gold` (L2 = definisi qualified);
   problem statement case: `cases/problems/<case_id>.txt`
-- `pipe_runtime.py` (r33): modul `App` di-ship harness ke `.pipe/` SEMUA
+- `pipe_runtime.py` (r33+): modul `App` di-ship harness ke `.pipe/` SEMUA
   dunia eksekusi (container kerja, fresh pre-check, gate/flip) — start &
   settle baseline otomatis di tiap ready (termasuk tiap reload), semua
   output child di-echo `[app] ` (kelas race-baseline & trace-tertelan
-  dipindah dari disiplin prompt ke fisika modul); kontrak rule:app-runtime
+  dipindah dari disiplin prompt ke fisika modul); kontrak rule:app-runtime.
+  API race-proof by construction: cursor anti stale-match (850b345),
+  auto-settle saat match mengonsumsi ready (a7add92), grace window utk
+  pengumuman restart (0c3ecca); wait_* return bool & never raise (86b2617)
+- standar token TUNGGAL baris-eksak (`exact_status`): "FAIL tersaksikan"
+  mid-loop == pre-check pair == gate; token_format_note saat trailing text
+- telemetri pair: event done-rejected pair membawa detail terstruktur
+  (status/exit/tail kedua run) + output pair di-log `[exec-pair]`
+- kontrak DEFAULT = ultra-slim (self-contained & repeatable detail-only,
+  dijaga fisika; keputusan Mirza pasca-A/B dua case); varian full via
+  `--contract-variant full` (A/B tooling)
 
-UI viewer (`python ui\server.py`, port 8766): tabs per fase (REPRODUCE
-pertama), sort desc, paging, kolom ikon/durasi/turns.
+Status case REPRODUCE (2026-07-19): 11422 STABIL (streak 3, r39–r41);
+11999 STABIL 6/6 (A/B slim vs full); 11964 STABIL 3/3 (adversarial);
+survey 5 case fail-harness-lama berjalan — 11910 selesai 2/3, sisa
+11797/12308/13220/13401. Riwayat lengkap: vault R-dev Log; distilasi
+metode: vault "Prinsip Stabilisasi REPRODUCE".
+
+UI viewer (`python ui\server.py --root ..\artifacts --port 8766`): tabs
+per fase (REPRODUCE pertama), sort desc berdasar STARTED datetime (run
+terbaru case mana pun di halaman 1 — nomor rerun per-case), paging,
+kolom ikon/durasi/turns. Biasanya hidup sebagai proses detached.
