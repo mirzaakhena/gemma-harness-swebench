@@ -43,6 +43,34 @@ def test_verdict_icon_mapping():
     assert verdict_icon(None) == ""
 
 
+# --- kolom ikon terpisah & verdict tanpa prefix (masukan Mirza) -------------
+
+def test_index_row_verdict_single_phase_drops_prefix():
+    from ui.server import index_row_verdict
+    text, icon = index_row_verdict({"reproduce": "pass"}, None)
+    assert text == "pass" and icon.startswith("✅")
+
+
+def test_index_row_verdict_fail_class():
+    from ui.server import index_row_verdict
+    text, icon = index_row_verdict({"reproduce": "wrong-logic"}, "reproduce")
+    assert text == "wrong-logic" and icon.startswith("❌")
+
+
+def test_index_row_verdict_abort_without_phases():
+    from ui.server import index_row_verdict
+    text, icon = index_row_verdict({}, "abort")
+    assert text == "abort" and icon == ""
+
+
+def test_index_row_verdict_multi_phase_keeps_labels():
+    from ui.server import index_row_verdict
+    text, icon = index_row_verdict(
+        {"reproduce": "pass", "localize": "pass"}, None)
+    assert "reproduce=pass" in text and "localize=pass" in text
+    assert icon.startswith("✅")
+
+
 # --- turn count & urutan tab (permintaan Mirza 2026-07-19) ------------------
 
 def test_run_turns_from_console(tmp_path):

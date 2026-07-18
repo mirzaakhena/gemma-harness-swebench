@@ -212,6 +212,26 @@ def _page(title: str, body: str, refresh: bool = False) -> str:
             f"<body>{body}</body></html>")
 
 
+def index_row_verdict(phases: dict, wall) -> tuple[str, str]:
+    """(teks verdict, ikon) untuk satu baris tabel index (masukan Mirza
+    2026-07-19): fase tunggal tanpa prefix, abort eksplisit, ikon jadi
+    kolom sendiri."""
+    if not phases:
+        return ("abort", "") if wall == "abort" else ("-", "")
+    if len(phases) == 1:
+        val = next(iter(phases.values()))
+        return str(val), verdict_icon(val)
+    text = " ".join(f"{k}={v}" for k, v in phases.items())
+    vals = list(phases.values())
+    if all(v in ("pass", "flip") for v in vals):
+        icon = verdict_icon("pass")
+    elif any(verdict_icon(v).startswith("❌") for v in vals):
+        icon = verdict_icon("fail")
+    else:
+        icon = ""
+    return text, icon
+
+
 def _verdict_summary(v) -> str:
     """Map fase->verdict jadi teks singkat berikon; non-dict apa adanya."""
     if isinstance(v, dict):
@@ -251,18 +271,16 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
     rows = []
     for r in page_runs:
         rid = r["run_id"]
-        # verdict.json lebih final daripada baris end runs.jsonl
-        verdict = r["verdict"]
-        wall = r.get("wall")
         vpath = root / active / rid / "verdict.json"
+        vtext, icon = "-", ""
         if vpath.is_file():
             try:
                 vj = json.loads(vpath.read_text(encoding="utf-8"))
-                verdict = {k: (p or {}).get("verdict")
-                           for k, p in (vj.get("phases") or {}).items()}
-                wall = vj.get("wall")
+                phases = {k: (p or {}).get("verdict")
+                          for k, p in (vj.get("phases") or {}).items()}
+                vtext, icon = index_row_verdict(phases, vj.get("wall"))
             except (ValueError, OSError, AttributeError):
-                verdict = "(verdict.json rusak)"
+                vtext = "(verdict.json rusak)"
         href = ("/run?c=" + urllib.parse.quote(active)
                 + "&r=" + urllib.parse.quote(rid))
         dur = fmt_duration(run_duration_seconds(root / active / rid))
@@ -271,11 +289,11 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
         turns = run_turns(root / active / rid)
         rows.append(
             f"<tr><td><a href='{href}'>{html.escape(rid)}</a></td>"
-            f"<td>{html.escape(_verdict_summary(verdict))}</td>"
-            f"<td class='dim'>{html.escape(str(wall) if wall else '')}"
-            f"</td><td class='dim'>{html.escape(dur)}</td>"
+            f"<td>{icon}</td>"
+            f"<td>{html.escape(vtext)}</td>"
+            f"<td class='dim'>{html.escape(dur)}</td>"
             f"<td class='dim'>{turns if turns is not None else '-'}</td></tr>")
-    parts.append("<table><tr><th>run</th><th>verdict</th><th>wall</th>"
+    parts.append("<table><tr><th>run</th><th></th><th>verdict</th>"
                  "<th>durasi</th><th>turns</th></tr>"
                  + "".join(rows) + "</table>")
 
