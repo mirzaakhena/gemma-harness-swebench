@@ -32,7 +32,8 @@ def test_every_rule_quote_is_verbatim_from_contract():
 def test_expected_rule_ids_present():
     for rid in ("self-contained", "repeatable", "early-draft",
                 "source-pass-side", "crash-repair", "positive-control",
-                "settle-before-trigger", "app-runtime"):
+                "settle-before-trigger", "app-runtime",
+                "predicate-from-witnessed-output", "scope-minimal-predicate"):
         assert rid in rule_catalog.RULES
 
 
@@ -120,6 +121,26 @@ def test_core_contract_promote_renders_selected_detail_blocks():
 
 def test_core_contract_default_has_no_promoted_details():
     assert "inside the script itself" not in rule_catalog.core_contract()
+
+
+def test_predicate_from_witnessed_output_rule_stays_in_core():
+    # Paket Predikat (keputusan Mirza 2026-07-19, pasca-survey 5 case):
+    # kelas predikat-literal-rapuh (11797 r2+r3) — string SQL ditebak alih-
+    # alih diturunkan dari output yang script print sendiri; base-FAIL via
+    # fallback branch = signal-less di sisi base → wajib CORE.
+    core = _norm(rule_catalog.core_contract())
+    assert "observed form" in core
+    assert "align the predicate" in core
+
+
+def test_scope_minimal_predicate_rule_stays_in_core():
+    # Paket Predikat (keputusan Mirza 2026-07-19, pasca-survey 5 case):
+    # kelas over-testing gold-unsatisfiable (13220 3× deterministik) —
+    # predikat menuntut lebih dari klaim eksplisit issue; signal-less di
+    # base → wajib CORE.
+    core = _norm(rule_catalog.core_contract())
+    assert "narrowest concrete claim" in core
+    assert "stay out of the predicate" in core
 
 
 def test_detail_rules_are_extracted_for_injection():

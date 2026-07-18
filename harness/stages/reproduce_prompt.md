@@ -25,9 +25,21 @@ script. The fix belongs to a later stage.
      spawns that launch as a real child process. Ask yourself: "if a
      maintainer fixed this bug in any legitimate way, would my script flip
      FAIL → PASS?" Make the answer YES.
+   - <!-- rule:scope-minimal-predicate -->Your predicate asserts the
+     narrowest concrete claim in the issue — the exact wrong behavior the
+     user demonstrates, exercised through their own example. Broader wishes
+     or related behaviors mentioned around the report stay out of the
+     predicate.<!-- /rule -->
    - Prefer a marker line your own scenario prints; a framework log message
      is a valid observable only when you have quoted it exactly from the
      repository source.
+   - <!-- rule:predicate-from-witnessed-output -->Any literal text your
+     predicate compares against (an SQL string, a log line, a message) is
+     copied from output you have watched your script print — run the
+     scenario, read the exact line it produced, and match that observed
+     form. Output that lands in a fallback branch you did not anticipate
+     means the predicate is stale: print the observed value and align the
+     predicate to it before trusting the verdict.<!-- /rule -->
    - <!-- rule:settle-before-trigger -->When you wait for an event that a
      background mechanism must notice (a reload, a watcher, a poller), let
      the mechanism settle first — one full sampling interval after it
