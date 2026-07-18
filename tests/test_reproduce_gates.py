@@ -129,3 +129,39 @@ def test_gate_confirmed_at_base_no_rejected():
 def test_gate_malformed_repro_md_is_syntax_fail():
     r = evaluate_gates(**_ok_kwargs(repro_md_text="SYMPTOM: saja\n"))
     assert r.verdict == "syntax-fail"
+
+
+# --- compose_repro_md (slot mekanis diisi harness, bukan model) -------------
+
+MODEL_PART = """SYMPTOM: autoreload does not watch manage.py
+TRIGGER: run the server via python manage.py
+EXPECTED vs ACTUAL:
+EXPECTED: manage.py is watched by the autoreloader
+ACTUAL: edits to manage.py never trigger a reload
+"""
+
+
+def test_compose_appends_mechanical_slots_confirmed_yes():
+    from harness.stages.reproduce_gates import compose_repro_md
+    full = compose_repro_md(MODEL_PART, observed_fail=True)
+    slots = parse_repro_md(full)
+    assert slots["repro_command"] == "python /testbed/.pipe/repro.py"
+    assert slots["confirmed_at_base"] == "yes"
+    assert slots["symptom"].startswith("autoreload")
+
+
+def test_compose_confirmed_no_when_fail_never_observed():
+    from harness.stages.reproduce_gates import compose_repro_md
+    full = compose_repro_md(MODEL_PART, observed_fail=False)
+    assert parse_repro_md(full)["confirmed_at_base"] == "no"
+
+
+def test_compose_replaces_model_written_mechanical_slots():
+    from harness.stages.reproduce_gates import compose_repro_md
+    sneaky = MODEL_PART + "REPRO COMMAND: python other.py\nCONFIRMED-AT-BASE: yes\n"
+    full = compose_repro_md(sneaky, observed_fail=False)
+    slots = parse_repro_md(full)
+    assert slots["repro_command"] == "python /testbed/.pipe/repro.py"
+    assert slots["confirmed_at_base"] == "no"
+    assert full.count("CONFIRMED-AT-BASE:") == 1
+    assert full.count("REPRO COMMAND:") == 1

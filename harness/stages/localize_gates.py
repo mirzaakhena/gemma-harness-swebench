@@ -33,15 +33,15 @@ def parse_localize_md(text: str) -> dict:
         else:
             missing.append(key)
     if missing:
-        raise ValueError(f"slot tidak ditemukan di localize.md: {', '.join(missing)}")
+        raise ValueError(f"missing slots in localize.md: {', '.join(missing)}")
 
     m = _LINES_RE.match(slots["lines"])
     if not m:
         raise ValueError(
-            f"slot lines harus berformat N-M (angka), dapat: {slots['lines']!r}")
+            f"slot lines must be N-M (numbers), got: {slots['lines']!r}")
     start, end = int(m.group(1)), int(m.group(2))
     if start > end:
-        raise ValueError(f"slot lines terbalik: {start}-{end}")
+        raise ValueError(f"slot lines reversed: {start}-{end}")
     slots["lines"] = (start, end)
     return slots
 
@@ -58,22 +58,22 @@ def evaluate_localize_gates(md_text: str, file_exists: bool,
         slots = parse_localize_md(md_text)
     except ValueError as e:
         return LocalizeResult(verdict="syntax-fail",
-                              failures=[f"format localize.md: {e}"])
+                              failures=[f"localize.md format: {e}"])
 
     failures: list[str] = []
     start, end = slots["lines"]
 
     if not file_exists:
-        failures.append(f"file tidak ada di repo: {slots['file']}")
+        failures.append(f"file does not exist in the repo: {slots['file']}")
     else:
         if end - start + 1 > MAX_SPAN:
             failures.append(
-                f"rentang lines terlalu lebar ({end - start + 1} baris > "
-                f"{MAX_SPAN}) — peta harus menunjuk situs, bukan wilayah")
+                f"lines range too wide ({end - start + 1} lines > "
+                f"{MAX_SPAN}) — a map must point at a site, not a region")
         if file_line_count is not None and end > file_line_count:
             failures.append(
-                f"lines {start}-{end} melewati akhir file "
-                f"({file_line_count} baris)")
+                f"lines {start}-{end} extend beyond the end of file "
+                f"({file_line_count} lines)")
 
     return LocalizeResult(verdict="fail" if failures else "pass",
                           failures=failures)

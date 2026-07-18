@@ -57,19 +57,19 @@ def test_gate_span_too_wide_rejected():
     md = MD_OK.replace("lines: 105-130", "lines: 1-1500")
     r = evaluate_localize_gates(md, file_exists=True, file_line_count=2000)
     assert r.verdict == "fail"
-    assert any("rentang" in f for f in r.failures)
+    assert any("range" in f for f in r.failures)
 
 
 def test_gate_file_not_exists_rejected():
     r = evaluate_localize_gates(MD_OK, file_exists=False, file_line_count=None)
     assert r.verdict == "fail"
-    assert any("tidak ada" in f for f in r.failures)
+    assert any("does not exist" in f for f in r.failures)
 
 
 def test_gate_lines_beyond_eof_rejected():
     r = evaluate_localize_gates(MD_OK, file_exists=True, file_line_count=100)
     assert r.verdict == "fail"
-    assert any("melewati akhir file" in f for f in r.failures)
+    assert any("beyond the end of file" in f for f in r.failures)
 
 
 def test_gate_malformed_md_is_syntax_fail():

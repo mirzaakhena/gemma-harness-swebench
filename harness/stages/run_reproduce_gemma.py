@@ -21,6 +21,7 @@ from pathlib import Path
 from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_reason, has_done,
                                            parse_actions)
+from harness.stages.reproduce_gates import compose_repro_md
 
 PROTOCOL_NOTE = """
 ## How to work (action protocol — MANDATORY)
@@ -36,7 +37,9 @@ blocks; they are executed in order and I send the results back to you.
 ```file:/testbed/.pipe/repro.py
 <full file content>
 ```
-3. Submit the final repro.md artifact (5 slots per the contract):
+3. Submit the final repro.md artifact — interpretive slots only (SYMPTOM,
+   TRIGGER, EXPECTED vs ACTUAL); the harness appends REPRO COMMAND and
+   CONFIRMED-AT-BASE itself:
 ```repro.md
 <repro.md content>
 ```
@@ -120,7 +123,7 @@ def main() -> int:
     subprocess.run(["docker", "rm", "-f", container], capture_output=True)
     subprocess.run(["docker", "run", "-d", "--name", container, args.image,
                     "sleep", "infinity"], check=True, capture_output=True)
-    log(f"[driver] container kerja {container} start ({args.image})")
+    log(f"[driver] work container {container} started ({args.image})")
 
     em.run_start()
     em.event("reproduce", "enter",
@@ -142,7 +145,7 @@ def main() -> int:
         try:
             reply = chat(args.endpoint, args.model, messages)
         except Exception as e:  # transient endpoint error -> satu retry per turn
-            log(f"[driver] chat error: {e}; retry sekali")
+            log(f"[driver] chat error: {e}; retrying once")
             reply = chat(args.endpoint, args.model, messages)
         messages.append({"role": "assistant", "content": reply})
         log(f"[gemma t{turn}] {reply}")
@@ -152,7 +155,7 @@ def main() -> int:
         for act in actions:
             if act.kind == "file":
                 docker_write_file(container, act.arg, act.body + "\n")
-                log(f"[driver] tulis {act.arg} ({len(act.body)} chars)")
+                log(f"[driver] wrote {act.arg} ({len(act.body)} chars)")
                 feedback_parts.append(f"OK: file {act.arg} written.")
             elif act.kind == "bash":
                 out, code = docker_exec(container, act.body)
@@ -169,18 +172,18 @@ def main() -> int:
                                  detail={"why": "run repro.py tanpa REPRO_STATUS: FAIL"})
             elif act.kind == "repro.md":
                 repro_md = act.body
-                log("[driver] kandidat repro.md diterima")
+                log("[driver] repro.md candidate received")
                 feedback_parts.append("OK: repro.md received.")
 
         if has_done(reply):
             reason = done_rejection_reason(has_repro_md=repro_md is not None,
                                            observed_fail=observed_fail)
             if reason is not None:
-                log(f"[driver] SELESAI DITOLAK: {reason}")
+                log(f"[driver] DONE rejected: {reason}")
                 feedback_parts.append(reason)
             else:
                 done = True
-                log(f"[driver] SELESAI pada turn {turn} (attempt terakhir {attempt})")
+                log(f"[driver] DONE at turn {turn} (last attempt {attempt})")
                 break
 
         if not actions and not feedback_parts:
@@ -194,16 +197,17 @@ def main() -> int:
     out, code = docker_exec(container, "cat /testbed/.pipe/repro.py")
     if code == 0:
         (files_dir / "repro.py").write_text(out, encoding="utf-8", newline="\n")
-        log("[driver] files/repro.py tersalin dari container")
+        log("[driver] files/repro.py copied from container")
     else:
-        log("[driver] PERINGATAN: /testbed/.pipe/repro.py tidak ada di container")
+        log("[driver] WARNING: /testbed/.pipe/repro.py missing in container")
     if repro_md is not None:
-        (files_dir / "repro.md").write_text(repro_md + "\n", encoding="utf-8",
-                                            newline="\n")
-        log("[driver] files/repro.md tertulis")
+        (files_dir / "repro.md").write_text(
+            compose_repro_md(repro_md, observed_fail=observed_fail),
+            encoding="utf-8", newline="\n")
+        log("[driver] files/repro.md written (mechanical slots filled by harness)")
 
     subprocess.run(["docker", "stop", container], capture_output=True)
-    log(f"[driver] container {container} di-stop (disimpan untuk debugging); "
+    log(f"[driver] container {container} stopped (kept for debugging); "
         f"done={done}, turns={turn}, attempts={attempt}")
     print(json.dumps({"done": done, "turns": turn, "attempts": attempt,
                       "has_repro_md": repro_md is not None,

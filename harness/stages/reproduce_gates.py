@@ -45,8 +45,27 @@ def parse_repro_md(text: str) -> dict:
         else:
             missing.append(_SLOT_LABELS[key])
     if missing:
-        raise ValueError(f"slot tidak ditemukan di repro.md: {', '.join(missing)}")
+        raise ValueError(f"missing slots in repro.md: {', '.join(missing)}")
     return slots
+
+
+REPRO_COMMAND = "python /testbed/.pipe/repro.py"
+
+
+def compose_repro_md(model_part: str, observed_fail: bool) -> str:
+    """Susun repro.md final: bagian interpretif dari model + slot mekanis
+    yang diisi HARNESS (keputusan Mirza 2026-07-18 — meringankan model).
+
+    REPRO COMMAND selalu konstan; CONFIRMED-AT-BASE = apakah driver benar-benar
+    menyaksikan REPRO_STATUS: FAIL. Baris versi model utk kedua slot itu
+    (kalau ada) dibuang — model tidak boleh menyetel slot mekanis.
+    """
+    kept = [line for line in model_part.splitlines()
+            if not line.startswith(("REPRO COMMAND:", "CONFIRMED-AT-BASE:"))]
+    body = "\n".join(kept).rstrip("\n")
+    return (f"{body}\n"
+            f"REPRO COMMAND: {REPRO_COMMAND}\n"
+            f"CONFIRMED-AT-BASE: {'yes' if observed_fail else 'no'}\n")
 
 
 @dataclass
@@ -67,28 +86,28 @@ def evaluate_gates(repro_md_text: str,
     try:
         slots = parse_repro_md(repro_md_text)
     except ValueError as e:
-        return GateResult(verdict="syntax-fail", failures=[f"format repro.md: {e}"])
+        return GateResult(verdict="syntax-fail", failures=[f"repro.md format: {e}"])
 
     for marker in scaffolding_error_markers:
         if marker in fresh_run1_output or marker in fresh_run2_output:
             return GateResult(verdict="fail", failures=[
-                f"self-contained: error scaffolding terdeteksi ({marker}) di run sandbox segar"])
+                f"self-contained: scaffolding error detected ({marker}) in fresh-sandbox run"])
 
     status1 = parse_repro_status(fresh_run1_output)
     status2 = parse_repro_status(fresh_run2_output)
     if status1 is None or status2 is None:
         return GateResult(verdict="syntax-fail",
-                          failures=["token REPRO_STATUS tidak ditemukan di output run sandbox segar"])
+                          failures=["REPRO_STATUS token not found in fresh-sandbox run output"])
 
     if status1 == "PASS":
         failures.append(
-            "anti-vacuous: REPRO_STATUS PASS di base commit — script tidak memperlihatkan bug")
+            "anti-vacuous: REPRO_STATUS PASS at base commit — the script does not exhibit the bug")
 
     if status1 != status2:
         failures.append(
-            f"idempoten: dua run sandbox segar tidak identik (run1={status1}, run2={status2})")
+            f"idempotent: two fresh-sandbox runs differ (run1={status1}, run2={status2})")
 
     if slots["confirmed_at_base"] != "yes":
-        failures.append("CONFIRMED-AT-BASE bukan 'yes' — repro belum dikonfirmasi model")
+        failures.append("CONFIRMED-AT-BASE is not 'yes' — repro never confirmed against witnessed FAIL")
 
     return GateResult(verdict="fail" if failures else "pass", failures=failures)

@@ -120,8 +120,8 @@ def main() -> int:
     subprocess.run(["docker", "run", "-d", "--name", container, args.image,
                     "sleep", "infinity"], check=True, capture_output=True)
     docker_write_file(container, "/testbed/.pipe/repro.py", repro_py)
-    log(f"[driver] container {container} start; input repro terpasang "
-        f"dari {input_dir}")
+    log(f"[driver] container {container} started; input repro installed "
+        f"from {input_dir}")
 
     em.run_start()
     em.event("localize", "enter",
@@ -148,7 +148,7 @@ def main() -> int:
         try:
             reply = chat(args.endpoint, args.model, messages)
         except Exception as e:
-            log(f"[driver] chat error: {e}; retry sekali")
+            log(f"[driver] chat error: {e}; retrying once")
             reply = chat(args.endpoint, args.model, messages)
         messages.append({"role": "assistant", "content": reply})
         log(f"[gemma t{turn}] {reply}")
@@ -158,14 +158,14 @@ def main() -> int:
         for act in actions:
             if act.kind == "file":
                 if not act.arg.startswith("/testbed/.pipe/"):
-                    log(f"[driver] TOLAK tulis di luar .pipe: {act.arg}")
+                    log(f"[driver] REJECTED write outside .pipe: {act.arg}")
                     feedback_parts.append(
                         f"REJECTED: writing {act.arg} is not allowed — the "
                         "repository is read-only; probe scripts may only live "
                         "under /testbed/.pipe/.")
                     continue
                 docker_write_file(container, act.arg, act.body + "\n")
-                log(f"[driver] tulis {act.arg} ({len(act.body)} chars)")
+                log(f"[driver] wrote {act.arg} ({len(act.body)} chars)")
                 feedback_parts.append(f"OK: file {act.arg} written.")
             elif act.kind == "bash":
                 ran_any_bash = True
@@ -174,7 +174,7 @@ def main() -> int:
                 feedback_parts.append(f"OUTPUT (exit {code}):\n{tail(out)}")
             elif act.kind == "localize.md":
                 localize_md = act.body
-                log("[driver] kandidat localize.md diterima")
+                log("[driver] localize.md candidate received")
                 feedback_parts.append("OK: localize.md received.")
 
         if has_done(reply):
@@ -185,12 +185,12 @@ def main() -> int:
                 attempt += 1
                 em.event("localize", "retry", attempt=attempt,
                          budget={"msg_used": turn, "msg_limit": args.max_turns},
-                         detail={"why": "SELESAI ditolak"})
-                log(f"[driver] SELESAI DITOLAK: {reason}")
+                         detail={"why": "DONE rejected"})
+                log(f"[driver] DONE rejected: {reason}")
                 feedback_parts.append(reason)
             else:
                 done = True
-                log(f"[driver] SELESAI pada turn {turn}")
+                log(f"[driver] DONE at turn {turn}")
                 break
 
         if not actions and not feedback_parts:
@@ -204,12 +204,12 @@ def main() -> int:
     if localize_md is not None:
         (files_dir / "localize.md").write_text(localize_md + "\n",
                                                encoding="utf-8", newline="\n")
-        log("[driver] files/localize.md tertulis")
+        log("[driver] files/localize.md written")
     (files_dir / "input-repro.md").write_text(repro_md, encoding="utf-8",
                                               newline="\n")
 
     subprocess.run(["docker", "stop", container], capture_output=True)
-    log(f"[driver] container {container} di-stop; done={done}, turns={turn}")
+    log(f"[driver] container {container} stopped; done={done}, turns={turn}")
     print(json.dumps({"done": done, "turns": turn,
                       "has_localize_md": localize_md is not None}))
     return 0

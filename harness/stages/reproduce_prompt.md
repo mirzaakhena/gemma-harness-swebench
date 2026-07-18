@@ -27,7 +27,7 @@ any code.
      under test — a mocked internal can make your predicate impossible to
      flip even by a correct fix.
 
-2. **`repro.md`** (5 slots, fixed format):
+2. **`repro.md`** — you write ONLY the interpretive part (fixed format):
 
 ```
 SYMPTOM: <one sentence: the symptom as the user experiences it>
@@ -35,12 +35,12 @@ TRIGGER: <the condition/steps that trigger it>
 EXPECTED vs ACTUAL:
 EXPECTED: <the correct behavior>
 ACTUAL: <the wrong behavior observed now>
-REPRO COMMAND: python /testbed/.pipe/repro.py
-CONFIRMED-AT-BASE: <yes|no>
 ```
 
-Write `CONFIRMED-AT-BASE: yes` ONLY after you have RUN the script and seen
-`REPRO_STATUS: FAIL` with your own eyes. Never write `yes` out of conviction.
+The harness appends the mechanical slots itself: `REPRO COMMAND` (always
+`python /testbed/.pipe/repro.py`) and `CONFIRMED-AT-BASE` (yes only if the
+harness has witnessed your script print `REPRO_STATUS: FAIL`). You cannot set
+these yourself — run your script for real and let the evidence speak.
 
 ## What the harness does after you (mechanical gates — know them to pass)
 
@@ -50,8 +50,8 @@ Write `CONFIRMED-AT-BASE: yes` ONLY after you have RUN the script and seen
    (ModuleNotFoundError, settings) = REJECTED.
 3. Idempotent: run twice in a row; the `REPRO_STATUS` line and the core
    symptom must be identical.
-4. Format: `repro.md` must have all 5 slots; the `REPRO_STATUS:` line must be
-   exact.
+4. Format: the final `repro.md` (your part + the harness-appended slots) must
+   have all 5 slots; the `REPRO_STATUS:` line must be exact.
 
 You may experiment as much as you need BEFORE writing the final output (try a
 script, revise the predicate, repeat). Only the final output is judged.
