@@ -37,6 +37,13 @@ script. The fix belongs to a later stage.
      the mechanism settle first — one full sampling interval after it
      reports ready — before firing the trigger, and give the resulting
      observable a bounded deadline of several intervals.<!-- /rule -->
+   - <!-- rule:positive-control -->When your predicate is "event X never
+     happens", prove the absence is meaningful with a positive control:
+     first make the SAME detection machinery catch the event through a
+     neighboring path that already works at the base commit. A control
+     that goes undetected means your script has a setup problem — print a
+     diagnostic instead of a REPRO_STATUS line and repair the script
+     first.<!-- /rule -->
 
 <!-- detail:faithful-setup -->
 FAITHFUL SETUP: obtain the thing under test the way real operation
@@ -68,20 +75,6 @@ match reality.
 If your scenario crashes for a reason that is not the reported symptom,
 repair the script — a crash counts as FAIL only when the crash IS the
 symptom the user reports.
-<!-- /detail -->
-
-<!-- detail:positive-control -->
-When your predicate is "event X never happens", prove the absence is
-meaningful with a positive control: first make the SAME detection
-machinery catch the event triggered through a neighboring path that
-already works at the base commit, then trigger it through the path
-the issue complains about. Report FAIL only when the control was
-detected and the issue-path event was not; a control that goes
-undetected means your script has a setup problem — print a diagnostic
-instead of a REPRO_STATUS line, and fix the script first. A common
-cause: a mechanism that samples state periodically needs its baseline
-settled before any trigger — allow one full sampling interval after
-it reports ready, and a deadline of several intervals afterwards.
 <!-- /detail -->
 
 2. **`repro.md`** containing exactly these lines:

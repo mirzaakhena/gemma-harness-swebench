@@ -65,8 +65,17 @@ def test_core_contract_has_no_marker_comments():
 def test_core_contract_drops_detail_rules():
     core = rule_catalog.core_contract()
     assert "FAITHFUL SETUP" not in core
-    assert "positive control" not in core
     assert "Source the PASS side" not in core
+
+
+def test_positive_control_rule_stays_in_core():
+    # Keputusan Mirza 2026-07-19 (setelah r30): kelas pass-fidelity/setup-rusak
+    # (r29+r30, `--noreload=false`) signal-less di sisi base — per kriteria
+    # "aturan signal-less tidak boleh injeksi-only", versi kompak
+    # positive-control WAJIB tampil di CORE.
+    core = rule_catalog.core_contract()
+    assert "positive control" in core
+    assert "diagnostic" in core
 
 
 def test_core_contract_keeps_core_rules_and_skeleton():
