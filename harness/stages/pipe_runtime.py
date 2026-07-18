@@ -56,6 +56,7 @@ class App(object):
         self._ready_count = 0     # occurrences of ready_token seen
         self._ready_consumed = 0  # occurrences already waited-for
         self._last_ready_idx = -1  # index baris ready terakhir di _lines
+        self._ready_idxs = []     # index SEMUA baris ready, berurutan
         self._cursor = 0          # wait_for hanya melihat baris >= cursor
         self._cond = threading.Condition()
         self._reader = None
@@ -72,6 +73,7 @@ class App(object):
                     if self.ready_token in line:
                         self._ready_count += 1
                         self._last_ready_idx = len(self._lines) - 1
+                        self._ready_idxs.append(self._last_ready_idx)
                     self._cond.notify_all()
         except Exception:
             pass
@@ -160,6 +162,10 @@ class App(object):
         count — a line from before the app last reported ready can never
         satisfy a later wait (it belongs to a previous phase of the
         scenario), so a stale match cannot make a predicate always-true.
+
+        A match that consumes a ready line also settles the baseline
+        (same physics as wait_ready) — waiting for the ready line via
+        wait_for instead of wait_ready must not reopen the race window.
         """
         found = {"idx": -1}
 
@@ -172,8 +178,16 @@ class App(object):
 
         ok = self._wait(seen, timeout)
         if ok:
+            settle_needed = False
             with self._cond:
                 self._cursor = max(self._cursor, found["idx"] + 1)
+                consumed_ready = sum(
+                    1 for i in self._ready_idxs if i <= found["idx"])
+                if consumed_ready > self._ready_consumed:
+                    self._ready_consumed = consumed_ready
+                    settle_needed = True
+            if settle_needed:
+                time.sleep(self.settle)
         return ok
 
     def poll(self):

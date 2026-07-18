@@ -149,6 +149,22 @@ def test_wait_for_consumes_matched_line(fake):
         app.stop()
 
 
+def test_wait_for_settles_when_match_consumes_ready_line(fake):
+    # Regresi r37: model memakai wait_for(ready_token) utk fase control
+    # (bukan wait_ready) lalu langsung edit — jendela un-settled watcher
+    # baru. Fisika: match yang mengonsumsi baris ready WAJIB ikut settle.
+    app = App(fake("k.py", READY_TWICE), ready_token="APP READY",
+              interval=0.1, settle=0.5)
+    app.start(timeout=10)
+    try:
+        t0 = time.time()
+        assert app.wait_for("APP READY", timeout=5) is True
+        assert time.time() - t0 >= 0.5          # settle otomatis terjadi
+        assert app.wait_ready(timeout=0.6) is False  # ready #2 sudah dikonsumsi
+    finally:
+        app.stop()
+
+
 def test_start_raises_when_never_ready(fake):
     app = App(fake("f.py", NEVER_READY), ready_token="APP READY",
               interval=0.1, settle=0.1)
