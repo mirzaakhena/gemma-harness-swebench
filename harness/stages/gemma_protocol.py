@@ -233,6 +233,40 @@ def _tail(s: str, n: int) -> str:
     return s if len(s) <= n else s[-n:]
 
 
+def exact_status(out: str) -> str | None:
+    """Status token BARIS-EKSAK (kontrak: "the LAST line ... exactly").
+
+    Standar TUNGGAL untuk "FAIL tersaksikan" — audit 2026-07-19: cek
+    substring mid-loop vs regex pair menghasilkan dua vonis berbeda atas
+    output yang sama (`REPRO_STATUS: FAIL (Got foo...)`) dan model
+    "berdebat" dengan harness 3 turn."""
+    m = re.findall(r"^REPRO_STATUS: (PASS|FAIL)\s*$", out, re.MULTILINE)
+    return m[-1] if m else None
+
+
+def token_format_note(out: str) -> str | None:
+    """Sinyal: teks REPRO_STATUS ada tapi tak pernah sebagai baris eksak
+    → beri tahu model persis apa yang salah (bukan menebak 3 turn)."""
+    if "REPRO_STATUS" not in out or exact_status(out) is not None:
+        return None
+    return ("Your output mentions REPRO_STATUS but never as an exact "
+            "line. The line must be exactly `REPRO_STATUS: FAIL` or "
+            "`REPRO_STATUS: PASS` — nothing before or after it on that "
+            "line. Print the verdict token alone and put any explanation "
+            "on its own separate line.")
+
+
+def fresh_pair_meta(out1: str, out2: str, exit1: int | None,
+                    exit2: int | None, tail_chars: int = 200) -> dict:
+    """Detail terstruktur pre-check pair utk events.jsonl — audit
+    2026-07-19: event pair-reject string konstan membuat penyebab
+    (format token vs crash) tak terbedakan tanpa membuka console."""
+    return {"status1": exact_status(out1), "status2": exact_status(out2),
+            "exit1": exit1, "exit2": exit2,
+            "run1_tail": _tail(out1.strip(), tail_chars),
+            "run2_tail": _tail(out2.strip(), tail_chars)}
+
+
 def fresh_pair_rejection(out1: str, out2: str,
                          tail_chars: int = 800) -> str | None:
     """Vonis pre-check DUA run sandbox segar saat DONE — mirror gate
@@ -244,11 +278,7 @@ def fresh_pair_rejection(out1: str, out2: str,
     (rule_catalog)."""
     from harness.stages import rule_catalog
 
-    def status(out: str) -> str | None:
-        m = re.findall(r"^REPRO_STATUS: (PASS|FAIL)\s*$", out, re.MULTILINE)
-        return m[-1] if m else None
-
-    s1, s2 = status(out1), status(out2)
+    s1, s2 = exact_status(out1), exact_status(out2)
     if s1 == "FAIL" and s2 == "FAIL":
         return None
 

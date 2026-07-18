@@ -23,12 +23,14 @@ import tempfile
 from harness.emit import Emitter
 from harness.stages import rule_catalog
 from harness.stages.gemma_protocol import (done_rejection_reason,
-                                           format_reminder,
+                                           exact_status, format_reminder,
+                                           fresh_pair_meta,
                                            fresh_pair_rejection, has_done,
                                            has_fences, is_repro_run,
                                            literal_emitted_by_script,
                                            mixed_block_note,
                                            next_step_nudge,
+                                           token_format_note,
                                            observable_candidates,
                                            observable_rejection,
                                            parse_actions,
@@ -339,7 +341,7 @@ def main() -> int:
                         if mixed_note is not None:
                             log("[driver] mixed-block note injected")
                             feedback_parts.append(mixed_note)
-                        if "REPRO_STATUS: FAIL" in out:
+                        if exact_status(out) == "FAIL":
                             if not observed_fail:
                                 # Checkpoint known-good (paket hardening,
                                 # disetujui Mirza): versi script saat FAIL
@@ -365,6 +367,10 @@ def main() -> int:
                                 log("[driver] repeated-error note injected")
                                 feedback_parts.append(note)
                             last_retry_why = why
+                            fmt_note = token_format_note(out)
+                            if fmt_note is not None:
+                                log("[driver] token-format note injected")
+                                feedback_parts.append(fmt_note)
                             if code != 0 and "REPRO_STATUS" not in out:
                                 feedback_parts.append(
                                     rule_catalog.inject("crash-repair"))
@@ -381,10 +387,10 @@ def main() -> int:
             pass_observable = parse_pass_observable(reply) or pass_observable
 
             if has_done(reply):
-                def reject_event(why: str) -> None:
+                def reject_event(why: str, extra: dict | None = None) -> None:
                     em.event("reproduce", "retry", attempt=attempt,
                              budget={"msg_used": turn, "msg_limit": args.max_turns},
-                             detail={"why": why})
+                             detail={"why": why, **(extra or {})})
 
                 reason = done_rejection_reason(has_repro_md=repro_md is not None,
                                                observed_fail=observed_fail)
@@ -401,8 +407,14 @@ def main() -> int:
                     feedback_parts.append(SELF_CHECK_MSG)
                 elif (pass_observable is not None
                       and observable_in_container(container, pass_observable)):
-                    fresh_out1, _ = fresh_sandbox_output(container, args.image)
-                    fresh_out2, _ = fresh_sandbox_output(container, args.image)
+                    fresh_out1, fresh_c1 = fresh_sandbox_output(
+                        container, args.image)
+                    fresh_out2, fresh_c2 = fresh_sandbox_output(
+                        container, args.image)
+                    log(f"[exec-pair] run1 (exit {fresh_c1}):\n"
+                        f"{tail(fresh_out1, 2000)}")
+                    log(f"[exec-pair] run2 (exit {fresh_c2}):\n"
+                        f"{tail(fresh_out2, 2000)}")
                     fresh_reject = fresh_pair_rejection(fresh_out1, fresh_out2)
                     if fresh_reject is None:
                         review_blocked = False
@@ -431,7 +443,10 @@ def main() -> int:
                             break
                     else:
                         reject_event("done-rejected: fresh-sandbox pair "
-                                     "without consistent REPRO_STATUS: FAIL")
+                                     "without consistent REPRO_STATUS: FAIL",
+                                     extra={"pair": fresh_pair_meta(
+                                         fresh_out1, fresh_out2,
+                                         fresh_c1, fresh_c2)})
                         log("[driver] DONE rejected: fresh-sandbox "
                             "pre-check failed")
                         feedback_parts.append(fresh_reject)

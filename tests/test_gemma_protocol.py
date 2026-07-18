@@ -411,3 +411,36 @@ def test_mixed_block_note_silent_for_pure_repro_run():
     assert mixed_block_note("python /testbed/.pipe/repro.py") is None
     assert mixed_block_note(
         "\n# comment\npython /testbed/.pipe/repro.py\n") is None
+
+
+# --- standar token tunggal + telemetri pair (audit 2026-07-19) -------------
+
+def test_exact_status_requires_exact_line():
+    from harness.stages.gemma_protocol import exact_status
+    assert exact_status("blah\nREPRO_STATUS: FAIL\n") == "FAIL"
+    assert exact_status("REPRO_STATUS: FAIL (Got foo instead)\n") is None
+    assert exact_status("REPRO_STATUS: PASS\nREPRO_STATUS: FAIL\n") == "FAIL"
+    assert exact_status("no token here") is None
+
+
+def test_token_format_note_fires_on_trailing_text():
+    from harness.stages.gemma_protocol import token_format_note
+    note = token_format_note("REPRO_STATUS: FAIL (Got foo instead)\n")
+    assert note is not None
+    assert "exact" in note.lower()
+
+
+def test_token_format_note_silent_when_exact_or_absent():
+    from harness.stages.gemma_protocol import token_format_note
+    assert token_format_note("REPRO_STATUS: FAIL\n") is None
+    assert token_format_note("no token at all") is None
+
+
+def test_fresh_pair_meta_structured():
+    from harness.stages.gemma_protocol import fresh_pair_meta
+    meta = fresh_pair_meta("x\nREPRO_STATUS: FAIL\n",
+                           "REPRO_STATUS: FAIL (extra)\n", 0, 1)
+    assert meta["status1"] == "FAIL"
+    assert meta["status2"] is None
+    assert meta["exit1"] == 0 and meta["exit2"] == 1
+    assert "extra" in meta["run2_tail"]
