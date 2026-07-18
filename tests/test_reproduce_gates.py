@@ -156,6 +156,35 @@ def test_compose_confirmed_no_when_fail_never_observed():
     assert parse_repro_md(full)["confirmed_at_base"] == "no"
 
 
+# --- evaluate_flip (L2: ekuivalensi fungsional via gold patch) --------------
+
+def test_flip_ok_fail_at_base_pass_when_patched():
+    from harness.stages.reproduce_gates import evaluate_flip
+    r = evaluate_flip(base_status="FAIL", patched_status="PASS")
+    assert r.flip_ok is True
+    assert r.reason is None
+
+
+def test_flip_not_ok_when_patched_still_fail():
+    from harness.stages.reproduce_gates import evaluate_flip
+    r = evaluate_flip(base_status="FAIL", patched_status="FAIL")
+    assert r.flip_ok is False
+    assert "gold" in r.reason
+
+
+def test_flip_not_ok_when_base_pass():
+    from harness.stages.reproduce_gates import evaluate_flip
+    r = evaluate_flip(base_status="PASS", patched_status="PASS")
+    assert r.flip_ok is False
+
+
+def test_flip_not_ok_when_patched_output_has_no_token():
+    from harness.stages.reproduce_gates import evaluate_flip
+    r = evaluate_flip(base_status="FAIL", patched_status=None)
+    assert r.flip_ok is False
+    assert "token" in r.reason
+
+
 def test_compose_replaces_model_written_mechanical_slots():
     from harness.stages.reproduce_gates import compose_repro_md
     sneaky = MODEL_PART + "REPRO COMMAND: python other.py\nCONFIRMED-AT-BASE: yes\n"

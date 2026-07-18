@@ -69,6 +69,28 @@ def compose_repro_md(model_part: str, observed_fail: bool) -> str:
 
 
 @dataclass
+class FlipResult:
+    flip_ok: bool
+    reason: str | None = None
+
+
+def evaluate_flip(base_status: str | None, patched_status: str | None) -> FlipResult:
+    """L2 — ekuivalensi fungsional: repro qualified ⟺ FAIL di base DAN PASS
+    saat gold patch terpasang (keputusan Mirza 2026-07-18). Gold hanya dipakai
+    harness setelah model selesai."""
+    if base_status != "FAIL":
+        return FlipResult(False, f"base run is not FAIL (got {base_status})")
+    if patched_status is None:
+        return FlipResult(False, "no REPRO_STATUS token in gold-patched run output")
+    if patched_status != "PASS":
+        return FlipResult(
+            False,
+            "predicate not satisfied by the gold fix (patched run still "
+            f"{patched_status}) — likely gold-unsatisfiable predicate")
+    return FlipResult(True, None)
+
+
+@dataclass
 class GateResult:
     verdict: str  # pass | fail | syntax-fail
     failures: list[str] = field(default_factory=list)

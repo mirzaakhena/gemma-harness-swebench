@@ -32,8 +32,9 @@ setara → analisa apa yang Gemma butuhkan → perbaiki ARAHAN/harness
 
 ## 3. Definisi "qualified setara" (kriteria penilaian)
 
-Tiga lapis (lapis 2 = palu keputusan; status: diusulkan bot-06, Mirza belum
-memvonis final saat dokumen ini ditulis — pertanyaan menggantung):
+Tiga lapis (lapis 2 = palu keputusan; status: **DISETUJUI Mirza 2026-07-18**
+— flip test resmi jadi definisi qualified; terpasang di run_repro_gates
+`--gold`, verdict `wrong-logic` bila gagal flip, `pass_l1` = L1+L2):
 
 1. **L1 — gate mekanis** per stage (sudah terpasang): REPRODUCE = anti-vacuous
    / self-contained / idempoten / format; LOCALIZE = format / file-exists /
