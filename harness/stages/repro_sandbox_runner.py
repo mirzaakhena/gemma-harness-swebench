@@ -32,6 +32,8 @@ def run_once(image: str, repro_host_dir: str, timeout: int,
         image,
         "bash", "-lc",
         "mkdir -p /testbed/.pipe && cp /pipe-in/repro.py /testbed/.pipe/repro.py "
+        "&& { [ -f /pipe-in/pipe_runtime.py ] "
+        "&& cp /pipe-in/pipe_runtime.py /testbed/.pipe/pipe_runtime.py; true; } "
         f"&& cd /testbed && {apply_step}python /testbed/.pipe/repro.py 2>&1",
     ]
     try:

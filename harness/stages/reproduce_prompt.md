@@ -35,8 +35,21 @@ script. The fix belongs to a later stage.
    - <!-- rule:settle-before-trigger -->When you wait for an event that a
      background mechanism must notice (a reload, a watcher, a poller), let
      the mechanism settle first — one full sampling interval after it
-     reports ready — before firing the trigger, and give the resulting
+     reports ready, again EVERY time it reports ready after a reload or
+     restart — before firing the trigger, and give the resulting
      observable a bounded deadline of several intervals.<!-- /rule -->
+   - <!-- rule:app-runtime -->When your scenario runs an application as a
+     child process, use the runtime module provided at
+     `/testbed/.pipe/pipe_runtime.py` (importable next to your script):
+     `from pipe_runtime import App`;
+     `app = App([...command], ready_token="<line the app prints when
+     ready>", cwd=...)`; `app.start()` blocks until the app is ready and
+     its watcher baseline has settled. After any action that makes the
+     app reload or restart, call `app.wait_ready()` before your next
+     action — it settles again and returns False when no reload came.
+     Every line the app prints is echoed into your script's output with
+     an `[app] ` prefix; `app.wait_for(text, timeout=...)` waits for any
+     other line; `app.stop()` shuts it down.<!-- /rule -->
    - <!-- rule:positive-control -->When your predicate is "event X never
      happens", prove the absence is meaningful with a positive control:
      first make the SAME detection machinery catch the event through a

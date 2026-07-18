@@ -38,6 +38,11 @@ from harness.stages.gemma_protocol import (done_rejection_reason,
 from harness.stages.repro_sandbox_runner import run_once
 from harness.stages.reproduce_gates import compose_repro_md
 
+# Runtime helper yang dikirim ke SEMUA dunia eksekusi (container kerja,
+# fresh pre-check, gate/flip via files/) — repro.py tetap self-contained
+# karena modul selalu hadir di sebelahnya (import lokal).
+RUNTIME_PATH = Path(__file__).with_name("pipe_runtime.py")
+
 PROTOCOL_NOTE = """
 ## How to work (action protocol — MANDATORY)
 
@@ -83,10 +88,11 @@ quoting evidence:
    notice (a reload, a watcher, a poller): name the line in YOUR script
    that implements the contract's positive control — the same detection
    machinery catching the event through a path that already works at the
-   base commit — and the line that lets the mechanism settle its baseline
-   (one full sampling interval after it reports ready) before any trigger
-   fires. If either line is missing, revise the script first. If no
-   background mechanism is involved, answer: not applicable.
+   base commit — and the line that settles the mechanism's baseline before
+   EVERY trigger (the pipe_runtime calls `App.start()` / `app.wait_ready()`
+   satisfy the settling part). If either line is missing, revise the
+   script first. If no background mechanism is involved, answer: not
+   applicable.
 
 If all answers hold, declare DONE again. Otherwise revise your script,
 re-run it to see REPRO_STATUS: FAIL, then declare DONE."""
@@ -222,6 +228,9 @@ def fresh_sandbox_output(container: str, image: str,
     tmpdir = tempfile.mkdtemp(prefix="fresh-check-")
     repro = Path(tmpdir) / "repro.py"
     repro.write_text(body, encoding="utf-8", newline="\n")
+    (Path(tmpdir) / "pipe_runtime.py").write_text(
+        RUNTIME_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8", newline="\n")
     result = run_once(image, tmpdir, timeout)
     return result["output"], result["exit"]
 
@@ -263,6 +272,14 @@ def main() -> int:
     subprocess.run(["docker", "run", "-d", "--name", container, args.image,
                     "sleep", "infinity"], check=True, capture_output=True)
     log(f"[driver] work container {container} started ({args.image})")
+
+    runtime_src = RUNTIME_PATH.read_text(encoding="utf-8")
+    docker_write_file(container, "/testbed/.pipe/pipe_runtime.py", runtime_src)
+    files_dir_early = em.run_dir / "files"
+    files_dir_early.mkdir(parents=True, exist_ok=True)
+    (files_dir_early / "pipe_runtime.py").write_text(
+        runtime_src, encoding="utf-8", newline="\n")
+    log("[driver] pipe_runtime.py shipped to container and files/")
 
     em.run_start()
     em.event("reproduce", "enter",

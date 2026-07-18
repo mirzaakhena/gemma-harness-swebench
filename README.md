@@ -51,6 +51,11 @@ nyata r7–r29 (riwayat: vault `R-dev Log — fase REPRODUCE`):
   known-good (`files/repro-first-fail.py`), telemetri retry beralasan
 - gate + flip: `run_repro_gates.py --gold` (L2 = definisi qualified);
   problem statement case: `cases/problems/<case_id>.txt`
+- `pipe_runtime.py` (r33): modul `App` di-ship harness ke `.pipe/` SEMUA
+  dunia eksekusi (container kerja, fresh pre-check, gate/flip) — start &
+  settle baseline otomatis di tiap ready (termasuk tiap reload), semua
+  output child di-echo `[app] ` (kelas race-baseline & trace-tertelan
+  dipindah dari disiplin prompt ke fisika modul); kontrak rule:app-runtime
 
 UI viewer (`python ui\server.py`, port 8766): tabs per fase (REPRODUCE
 pertama), sort desc, paging, kolom ikon/durasi/turns.

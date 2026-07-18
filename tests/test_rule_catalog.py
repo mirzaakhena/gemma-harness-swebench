@@ -32,8 +32,17 @@ def test_every_rule_quote_is_verbatim_from_contract():
 def test_expected_rule_ids_present():
     for rid in ("self-contained", "repeatable", "early-draft",
                 "source-pass-side", "crash-repair", "positive-control",
-                "settle-before-trigger"):
+                "settle-before-trigger", "app-runtime"):
         assert rid in rule_catalog.RULES
+
+
+def test_app_runtime_rule_stays_in_core():
+    # Keputusan Mirza 2026-07-19 (pasca-r32): mekanika start/settle/echo
+    # dipindah ke modul pipe_runtime; keberadaannya WAJIB ditegaskan di
+    # prompt (CORE) supaya Gemma diarahkan memakainya.
+    core = rule_catalog.core_contract()
+    assert "pipe_runtime" in core
+    assert "wait_ready" in core
 
 
 def test_settle_rule_stays_in_core():
