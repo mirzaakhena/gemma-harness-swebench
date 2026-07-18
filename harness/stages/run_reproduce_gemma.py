@@ -22,6 +22,7 @@ from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_reason,
                                            format_reminder, has_done,
                                            has_fences, next_step_nudge,
+                                           observable_candidates,
                                            observable_rejection,
                                            parse_actions,
                                            parse_pass_observable)
@@ -62,7 +63,8 @@ quoting evidence:
    it, your PASS condition is a guess — read the source first (open the file
    with a bash action and look at the real lines), then revise your script.
    Close your answer with one line in this exact form:
-   PASS_OBSERVABLE: <the exact literal string your script matches on to decide PASS>
+   PASS_OBSERVABLE: <the string your script matches on, copied exactly as
+   written in the repository source — keep placeholders like %s if present>
 2. Show that your script exercises the same scenario the issue describes:
    name the entry point / command the user runs in the issue, and point to
    the line in YOUR script that runs that same path. If your script builds
@@ -136,7 +138,9 @@ def observable_in_container(container: str, observable: str) -> bool:
     """Verifikasi mekanis klaim PASS_OBSERVABLE (lever r10): string harus
     benar-benar ada — di source repo (pesan framework) ATAU di script model
     sendiri (marker milik skenario). Grep -F: literal, tanpa regex."""
-    docker_write_file(container, "/tmp/.pass_observable", observable + "\n")
+    candidates = observable_candidates(observable)
+    docker_write_file(container, "/tmp/.pass_observable",
+                      "\n".join(candidates) + "\n")
     out, _ = docker_exec(
         container,
         "grep -rqF -f /tmp/.pass_observable /testbed && echo FOUND || echo MISSING",

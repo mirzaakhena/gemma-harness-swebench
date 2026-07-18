@@ -212,6 +212,33 @@ def test_parse_pass_observable_keeps_unmatched_quote():
             == "it's watched")
 
 
+def test_observable_candidates_full_string_first():
+    from harness.stages.gemma_protocol import observable_candidates
+    cands = observable_candidates("changed, reloading.")
+    assert cands[0] == "changed, reloading."
+
+
+def test_observable_candidates_tolerates_rendered_suffix():
+    # r14 nyata: deklarasi bentuk runtime "…with StatReloader" sedangkan
+    # source menyimpan template "…with %s" — trim kata belakang harus
+    # menghasilkan kandidat yang match source.
+    from harness.stages.gemma_protocol import observable_candidates
+    cands = observable_candidates("Watching for file changes with StatReloader")
+    assert "Watching for file changes with" in cands
+
+
+def test_observable_candidates_tolerates_rendered_prefix():
+    from harness.stages.gemma_protocol import observable_candidates
+    cands = observable_candidates("manage.py changed, reloading.")
+    assert "changed, reloading." in cands
+
+
+def test_observable_candidates_keeps_minimum_two_words():
+    from harness.stages.gemma_protocol import observable_candidates
+    cands = observable_candidates("Detected change")
+    assert cands == ["Detected change"]  # tak ada trim di bawah 2 kata
+
+
 def test_observable_rejection_missing_asks_for_declaration():
     from harness.stages.gemma_protocol import observable_rejection
     msg = observable_rejection(None)

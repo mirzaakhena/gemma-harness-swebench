@@ -89,6 +89,29 @@ def parse_pass_observable(text: str) -> str | None:
     return None
 
 
+def observable_candidates(observable: str) -> list[str]:
+    """Kandidat string untuk verifikasi grep — full string dulu, lalu trim
+    hingga 2 kata dari depan/belakang (min 2 kata tersisa).
+
+    Lahir dari r14: model mendeklarasikan bentuk RUNTIME
+    ("Watching for file changes with StatReloader") sementara source
+    menyimpan template %s — deklarasi jujur tertolak. Trim kecil menoleransi
+    segmen hasil interpolasi di tepi string; karangan utuh tetap tertolak
+    karena butuh >=2 kata berurutan yang benar-benar ada."""
+    words = observable.split()
+    out: list[str] = []
+    for front in range(0, 3):
+        for back in range(0, 3):
+            if len(words) - front - back < 2:
+                continue
+            cand = " ".join(words[front:len(words) - back if back else None])
+            if cand and cand not in out:
+                out.append(cand)
+    if observable and observable not in out:
+        out.insert(0, observable)
+    return out or [observable]
+
+
 def observable_rejection(observable: str | None) -> str:
     """Pesan penolakan DONE untuk klaim observable. English (model-facing)."""
     if observable is None:
