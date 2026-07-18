@@ -400,10 +400,12 @@ def main() -> int:
                                 f"verified: {pass_observable!r}; "
                                 "fresh-sandbox pre-check OK (2 runs)")
                             break
-                    reject_event("done-rejected: fresh-sandbox pair without "
-                                 "consistent REPRO_STATUS: FAIL")
-                    log("[driver] DONE rejected: fresh-sandbox pre-check failed")
-                    feedback_parts.append(fresh_reject)
+                    else:
+                        reject_event("done-rejected: fresh-sandbox pair "
+                                     "without consistent REPRO_STATUS: FAIL")
+                        log("[driver] DONE rejected: fresh-sandbox "
+                            "pre-check failed")
+                        feedback_parts.append(fresh_reject)
                 else:
                     reject_event("done-rejected: PASS_OBSERVABLE "
                                  + ("not declared" if pass_observable is None
@@ -433,7 +435,8 @@ def main() -> int:
                         "```repro.md per the protocol, or close with DONE.")
             messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
     except Exception as e:
-        log(f"[driver] crash: {e!r}")
+        import traceback
+        log(f"[driver] crash: {e!r}\n{traceback.format_exc()}")
         emit_abort(em, f"driver crash: {e!r}")
         subprocess.run(["docker", "stop", container], capture_output=True)
         print(json.dumps({"done": False, "aborted": True, "error": str(e)}))
