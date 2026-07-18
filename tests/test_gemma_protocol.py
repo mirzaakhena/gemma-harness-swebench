@@ -263,6 +263,39 @@ def test_fresh_pair_adds_positive_control_rule_when_control_mentioned():
     assert "positive control" in msg
 
 
+# --- judge review (paket hardening bag.2 + ide Mirza: reviewer fresh-context)
+
+def test_parse_review_ok():
+    from harness.stages.gemma_protocol import parse_review
+    ok, issues = parse_review("Some reasoning...\nREVIEW: OK\n")
+    assert ok is True and issues is None
+
+
+def test_parse_review_issues_carries_list():
+    from harness.stages.gemma_protocol import parse_review
+    ok, issues = parse_review(
+        "REVIEW: ISSUES\n1. The trigger fires before the watcher settles.\n"
+        "2. PASS observable is not produced by any source line.\n")
+    assert ok is False
+    assert "watcher settles" in issues
+
+
+def test_parse_review_fail_open_on_garbage():
+    # Judge bersifat ADVISORY (vonis tetap mekanis) — balasan tak
+    # ter-parse tidak boleh memblokir DONE.
+    from harness.stages.gemma_protocol import parse_review
+    ok, issues = parse_review("I think everything looks fine overall.")
+    assert ok is True and issues is None
+
+
+def test_review_feedback_wraps_issues():
+    from harness.stages.gemma_protocol import review_feedback
+    msg = review_feedback("1. Trigger too early.")
+    assert "review" in msg.lower()
+    assert "Trigger too early." in msg
+    assert "DONE" in msg
+
+
 # --- literal_emitted_by_script (r26: lubang self-match token hantu) ---------
 
 def test_literal_emitted_true_for_print_lines():

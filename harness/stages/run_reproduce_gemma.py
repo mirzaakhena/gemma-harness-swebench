@@ -32,8 +32,9 @@ from harness.stages.gemma_protocol import (done_rejection_reason,
                                            observable_rejection,
                                            parse_actions,
                                            parse_pass_observable,
+                                           parse_review,
                                            repeated_error_note,
-                                           retry_reason)
+                                           retry_reason, review_feedback)
 from harness.stages.repro_sandbox_runner import run_once
 from harness.stages.reproduce_gates import compose_repro_md
 
@@ -175,7 +176,39 @@ def observable_in_container(container: str, observable: str) -> bool:
     return code == 0 and literal_emitted_by_script(script, observable)
 
 
-def fresh_sandbox_output(container: str, image: str,
+JUDGE_SYSTEM = """You review a bug-reproduction script against its contract.
+Close your reply with exactly one line:
+REVIEW: OK
+or
+REVIEW: ISSUES
+followed, for ISSUES, by a short numbered list naming the specific contract
+rule violated and the concrete change needed. Judge ONLY against the contract
+below — add no requirements of your own. Pay particular attention to whether
+the PASS observable can actually be produced once the bug is fixed, and to
+timing around background mechanisms.
+
+## Contract
+"""
+
+
+def judge_review(endpoint: str, model: str, contract: str, problem: str,
+                 script: str, repro_md_text: str | None,
+                 ) -> tuple[bool, str | None, str]:
+    """Reviewer fresh-context (usulan Mirza): satu percakapan bersih menilai
+    script vs kontrak. Advisory — vonis tetap milik gate mekanis.
+    Return (ok, issues, raw_reply)."""
+    messages = [
+        {"role": "system", "content": JUDGE_SYSTEM + contract},
+        {"role": "user", "content":
+            "PROBLEM STATEMENT:\n" + problem +
+            "\n\n## Script (/testbed/.pipe/repro.py)\n```python\n" + script +
+            "\n```\n\n## repro.md (interpretive part)\n" +
+            (repro_md_text or "(not submitted)") +
+            "\n\nReview now."},
+    ]
+    reply = chat(endpoint, model, messages)
+    ok, issues = parse_review(reply)
+    return ok, issues, reply
                          timeout: int = 300) -> tuple[str, int]:
     """Salin repro.py dari work container, jalankan sekali di container
     segar (tanpa patch); kembalikan (output, exit)."""
@@ -246,6 +279,7 @@ def main() -> int:
     self_check_prompted = False
     pass_observable: str | None = None
     last_retry_why: str | None = None
+    judge_prompted = False
     done = False
     try:
         for turn in range(1, args.max_turns + 1):
@@ -339,11 +373,30 @@ def main() -> int:
                     fresh_out2, _ = fresh_sandbox_output(container, args.image)
                     fresh_reject = fresh_pair_rejection(fresh_out1, fresh_out2)
                     if fresh_reject is None:
-                        done = True
-                        log(f"[driver] DONE at turn {turn} (last attempt {attempt}); "
-                            f"pass observable verified: {pass_observable!r}; "
-                            "fresh-sandbox pre-check OK (2 runs)")
-                        break
+                        review_blocked = False
+                        if not judge_prompted:
+                            judge_prompted = True
+                            script_text, sc = docker_exec(
+                                container, "cat /testbed/.pipe/repro.py")
+                            ok, issues, raw = judge_review(
+                                args.endpoint, args.model, contract, problem,
+                                script_text if sc == 0 else "(missing)",
+                                repro_md)
+                            log(f"[judge] {raw}")
+                            if not ok:
+                                reject_event("done-deferred: independent "
+                                             "review found issues")
+                                log("[driver] DONE deferred: judge review "
+                                    "found issues")
+                                feedback_parts.append(review_feedback(issues))
+                                review_blocked = True
+                        if not review_blocked:
+                            done = True
+                            log(f"[driver] DONE at turn {turn} "
+                                f"(last attempt {attempt}); pass observable "
+                                f"verified: {pass_observable!r}; "
+                                "fresh-sandbox pre-check OK (2 runs)")
+                            break
                     reject_event("done-rejected: fresh-sandbox pair without "
                                  "consistent REPRO_STATUS: FAIL")
                     log("[driver] DONE rejected: fresh-sandbox pre-check failed")

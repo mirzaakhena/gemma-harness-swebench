@@ -112,6 +112,30 @@ def observable_candidates(observable: str) -> list[str]:
     return out or [observable]
 
 
+def parse_review(text: str) -> tuple[bool, str | None]:
+    """Parse balasan judge-reviewer fresh-context (paket hardening bag. 2 +
+    usulan Mirza 2026-07-19). Judge ADVISORY — vonis tetap mekanis — maka
+    balasan tak ter-parse = fail-open (OK)."""
+    outside = _FENCE_RE.sub("", text)
+    m = re.search(r"^\s*REVIEW:\s*(OK|ISSUES)\s*$", outside,
+                  re.MULTILINE | re.IGNORECASE)
+    if m is None:
+        return True, None
+    if m.group(1).upper() == "OK":
+        return True, None
+    issues = outside[m.end():].strip()
+    return False, issues or "(no detail given)"
+
+
+def review_feedback(issues: str) -> str:
+    """Bungkus temuan reviewer jadi feedback ke model utama. English."""
+    return ("An independent review of your script found these issues:\n"
+            f"{issues}\n"
+            "Revise your script accordingly — or, where a point does not "
+            "apply, keep your approach — then re-run the script to see "
+            "REPRO_STATUS: FAIL and declare DONE again.")
+
+
 def literal_emitted_by_script(script: str, literal: str) -> bool:
     """Marker milik skenario sah hanya bila script MENCETAKNYA (baris
     emisi print/write), bukan sekadar MENCARINYA di output framework.
