@@ -22,6 +22,18 @@ script. The fix belongs to a later stage.
      action path: the same entry point and command shape the issue describes.
      Ask yourself: "if a maintainer fixed this bug in any legitimate way,
      would my script flip FAIL → PASS?" Make the answer YES.
+   - FAITHFUL SETUP: obtain the thing under test the way real operation
+     produces it — reach the state you assert against by exercising the real
+     code path or entry point, so its genuine attributes hold exactly as they
+     really are. Building the object yourself and assigning it the attributes
+     you assume makes your script observe a situation that may never occur —
+     then PASS/FAIL measures the wrong scenario. Set values yourself only for
+     genuinely external inputs the real path itself would receive.
+   - PASS-condition fidelity: the ONLY way your script prints
+     `REPRO_STATUS: PASS` is that the specific reported defect is actually
+     fixed — no OR of conditions where one side is always true, no unrelated
+     already-working path. At base it prints FAIL for the RIGHT reason:
+     because the specific defective behavior is present.
    - If your scenario crashes for a reason that is not the reported symptom,
      repair the script — a crash counts as FAIL only when the crash IS the
      symptom the user reports.
@@ -30,11 +42,15 @@ script. The fix belongs to a later stage.
 
 ```
 SYMPTOM: <one sentence: the symptom as the user experiences it>
-TRIGGER: <the condition/steps that trigger it>
+TRIGGER: <the exact runtime state/input that fires it, stated as observed values you actually probed — not a hypothesis>
 EXPECTED vs ACTUAL:
-EXPECTED: <the correct behavior>
+EXPECTED: <the correct behavior your script asserts>
 ACTUAL: <the wrong behavior observed now>
 ```
+
+Submit an early draft of `repro.md` as soon as your first probe succeeds, and
+refine it as you learn — an early rough draft beats a polished one that never
+gets submitted.
 
 ## Definition of done
 
