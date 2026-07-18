@@ -32,6 +32,11 @@ script. The fix belongs to a later stage.
    - Prefer a marker line your own scenario prints; a framework log message
      is a valid observable only when you have quoted it exactly from the
      repository source.
+   - <!-- rule:settle-before-trigger -->When you wait for an event that a
+     background mechanism must notice (a reload, a watcher, a poller), let
+     the mechanism settle first — one full sampling interval after it
+     reports ready — before firing the trigger, and give the resulting
+     observable a bounded deadline of several intervals.<!-- /rule -->
 
 <!-- detail:faithful-setup -->
 FAITHFUL SETUP: obtain the thing under test the way real operation

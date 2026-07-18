@@ -31,8 +31,17 @@ def test_every_rule_quote_is_verbatim_from_contract():
 
 def test_expected_rule_ids_present():
     for rid in ("self-contained", "repeatable", "early-draft",
-                "source-pass-side", "crash-repair", "positive-control"):
+                "source-pass-side", "crash-repair", "positive-control",
+                "settle-before-trigger"):
         assert rid in rule_catalog.RULES
+
+
+def test_settle_rule_stays_in_core():
+    # Keputusan Mirza 2026-07-19: kelas race signal-less (5 kejadian) tidak
+    # bisa injeksi-only — kalimat kompaknya WAJIB tampil di CORE.
+    core = rule_catalog.core_contract()
+    assert "let\nthe mechanism settle first" in core.replace("\r\n", "\n") or \
+           "mechanism settle first" in core
 
 
 def test_inject_quotes_the_rule():
