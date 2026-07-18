@@ -22,31 +22,31 @@ from harness.stages.gemma_protocol import (done_rejection_localize, has_done,
                                            parse_actions)
 
 PROTOCOL_NOTE = """
-## Cara bekerja (protokol aksi — WAJIB)
+## How to work (action protocol — MANDATORY)
 
-Kamu bekerja lewat blok aksi di balasanmu. Satu balasan boleh berisi beberapa
-blok; dieksekusi berurutan, hasilnya kukirim balik padamu.
+You work through action blocks in your replies. One reply may contain several
+blocks; they are executed in order and I send the results back to you.
 
-1. Jalankan perintah shell di sandbox /testbed (baca kode, grep, jalankan
+1. Run a shell command in the /testbed sandbox (read code, grep, run the
    repro/probe):
 ```bash
-<perintah>
+<command>
 ```
-2. Tulis script probe kecil — HANYA di bawah /testbed/.pipe/ (menulis di luar
-   itu DITOLAK; repo read-only bagimu):
+2. Write a small probe script — ONLY under /testbed/.pipe/ (writes anywhere
+   else are REJECTED; the repository is read-only for you):
 ```file:/testbed/.pipe/probe.py
-<isi file>
+<file content>
 ```
-3. Serahkan artefak final localize.md (6 slot sesuai kontrak):
+3. Submit the final localize.md artifact (6 slots per the contract):
 ```localize.md
-<isi localize.md>
+<localize.md content>
 ```
-Setelah yakin (sudah eksplorasi + evidence menunjuk situs mekanisme), tutup
-dengan satu baris berisi persis:
-SELESAI
+Once confident (you have explored and your evidence points at the mechanism
+site), close with a single line containing exactly:
+DONE
 
-Kerjakan bertahap: eksplorasi dulu, tunggu output-ku, baru langkah berikutnya —
-jangan menumpuk semua aksi dalam satu balasan.
+Work step by step: explore first, wait for my output, then take the next
+step — do not pile every action into a single reply.
 """
 
 
@@ -134,9 +134,10 @@ def main() -> int:
         {"role": "system", "content": system},
         {"role": "user", "content":
          "PROBLEM STATEMENT:\n" + problem +
-         "\n\nARTEFAK REPRODUCE (input beku, sudah lolos gate):\n" + repro_md +
-         "\nScript repro terpasang di /testbed/.pipe/repro.py.\n\n"
-         "Mulai bekerja sekarang. Sandbox /testbed pada base commit."},
+         "\n\nREPRODUCE ARTIFACTS (frozen input, already gate-approved):\n" +
+         repro_md +
+         "\nThe repro script is installed at /testbed/.pipe/repro.py.\n\n"
+         "Start working now. The /testbed sandbox is at the base commit."},
     ]
 
     attempt = 1
@@ -159,12 +160,13 @@ def main() -> int:
                 if not act.arg.startswith("/testbed/.pipe/"):
                     log(f"[driver] TOLAK tulis di luar .pipe: {act.arg}")
                     feedback_parts.append(
-                        f"DITOLAK: menulis {act.arg} tidak diizinkan — repo "
-                        "read-only; script probe hanya boleh di /testbed/.pipe/.")
+                        f"REJECTED: writing {act.arg} is not allowed — the "
+                        "repository is read-only; probe scripts may only live "
+                        "under /testbed/.pipe/.")
                     continue
                 docker_write_file(container, act.arg, act.body + "\n")
                 log(f"[driver] tulis {act.arg} ({len(act.body)} chars)")
-                feedback_parts.append(f"OK: file {act.arg} tertulis.")
+                feedback_parts.append(f"OK: file {act.arg} written.")
             elif act.kind == "bash":
                 ran_any_bash = True
                 out, code = docker_exec(container, act.body)
@@ -173,7 +175,7 @@ def main() -> int:
             elif act.kind == "localize.md":
                 localize_md = act.body
                 log("[driver] kandidat localize.md diterima")
-                feedback_parts.append("OK: localize.md diterima.")
+                feedback_parts.append("OK: localize.md received.")
 
         if has_done(reply):
             reason = done_rejection_localize(
@@ -193,8 +195,9 @@ def main() -> int:
 
         if not actions and not feedback_parts:
             feedback_parts.append(
-                "Tidak ada blok aksi terdeteksi. Gunakan ```bash / "
-                "```file:/testbed/.pipe/... / ```localize.md, atau SELESAI.")
+                "No action block detected. Use ```bash / "
+                "```file:/testbed/.pipe/... / ```localize.md, or close with "
+                "DONE.")
         messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
 
     files_dir = em.run_dir / "files"

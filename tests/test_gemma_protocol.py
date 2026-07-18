@@ -4,7 +4,8 @@ Model membalas dengan fenced block:
   ```bash ...```            -> jalankan command di sandbox
   ```file:/abs/path ...```  -> tulis file di sandbox
   ```repro.md ...```        -> artefak final repro.md
-Penanda selesai: baris `SELESAI` di luar fenced block.
+Penanda selesai: baris `DONE` di luar fenced block (protokol berbahasa
+Inggris penuh — keputusan Mirza 2026-07-18).
 """
 from harness.stages.gemma_protocol import Action, has_done, parse_actions
 
@@ -54,13 +55,18 @@ def test_parse_ignores_other_languages():
 
 
 def test_has_done_outside_block():
-    assert has_done("kerja beres.\nSELESAI\n")
-    assert not has_done("belum selesai bekerja")
+    assert has_done("work complete.\nDONE\n")
+    assert not has_done("not done yet, still working")
 
 
 def test_has_done_ignores_inside_block():
-    text = "```bash\necho SELESAI\n```\nlanjut dulu"
+    text = "```bash\necho DONE\n```\nstill going"
     assert not has_done(text)
+
+
+def test_has_done_must_be_exact_line():
+    assert not has_done("DONE-ish\n")
+    assert not has_done("I will be DONE soon\n")
 
 
 def test_multiline_file_body_preserved():
@@ -111,4 +117,20 @@ def test_localize_done_rejected_without_md():
 def test_localize_done_rejected_without_exploration():
     from harness.stages.gemma_protocol import done_rejection_localize
     reason = done_rejection_localize(has_localize_md=True, ran_any_bash=False)
-    assert reason is not None and "eksplorasi" in reason
+    assert reason is not None and "exploration" in reason
+
+
+def test_rejection_messages_are_english():
+    from harness.stages.gemma_protocol import (done_rejection_localize,
+                                               done_rejection_reason)
+    msgs = [
+        done_rejection_reason(has_repro_md=False, observed_fail=True),
+        done_rejection_reason(has_repro_md=True, observed_fail=False),
+        done_rejection_localize(has_localize_md=False, ran_any_bash=True),
+        done_rejection_localize(has_localize_md=True, ran_any_bash=False),
+    ]
+    indonesian_markers = ("Belum", "kamu", "dulu", "serahkan", "jalankan")
+    for m in msgs:
+        assert m is not None
+        for word in indonesian_markers:
+            assert word not in m, f"pesan ke model masih ber-Indonesia: {m!r}"

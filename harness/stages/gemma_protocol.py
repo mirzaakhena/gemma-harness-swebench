@@ -5,7 +5,10 @@ Aksi = fenced block dengan info-string khusus:
   ```file:<path>     -> tulis file di sandbox
   ```repro.md        -> artefak final repro.md
 Fenced block dengan bahasa lain (python, dsb.) BUKAN aksi.
-Penanda selesai: baris `SELESAI` di LUAR fenced block.
+Penanda selesai: baris `DONE` di LUAR fenced block.
+
+Seluruh teks yang dilihat model (penanda + pesan penolakan) berbahasa Inggris
+(keputusan Mirza 2026-07-18); komentar/docstring internal tetap Indonesia.
 """
 from __future__ import annotations
 
@@ -46,7 +49,7 @@ def parse_actions(text: str) -> list[Action]:
 
 def has_done(text: str) -> bool:
     outside = _FENCE_RE.sub("", text)
-    return any(line.strip() == "SELESAI" for line in outside.splitlines())
+    return any(line.strip() == "DONE" for line in outside.splitlines())
 
 
 def done_rejection_reason(has_repro_md: bool, observed_fail: bool) -> str | None:
@@ -56,12 +59,14 @@ def done_rejection_reason(has_repro_md: bool, observed_fail: bool) -> str | None
     yes + SELESAI padahal eksekusi repro-nya crash — konfirmasi tanpa bukti.
     """
     if not has_repro_md:
-        return ("Belum bisa SELESAI: blok ```repro.md belum kamu serahkan.")
+        return ("Cannot accept DONE: you have not submitted the ```repro.md "
+                "block yet.")
     if not observed_fail:
-        return ("Belum bisa SELESAI: aku belum pernah melihat eksekusi "
-                "`python /testbed/.pipe/repro.py` yang mencetak "
-                "`REPRO_STATUS: FAIL` di sesi ini. Jalankan repro-mu, lihat "
-                "outputnya, perbaiki sampai FAIL terlihat — baru SELESAI.")
+        return ("Cannot accept DONE: I have not witnessed any execution of "
+                "`python /testbed/.pipe/repro.py` printing "
+                "`REPRO_STATUS: FAIL` in this session. Run your repro, "
+                "observe its output, and fix it until FAIL is visible — "
+                "only then declare DONE.")
     return None
 
 
@@ -72,9 +77,10 @@ def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool) -> str | 
     bash) sebelum menyerahkan peta — melarang localize buta dari prior.
     """
     if not has_localize_md:
-        return "Belum bisa SELESAI: blok ```localize.md belum kamu serahkan."
+        return ("Cannot accept DONE: you have not submitted the "
+                "```localize.md block yet.")
     if not ran_any_bash:
-        return ("Belum bisa SELESAI: kamu belum melakukan eksplorasi apa pun "
-                "(nol aksi bash). Baca kode di sandbox dulu; localize tanpa "
-                "membuka file adalah tebakan.")
+        return ("Cannot accept DONE: you have performed zero exploration "
+                "(no bash actions). Read the code in the sandbox first; "
+                "localizing without opening a single file is guessing.")
     return None

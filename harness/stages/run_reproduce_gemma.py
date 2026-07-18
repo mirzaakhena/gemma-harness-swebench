@@ -23,35 +23,35 @@ from harness.stages.gemma_protocol import (done_rejection_reason, has_done,
                                            parse_actions)
 
 PROTOCOL_NOTE = """
-## Cara bekerja (protokol aksi — WAJIB)
+## How to work (action protocol — MANDATORY)
 
-Kamu bekerja lewat blok aksi di balasanmu. Satu balasan boleh berisi beberapa
-blok; dieksekusi berurutan, hasilnya kukirim balik padamu.
+You work through action blocks in your replies. One reply may contain several
+blocks; they are executed in order and I send the results back to you.
 
-1. Jalankan perintah shell di sandbox /testbed:
+1. Run a shell command in the /testbed sandbox:
 ```bash
-<perintah>
+<command>
 ```
-2. Tulis/timpa file di sandbox:
+2. Write/overwrite a file in the sandbox:
 ```file:/testbed/.pipe/repro.py
-<isi file lengkap>
+<full file content>
 ```
-3. Serahkan artefak final repro.md (5 slot sesuai kontrak):
+3. Submit the final repro.md artifact (5 slots per the contract):
 ```repro.md
-<isi repro.md>
+<repro.md content>
 ```
-Setelah SEMUA output final siap (repro.py sudah kamu jalankan dan melihat
-REPRO_STATUS: FAIL, dan blok repro.md sudah kamu serahkan), tutup dengan satu
-baris berisi persis:
-SELESAI
+Once ALL final outputs are ready (you have run repro.py and seen
+REPRO_STATUS: FAIL, and you have submitted the repro.md block), close with a
+single line containing exactly:
+DONE
 
-ATURAN BUKTI: SELESAI hanya diterima kalau di sesi ini aku (driver) sudah
-menyaksikan eksekusi repro.py-mu mencetak REPRO_STATUS: FAIL. Menulis
-CONFIRMED-AT-BASE: yes tanpa pernah melihat FAIL adalah pelanggaran kontrak.
-Kerjakan bertahap: eksplorasi dulu, tunggu output-ku, baru langkah berikutnya —
-jangan menumpuk semua aksi dalam satu balasan.
+EVIDENCE RULE: DONE is only accepted if, in this session, I (the driver) have
+witnessed your repro.py execution print REPRO_STATUS: FAIL. Writing
+CONFIRMED-AT-BASE: yes without ever seeing FAIL is a contract violation.
+Work step by step: explore first, wait for my output, then take the next
+step — do not pile every action into a single reply.
 
-Jangan menulis teks di luar keperluan; fokus pada aksi berikutnya.
+Do not write prose beyond what is needed; focus on the next action.
 """
 
 
@@ -131,7 +131,7 @@ def main() -> int:
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": "PROBLEM STATEMENT:\n" + problem +
-         "\n\nMulai bekerja sekarang. Sandbox /testbed sudah pada base commit."},
+         "\n\nStart working now. The /testbed sandbox is at the base commit."},
     ]
 
     attempt = 1
@@ -153,7 +153,7 @@ def main() -> int:
             if act.kind == "file":
                 docker_write_file(container, act.arg, act.body + "\n")
                 log(f"[driver] tulis {act.arg} ({len(act.body)} chars)")
-                feedback_parts.append(f"OK: file {act.arg} tertulis.")
+                feedback_parts.append(f"OK: file {act.arg} written.")
             elif act.kind == "bash":
                 out, code = docker_exec(container, act.body)
                 log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
@@ -170,7 +170,7 @@ def main() -> int:
             elif act.kind == "repro.md":
                 repro_md = act.body
                 log("[driver] kandidat repro.md diterima")
-                feedback_parts.append("OK: repro.md diterima.")
+                feedback_parts.append("OK: repro.md received.")
 
         if has_done(reply):
             reason = done_rejection_reason(has_repro_md=repro_md is not None,
@@ -185,8 +185,8 @@ def main() -> int:
 
         if not actions and not feedback_parts:
             feedback_parts.append(
-                "Tidak ada blok aksi terdeteksi. Gunakan ```bash / ```file:<path> "
-                "/ ```repro.md sesuai protokol, atau tutup dengan SELESAI.")
+                "No action block detected. Use ```bash / ```file:<path> / "
+                "```repro.md per the protocol, or close with DONE.")
         messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
 
     # Salin artefak final
