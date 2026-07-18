@@ -50,11 +50,15 @@ def _load_rules() -> dict[str, str]:
 RULES: dict[str, str] = _load_rules()
 
 
-def core_contract() -> str:
+def core_contract(promote: tuple[str, ...] = ()) -> str:
     """Kontrak yang DIRENDER ke model: blok detail dibuang, marker rule
-    di-unwrap, komentar lain dihapus, deret baris kosong dirapikan."""
+    di-unwrap, komentar lain dihapus, deret baris kosong dirapikan.
+
+    `promote`: id detail yang ikut dirender (unwrap, bukan dibuang) —
+    dipakai varian kontrak "full" pada A/B test tanpa mengubah file."""
     text = _contract_text()
-    text = _DETAIL_RE.sub("", text)
+    text = _DETAIL_RE.sub(
+        lambda m: m.group(2) if m.group(1) in promote else "", text)
     text = _RULE_RE.sub(lambda m: m.group(2), text)
     text = _COMMENT_RE.sub("", text)
     text = re.sub(r"\n{3,}", "\n\n", text)

@@ -256,10 +256,16 @@ def main() -> int:
     ap.add_argument("--endpoint", default="http://10.8.0.86:8000/v1")
     ap.add_argument("--model", default="google/gemma-4-31B-it")
     ap.add_argument("--max-turns", type=int, default=40)
+    ap.add_argument("--contract-variant", choices=("slim", "full"),
+                    default="slim",
+                    help="full = self-contained & repeatable ikut dirender "
+                         "di CORE (A/B test; slim = default ultra-slim)")
     args = ap.parse_args()
 
     problem = Path(args.problem_file).read_text(encoding="utf-8")
-    contract = rule_catalog.core_contract()
+    promote = (("self-contained", "repeatable")
+               if args.contract_variant == "full" else ())
+    contract = rule_catalog.core_contract(promote=promote)
 
     em = Emitter(args.artifacts, args.campaign, args.case, args.rerun)
     console = em.run_dir / "console.log"
@@ -285,7 +291,8 @@ def main() -> int:
     em.run_start()
     em.event("reproduce", "enter",
              budget={"msg_used": 0, "msg_limit": args.max_turns},
-             detail={"model": args.model, "driver": "run_reproduce_gemma-v0"})
+             detail={"model": args.model, "driver": "run_reproduce_gemma-v0",
+                     "contract_variant": args.contract_variant})
 
     system = contract + PROTOCOL_NOTE
     messages = [

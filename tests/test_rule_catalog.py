@@ -108,6 +108,20 @@ def test_ultra_slim_self_contained_and_repeatable_are_detail_only():
     assert "identical output" not in core
 
 
+def test_core_contract_promote_renders_selected_detail_blocks():
+    # A/B test 11999 (keputusan Mirza): varian "full" merender kembali
+    # self-contained & repeatable tanpa bolak-balik commit kontrak.
+    core = rule_catalog.core_contract(promote=("self-contained",
+                                               "repeatable"))
+    assert "inside the script itself" in core
+    assert "identical output" in core
+    assert "FAITHFUL SETUP" not in core   # detail lain tetap tersembunyi
+
+
+def test_core_contract_default_has_no_promoted_details():
+    assert "inside the script itself" not in rule_catalog.core_contract()
+
+
 def test_detail_rules_are_extracted_for_injection():
     for rid in ("faithful-setup", "pass-fidelity", "source-pass-side",
                 "crash-repair", "positive-control", "self-contained",
