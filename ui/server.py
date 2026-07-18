@@ -81,6 +81,44 @@ def list_runs(campaign_dir: Path) -> list[dict]:
     return list(runs.values())
 
 
+def run_duration_seconds(run_dir: Path) -> float | None:
+    """Durasi run: ts event pertama → `finished` verdict.json; run yang
+    belum bervonis (masih hidup) → mtime console.log terakhir."""
+    from datetime import datetime
+    try:
+        first = (Path(run_dir) / "events.jsonl").read_text(
+            encoding="utf-8", errors="replace").splitlines()[0]
+        start = datetime.fromisoformat(json.loads(first)["ts"])
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return None
+    end = None
+    vpath = Path(run_dir) / "verdict.json"
+    if vpath.is_file():
+        try:
+            end = datetime.fromisoformat(
+                json.loads(vpath.read_text(encoding="utf-8"))["finished"])
+        except (OSError, ValueError, KeyError, TypeError):
+            end = None
+    if end is None:
+        try:
+            end = datetime.fromtimestamp(
+                (Path(run_dir) / "console.log").stat().st_mtime).astimezone()
+        except OSError:
+            return None
+    try:
+        return max(0.0, (end - start).total_seconds())
+    except TypeError:
+        return None
+
+
+def fmt_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "-"
+    if seconds >= 60:
+        return f"{seconds / 60:.1f}m"
+    return f"{int(seconds)}s"
+
+
 def render_event_line(ev: dict) -> str:
     """Satu event dict -> satu baris ringkas: ts phase event verdict aN detail."""
     ts = str(ev.get("ts") or "-")
@@ -162,21 +200,28 @@ def page_index(root: Path) -> str:
                     verdict = "(verdict.json rusak)"
             href = ("/run?c=" + urllib.parse.quote(camp)
                     + "&r=" + urllib.parse.quote(rid))
+            dur = fmt_duration(run_duration_seconds(root / camp / rid))
+            if not vpath.is_file():
+                dur += " (live)"
             rows.append(
                 f"<tr><td><a href='{href}'>{html.escape(rid)}</a></td>"
                 f"<td>{html.escape(_verdict_summary(verdict))}</td>"
                 f"<td class='dim'>{html.escape(str(wall) if wall else '')}"
-                f"</td></tr>")
+                f"</td><td class='dim'>{html.escape(dur)}</td></tr>")
         parts.append("<table><tr><th>run</th><th>verdict</th><th>wall</th>"
-                     "</tr>" + "".join(rows) + "</table>")
+                     "<th>durasi</th></tr>" + "".join(rows) + "</table>")
     return _page("log viewer", "".join(parts))
 
 
 def page_run(root: Path, campaign: str, run_id: str, n: int) -> str:
     run_dir = root / campaign / run_id
     title = f"{campaign} / {run_id}"
+    dur = fmt_duration(run_duration_seconds(run_dir))
+    if not (run_dir / "verdict.json").is_file():
+        dur += " (live)"
     parts = [f"<p><a href='/'>&larr; index</a></p>"
-             f"<h1>{html.escape(title)}</h1>"]
+             f"<h1>{html.escape(title)}</h1>"
+             f"<p class='dim'>durasi: {html.escape(dur)}</p>"]
 
     vpath = run_dir / "verdict.json"
     if vpath.is_file():

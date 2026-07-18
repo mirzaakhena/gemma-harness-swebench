@@ -3,12 +3,45 @@ import json
 
 from harness.emit import Emitter
 from ui.server import (
+    fmt_duration,
     list_campaigns,
     list_runs,
     render_event_line,
+    run_duration_seconds,
     tail_lines,
     validate_name,
 )
+
+
+# --- durasi run (permintaan Mirza 2026-07-19: tampil di dashboard) ----------
+
+def test_run_duration_seconds_uses_verdict_finished(tmp_path):
+    (tmp_path / "events.jsonl").write_text(
+        json.dumps({"ts": "2026-07-19T00:00:00+07:00"}) + "\n",
+        encoding="utf-8")
+    (tmp_path / "verdict.json").write_text(
+        json.dumps({"finished": "2026-07-19T00:05:30+07:00"}),
+        encoding="utf-8")
+    assert run_duration_seconds(tmp_path) == 330.0
+
+
+def test_run_duration_seconds_live_run_uses_console_mtime(tmp_path):
+    (tmp_path / "events.jsonl").write_text(
+        json.dumps({"ts": "2026-07-19T00:00:00+07:00"}) + "\n",
+        encoding="utf-8")
+    (tmp_path / "console.log").write_text("x\n", encoding="utf-8")
+    dur = run_duration_seconds(tmp_path)
+    assert dur is not None and dur >= 0
+
+
+def test_run_duration_seconds_none_without_events(tmp_path):
+    assert run_duration_seconds(tmp_path) is None
+
+
+def test_fmt_duration_labels():
+    assert fmt_duration(None) == "-"
+    assert fmt_duration(45) == "45s"
+    assert fmt_duration(330) == "5.5m"
 
 
 # --- validate_name -----------------------------------------------------------
