@@ -267,6 +267,19 @@ def main() -> int:
                         log(f"[exec-fresh] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
                         feedback_parts.append(f"{label}:\n{tail(out)}")
                         if "REPRO_STATUS: FAIL" in out:
+                            if not observed_fail:
+                                # Checkpoint known-good (paket hardening,
+                                # disetujui Mirza): versi script saat FAIL
+                                # pertama disaksikan diamankan — tulisan
+                                # ulang yang lebih rusak tak menghapusnya.
+                                body, c2 = docker_exec(
+                                    container, "cat /testbed/.pipe/repro.py")
+                                if c2 == 0:
+                                    (em.run_dir / "files" /
+                                     "repro-first-fail.py").write_text(
+                                        body, encoding="utf-8", newline="\n")
+                                    log("[driver] checkpoint saved: "
+                                        "files/repro-first-fail.py")
                             observed_fail = True
                         else:
                             attempt += 1
