@@ -61,6 +61,15 @@ print("boom", flush=True)
 raise SystemExit(1)
 """
 
+READY_RELOAD = """\
+import time
+print("APP READY", flush=True)
+time.sleep(0.3)
+print("/x/settings.py changed, reloading.", flush=True)
+print("APP READY", flush=True)
+time.sleep(30)
+"""
+
 
 def test_start_waits_for_ready_and_settles(fake):
     app = App(fake("a.py", READY_ONCE), ready_token="APP READY",
@@ -110,6 +119,32 @@ def test_wait_for_finds_scenario_line(fake):
     try:
         assert app.wait_for("EVT ALPHA", timeout=5) is True
         assert app.wait_for("EVT OMEGA", timeout=0.5) is False
+    finally:
+        app.stop()
+
+
+def test_wait_for_ignores_lines_before_last_ready(fake):
+    # Regresi r33: token "reloading" milik fase control (SEBELUM restart)
+    # tidak boleh match lagi setelah wait_ready() — match basi membuat
+    # predikat selalu-True dan mendorong model membalik logika.
+    app = App(fake("i.py", READY_RELOAD), ready_token="APP READY",
+              interval=0.1, settle=0.1)
+    app.start(timeout=10)
+    try:
+        assert app.wait_ready(timeout=5) is True   # restart terlihat
+        assert app.wait_for("reloading", timeout=0.6) is False  # basi ≠ match
+    finally:
+        app.stop()
+
+
+def test_wait_for_consumes_matched_line(fake):
+    # Dua wait_for token sama = dua kejadian berbeda (pola hitung-kejadian).
+    app = App(fake("j.py", READY_RELOAD), ready_token="APP READY",
+              interval=0.1, settle=0.1)
+    app.start(timeout=10)
+    try:
+        assert app.wait_for("reloading", timeout=5) is True
+        assert app.wait_for("reloading", timeout=0.6) is False  # sudah dikonsumsi
     finally:
         app.stop()
 

@@ -55,6 +55,8 @@ class App(object):
         self._lines = []          # every echoed line, in order
         self._ready_count = 0     # occurrences of ready_token seen
         self._ready_consumed = 0  # occurrences already waited-for
+        self._last_ready_idx = -1  # index baris ready terakhir di _lines
+        self._cursor = 0          # wait_for hanya melihat baris >= cursor
         self._cond = threading.Condition()
         self._reader = None
 
@@ -69,6 +71,7 @@ class App(object):
                     self._lines.append(line)
                     if self.ready_token in line:
                         self._ready_count += 1
+                        self._last_ready_idx = len(self._lines) - 1
                     self._cond.notify_all()
         except Exception:
             pass
@@ -127,7 +130,9 @@ class App(object):
             raise RuntimeError(
                 "pipe_runtime: app failed to become ready ({}); its output "
                 "is echoed above with the [app] prefix".format(why))
-        self._ready_consumed = 1
+        with self._cond:
+            self._ready_consumed = 1
+            self._cursor = self._last_ready_idx + 1
         time.sleep(self.settle)
         return self
 
@@ -144,13 +149,32 @@ class App(object):
             return False
         with self._cond:
             self._ready_consumed = self._ready_count
+            self._cursor = self._last_ready_idx + 1
         time.sleep(self.settle)
         return True
 
     def wait_for(self, token, timeout=15):
-        """Wait until any echoed line contains token (past lines count)."""
-        return self._wait(
-            lambda: any(token in ln for ln in self._lines), timeout)
+        """Wait until a line contains token; a match consumes the line.
+
+        Only lines after the last start()/wait_ready()/matched wait_for
+        count — a line from before the app last reported ready can never
+        satisfy a later wait (it belongs to a previous phase of the
+        scenario), so a stale match cannot make a predicate always-true.
+        """
+        found = {"idx": -1}
+
+        def seen():
+            for i in range(self._cursor, len(self._lines)):
+                if token in self._lines[i]:
+                    found["idx"] = i
+                    return True
+            return False
+
+        ok = self._wait(seen, timeout)
+        if ok:
+            with self._cond:
+                self._cursor = max(self._cursor, found["idx"] + 1)
+        return ok
 
     def poll(self):
         """Child exit code, or None while it is still running."""
