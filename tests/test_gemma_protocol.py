@@ -159,6 +159,22 @@ def test_format_reminder_names_valid_forms():
     assert "```python" in msg  # menyebut bentuk yang TIDAK dieksekusi
 
 
+# --- next-step nudge (r13: loop degeneratif write-run-FAIL berulang) --------
+
+def test_next_step_nudge_fires_when_fail_seen_but_no_md():
+    from harness.stages.gemma_protocol import next_step_nudge
+    msg = next_step_nudge(observed_fail=True, has_repro_md=False)
+    assert msg is not None
+    assert "repro.md" in msg
+    assert "DONE" in msg
+
+
+def test_next_step_nudge_silent_otherwise():
+    from harness.stages.gemma_protocol import next_step_nudge
+    assert next_step_nudge(observed_fail=False, has_repro_md=False) is None
+    assert next_step_nudge(observed_fail=True, has_repro_md=True) is None
+
+
 # --- PASS_OBSERVABLE (lever r10: klaim observable diverifikasi mekanis) -----
 
 def test_parse_pass_observable_found():

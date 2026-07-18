@@ -104,6 +104,19 @@ def observable_rejection(observable: str | None) -> str:
             "corrected PASS_OBSERVABLE line.")
 
 
+def next_step_nudge(observed_fail: bool, has_repro_md: bool) -> str | None:
+    """Pemutus loop degeneratif (r13): model sudah menyaksikan FAIL tapi
+    terus menulis-ulang script tiap turn tanpa pernah menyetor repro.md.
+    Feedback identik tiap turn = attractor repetisi bagi model kecil;
+    nudge ini mengubah feedback dan menunjuk langkah berikutnya."""
+    if observed_fail and not has_repro_md:
+        return ("You have already run your script and REPRO_STATUS: FAIL was "
+                "observed — that evidence is sufficient. Submit the "
+                "```repro.md block now (the exact lines listed in the "
+                "contract), then declare DONE.")
+    return None
+
+
 def has_fences(text: str) -> bool:
     """Ada minimal satu fenced block (apa pun info-string-nya)."""
     return _FENCE_RE.search(text) is not None

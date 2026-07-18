@@ -21,7 +21,8 @@ from pathlib import Path
 from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_reason,
                                            format_reminder, has_done,
-                                           has_fences, observable_rejection,
+                                           has_fences, next_step_nudge,
+                                           observable_rejection,
                                            parse_actions,
                                            parse_pass_observable)
 from harness.stages.reproduce_gates import compose_repro_md
@@ -258,6 +259,12 @@ def main() -> int:
                         pass_observable = None  # klaim gagal; wajib deklarasi ulang
                     log(f"[driver] DONE rejected: {msg}")
                     feedback_parts.append(msg)
+
+            if not has_done(reply):
+                nudge = next_step_nudge(observed_fail=observed_fail,
+                                        has_repro_md=repro_md is not None)
+                if nudge is not None:
+                    feedback_parts.append(nudge)
 
             if not actions and not feedback_parts:
                 if has_fences(reply):
