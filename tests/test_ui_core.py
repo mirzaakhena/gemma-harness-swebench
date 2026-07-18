@@ -43,6 +43,27 @@ def test_verdict_icon_mapping():
     assert verdict_icon(None) == ""
 
 
+# --- turn count & urutan tab (permintaan Mirza 2026-07-19) ------------------
+
+def test_run_turns_from_console(tmp_path):
+    from ui.server import run_turns
+    (tmp_path / "console.log").write_text(
+        "[driver] start\n[gemma t1] hi\n[exec] $ ls\n[gemma t12] more\n",
+        encoding="utf-8")
+    assert run_turns(tmp_path) == 12
+
+
+def test_run_turns_none_without_console(tmp_path):
+    from ui.server import run_turns
+    assert run_turns(tmp_path) is None
+
+
+def test_order_campaigns_puts_rdev_first():
+    from ui.server import order_campaigns
+    assert order_campaigns(["l-dev", "r-dev"]) == ["r-dev", "l-dev"]
+    assert order_campaigns(["a", "b"]) == ["a", "b"]
+
+
 # --- durasi run (permintaan Mirza 2026-07-19: tampil di dashboard) ----------
 
 def test_run_duration_seconds_uses_verdict_finished(tmp_path):

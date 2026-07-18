@@ -81,6 +81,24 @@ def list_runs(campaign_dir: Path) -> list[dict]:
     return list(runs.values())
 
 
+def run_turns(run_dir: Path) -> int | None:
+    """Jumlah turn model: [gemma tN] terbesar di console.log."""
+    lines = tail_lines(Path(run_dir) / "console.log", 100_000)
+    best = None
+    for line in lines:
+        m = re.match(r"\[gemma t(\d+)\]", line)
+        if m:
+            n = int(m.group(1))
+            best = n if best is None else max(best, n)
+    return best
+
+
+def order_campaigns(campaigns: list[str]) -> list[str]:
+    """r-dev (REPRODUCE) selalu tab pertama (permintaan Mirza)."""
+    return ([c for c in campaigns if c == "r-dev"]
+            + [c for c in campaigns if c != "r-dev"])
+
+
 def run_sort_key(run_id: str) -> tuple:
     """Kunci sort run: nomor rerun rN (numerik), fallback string."""
     m = re.search(r"--r(\d+)$", run_id)
@@ -210,7 +228,7 @@ PAGE_SIZE = 15
 def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
     parts = ["<h1>gemma-harness log viewer</h1>",
              f"<p class='dim'>root: {html.escape(str(root))}</p>"]
-    campaigns = list_campaigns(root)
+    campaigns = order_campaigns(list_campaigns(root))
     if not campaigns:
         parts.append("<p>(belum ada campaign)</p>")
         return _page("log viewer", "".join(parts))
@@ -250,13 +268,16 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
         dur = fmt_duration(run_duration_seconds(root / active / rid))
         if not vpath.is_file():
             dur += " (live)"
+        turns = run_turns(root / active / rid)
         rows.append(
             f"<tr><td><a href='{href}'>{html.escape(rid)}</a></td>"
             f"<td>{html.escape(_verdict_summary(verdict))}</td>"
             f"<td class='dim'>{html.escape(str(wall) if wall else '')}"
-            f"</td><td class='dim'>{html.escape(dur)}</td></tr>")
+            f"</td><td class='dim'>{html.escape(dur)}</td>"
+            f"<td class='dim'>{turns if turns is not None else '-'}</td></tr>")
     parts.append("<table><tr><th>run</th><th>verdict</th><th>wall</th>"
-                 "<th>durasi</th></tr>" + "".join(rows) + "</table>")
+                 "<th>durasi</th><th>turns</th></tr>"
+                 + "".join(rows) + "</table>")
 
     if total_pages > 1:
         nav = []
