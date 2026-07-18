@@ -20,8 +20,19 @@ script. The fix belongs to a later stage.
    - Its predicate tests the observable the user complains about in the issue
      (output, value, exit code, the exception they name). Follow the user's
      action path: the same entry point and command shape the issue describes.
-     Ask yourself: "if a maintainer fixed this bug in any legitimate way,
-     would my script flip FAIL → PASS?" Make the answer YES.
+     When the behavior depends on how the program is launched (the entry
+     point, the command line, a running server), your script spawns that
+     launch as a real child process and observes it end to end — launch
+     state (the entry-point module, argv, environment) exists only inside a
+     process actually started that way; a launch imitated inside your own
+     repro process observes a different scenario. Ask yourself: "if a
+     maintainer fixed this bug in any legitimate way, would my script flip
+     FAIL → PASS?" Make the answer YES.
+   - Prefer an observable your own scenario emits: when you control the
+     child entry-point script, have it print a short marker line that
+     directly reports the behavior under test, then assert on that exact
+     marker. A framework log message is a valid observable only when you
+     have quoted it exactly from the repository source.
    - FAITHFUL SETUP: obtain the thing under test the way real operation
      produces it — reach the state you assert against by exercising the real
      code path or entry point, so its genuine attributes hold exactly as they
