@@ -59,6 +59,25 @@ def test_docker_exec_timeout_tolerates_bytes_and_none(monkeypatch):
     assert "bytes out" in out
 
 
+def test_docker_write_file_sends_lf_only_bytes(monkeypatch):
+    # Bug nyata r15: text=True di Windows menerjemahkan \n -> \r\n saat
+    # menulis ke pipe docker; pattern file grep berakhiran \r -> verifikasi
+    # PASS_OBSERVABLE selalu MISSING terhadap source LF (kontrak §2: byte
+    # \r di file adalah BUG).
+    import harness.stages.run_reproduce_gemma as drv
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["input"] = kwargs.get("input")
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    drv.docker_write_file("c1", "/tmp/x", "line1\nline2\r\nline3\n")
+    assert isinstance(captured["input"], bytes)
+    assert b"\r" not in captured["input"]
+    assert captured["input"] == b"line1\nline2\nline3\n"
+
+
 def test_observable_in_container_found(monkeypatch):
     import harness.stages.run_reproduce_gemma as drv
     monkeypatch.setattr(drv, "docker_write_file", lambda c, p, b: None)

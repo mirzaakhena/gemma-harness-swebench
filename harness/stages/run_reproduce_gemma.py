@@ -123,10 +123,14 @@ def docker_exec(container: str, cmd: str, timeout: int = 180) -> tuple[str, int]
 
 
 def docker_write_file(container: str, path: str, body: str) -> None:
+    # Bytes mentah, BUKAN text=True: mode teks Windows menerjemahkan \n ->
+    # \r\n saat menulis ke pipe (bug nyata r15 — pattern grep berakhiran \r
+    # tak pernah match source LF; kontrak §2: byte \r di file adalah BUG).
+    data = body.replace("\r\n", "\n").encode("utf-8")
     subprocess.run(
         ["docker", "exec", "-i", container, "bash", "-lc",
          f"mkdir -p $(dirname '{path}') && cat > '{path}'"],
-        input=body, text=True, encoding="utf-8", check=True, timeout=60,
+        input=data, check=True, timeout=60,
     )
 
 
