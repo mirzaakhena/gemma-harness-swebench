@@ -34,6 +34,12 @@ script. The fix belongs to a later stage.
      fixed — no OR of conditions where one side is always true, no unrelated
      already-working path. At base it prints FAIL for the RIGHT reason:
      because the specific defective behavior is present.
+   - Source the PASS side: you cannot observe the correct behavior at the
+     base commit (the bug prevents it), so derive the exact expected
+     observable — the precise log message, attribute, or value — by READING
+     the repository source that produces it, and quote it exactly. A
+     plausible-sounding message from your memory of similar tools will not
+     match reality.
    - If your scenario crashes for a reason that is not the reported symptom,
      repair the script — a crash counts as FAIL only when the crash IS the
      symptom the user reports.

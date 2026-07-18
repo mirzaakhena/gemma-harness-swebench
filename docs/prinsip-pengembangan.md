@@ -96,6 +96,13 @@ Keputusan Mirza 2026-07-18 (mengulang pengingat lama di vault):
 - **Guard tulis**: di LOCALIZE, `file:` hanya boleh menulis /testbed/.pipe/
   (repo read-only bagi model — menutup lubang create_file P24).
 
+## 5b. Arsitektur eksekusi (disetujui Mirza 2026-07-18)
+
+Semua eksekusi kode target/model terjadi DI DALAM docker (container kerja per
+run + container segar per gate run + container ber-gold-patch utk flip).
+Host Windows hanya orkestrasi tipis: driver, emitter, viewer, test suite.
+Full-containerization harness = opsi nanti saat stabil/portabel, bukan sekarang.
+
 ## 6. Aturan repo & data (ringkas; detail di kontrak-output.md)
 
 - Emitter tunggal (harness/emit.py); UTF-8 tanpa BOM, LF; append-only;
