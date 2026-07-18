@@ -110,6 +110,11 @@ def evaluate_gates(repro_md_text: str,
     except ValueError as e:
         return GateResult(verdict="syntax-fail", failures=[f"repro.md format: {e}"])
 
+    if ("[runner] TIMEOUT" in fresh_run1_output
+            or "[runner] TIMEOUT" in fresh_run2_output):
+        return GateResult(verdict="timeout", failures=[
+            "fresh-sandbox run was killed by the runner timeout (script hang)"])
+
     for marker in scaffolding_error_markers:
         if marker in fresh_run1_output or marker in fresh_run2_output:
             return GateResult(verdict="fail", failures=[

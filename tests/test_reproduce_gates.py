@@ -102,6 +102,16 @@ def test_gate_status_token_missing_is_syntax_fail():
     assert r.verdict == "syntax-fail"
 
 
+def test_gate_runner_timeout_is_timeout_verdict():
+    # Wiring enum timeout (permintaan Mirza 2026-07-19): run yang dibunuh
+    # runner ([runner] TIMEOUT) adalah "script hang", bukan artefak cacat.
+    r = evaluate_gates(**_ok_kwargs(
+        fresh_run1_output="setengah jalan...\n[runner] TIMEOUT",
+        fresh_run1_exit=-1,
+    ))
+    assert r.verdict == "timeout"
+
+
 def test_gate_scaffolding_error_rejected():
     r = evaluate_gates(**_ok_kwargs(
         fresh_run1_output="Traceback...\nModuleNotFoundError: No module named 'repro'\n",
