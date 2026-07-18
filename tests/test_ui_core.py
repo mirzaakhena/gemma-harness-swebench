@@ -13,6 +13,36 @@ from ui.server import (
 )
 
 
+# --- tabs/sort/paging/ikon (permintaan Mirza 2026-07-19 dinihari) -----------
+
+def test_run_sort_key_orders_by_rerun_number():
+    from ui.server import run_sort_key
+    ids = ["c--x--r2", "c--x--r10", "c--x--r1"]
+    ordered = sorted(ids, key=run_sort_key, reverse=True)
+    assert ordered == ["c--x--r10", "c--x--r2", "c--x--r1"]
+
+
+def test_paginate_slices_and_clamps():
+    from ui.server import paginate
+    items = list(range(35))
+    page1, total = paginate(items, 1, per_page=15)
+    assert page1 == list(range(15)) and total == 3
+    page9, _ = paginate(items, 9, per_page=15)   # clamp ke halaman terakhir
+    assert page9 == list(range(30, 35))
+    empty, total = paginate([], 1, per_page=15)
+    assert empty == [] and total == 1
+
+
+def test_verdict_icon_mapping():
+    from ui.server import verdict_icon
+    assert verdict_icon("pass").startswith("✅")
+    assert verdict_icon("flip").startswith("✅")
+    assert verdict_icon("wrong-logic").startswith("❌")
+    assert verdict_icon("syntax-fail").startswith("❌")
+    assert verdict_icon("abort") == ""   # keputusan Mirza: abort polos
+    assert verdict_icon(None) == ""
+
+
 # --- durasi run (permintaan Mirza 2026-07-19: tampil di dashboard) ----------
 
 def test_run_duration_seconds_uses_verdict_finished(tmp_path):

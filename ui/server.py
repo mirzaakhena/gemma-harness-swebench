@@ -81,6 +81,31 @@ def list_runs(campaign_dir: Path) -> list[dict]:
     return list(runs.values())
 
 
+def run_sort_key(run_id: str) -> tuple:
+    """Kunci sort run: nomor rerun rN (numerik), fallback string."""
+    m = re.search(r"--r(\d+)$", run_id)
+    return (int(m.group(1)) if m else -1, run_id)
+
+
+def paginate(items: list, page: int, per_page: int = 15) -> tuple[list, int]:
+    """(potongan halaman, total_halaman); page 1-based, di-clamp."""
+    total = max(1, -(-len(items) // per_page))
+    page = max(1, min(page, total))
+    start = (page - 1) * per_page
+    return items[start:start + per_page], total
+
+
+def verdict_icon(v) -> str:
+    """✅ utk pass/flip, ❌ utk kelas gagal; abort/None polos
+    (permintaan Mirza 2026-07-19)."""
+    if v in ("pass", "flip"):
+        return "✅ "
+    if v in ("fail", "syntax-fail", "wrong-logic", "timeout",
+             "no-flip", "empty-patch"):
+        return "❌ "
+    return ""
+
+
 def run_duration_seconds(run_dir: Path) -> float | None:
     """Durasi run: ts event pertama → `finished` verdict.json; run yang
     belum bervonis (masih hidup) → mtime console.log terakhir."""
@@ -152,6 +177,13 @@ pre{background:#000;border:1px solid #333;padding:.6em;overflow-x:auto;
 table{border-collapse:collapse}
 td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
 .dim{color:#888}
+.tabs{margin:.8em 0}
+.tabs a{display:inline-block;padding:.35em 1.1em;border:1px solid #333;
+        border-bottom:none;margin-right:.3em;text-decoration:none;
+        background:#1a1a1a;border-radius:4px 4px 0 0}
+.tabs a.active{background:#000;color:#fff;border-color:#555}
+.pager{margin:.6em 0}
+.pager a{margin-right:1em}
 </style>"""
 
 
@@ -163,53 +195,79 @@ def _page(title: str, body: str, refresh: bool = False) -> str:
 
 
 def _verdict_summary(v) -> str:
-    """Map fase->verdict jadi teks singkat; non-dict tampil apa adanya."""
+    """Map fase->verdict jadi teks singkat berikon; non-dict apa adanya."""
     if isinstance(v, dict):
-        return " ".join(f"{k}={val}" for k, val in v.items()) or "-"
+        return " ".join(f"{k}={verdict_icon(val)}{val}"
+                        for k, val in v.items()) or "-"
     if v is None:
         return "-"
     return str(v)
 
 
-def page_index(root: Path) -> str:
+PAGE_SIZE = 15
+
+
+def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
     parts = ["<h1>gemma-harness log viewer</h1>",
              f"<p class='dim'>root: {html.escape(str(root))}</p>"]
     campaigns = list_campaigns(root)
     if not campaigns:
         parts.append("<p>(belum ada campaign)</p>")
+        return _page("log viewer", "".join(parts))
+
+    active = tab if tab in campaigns else campaigns[0]
+    tab_links = []
     for camp in campaigns:
-        parts.append(f"<h2>{html.escape(camp)}</h2>")
-        runs = list_runs(root / camp)
-        if not runs:
-            parts.append("<p class='dim'>(belum ada run)</p>")
-            continue
-        rows = []
-        for r in runs:
-            rid = r["run_id"]
-            # verdict.json lebih final daripada baris end runs.jsonl
-            verdict = r["verdict"]
-            wall = r.get("wall")
-            vpath = root / camp / rid / "verdict.json"
-            if vpath.is_file():
-                try:
-                    vj = json.loads(vpath.read_text(encoding="utf-8"))
-                    verdict = {k: (p or {}).get("verdict")
-                               for k, p in (vj.get("phases") or {}).items()}
-                    wall = vj.get("wall")
-                except (ValueError, OSError, AttributeError):
-                    verdict = "(verdict.json rusak)"
-            href = ("/run?c=" + urllib.parse.quote(camp)
-                    + "&r=" + urllib.parse.quote(rid))
-            dur = fmt_duration(run_duration_seconds(root / camp / rid))
-            if not vpath.is_file():
-                dur += " (live)"
-            rows.append(
-                f"<tr><td><a href='{href}'>{html.escape(rid)}</a></td>"
-                f"<td>{html.escape(_verdict_summary(verdict))}</td>"
-                f"<td class='dim'>{html.escape(str(wall) if wall else '')}"
-                f"</td><td class='dim'>{html.escape(dur)}</td></tr>")
-        parts.append("<table><tr><th>run</th><th>verdict</th><th>wall</th>"
-                     "<th>durasi</th></tr>" + "".join(rows) + "</table>")
+        cls = " class='active'" if camp == active else ""
+        tab_links.append(f"<a{cls} href='/?tab="
+                         f"{urllib.parse.quote(camp)}'>{html.escape(camp)}</a>")
+    parts.append("<div class='tabs'>" + "".join(tab_links) + "</div>")
+
+    runs = sorted(list_runs(root / active),
+                  key=lambda r: run_sort_key(r["run_id"]), reverse=True)
+    if not runs:
+        parts.append("<p class='dim'>(belum ada run)</p>")
+        return _page("log viewer", "".join(parts))
+
+    page_runs, total_pages = paginate(runs, page, PAGE_SIZE)
+    rows = []
+    for r in page_runs:
+        rid = r["run_id"]
+        # verdict.json lebih final daripada baris end runs.jsonl
+        verdict = r["verdict"]
+        wall = r.get("wall")
+        vpath = root / active / rid / "verdict.json"
+        if vpath.is_file():
+            try:
+                vj = json.loads(vpath.read_text(encoding="utf-8"))
+                verdict = {k: (p or {}).get("verdict")
+                           for k, p in (vj.get("phases") or {}).items()}
+                wall = vj.get("wall")
+            except (ValueError, OSError, AttributeError):
+                verdict = "(verdict.json rusak)"
+        href = ("/run?c=" + urllib.parse.quote(active)
+                + "&r=" + urllib.parse.quote(rid))
+        dur = fmt_duration(run_duration_seconds(root / active / rid))
+        if not vpath.is_file():
+            dur += " (live)"
+        rows.append(
+            f"<tr><td><a href='{href}'>{html.escape(rid)}</a></td>"
+            f"<td>{html.escape(_verdict_summary(verdict))}</td>"
+            f"<td class='dim'>{html.escape(str(wall) if wall else '')}"
+            f"</td><td class='dim'>{html.escape(dur)}</td></tr>")
+    parts.append("<table><tr><th>run</th><th>verdict</th><th>wall</th>"
+                 "<th>durasi</th></tr>" + "".join(rows) + "</table>")
+
+    if total_pages > 1:
+        nav = []
+        page = max(1, min(page, total_pages))
+        base = "/?tab=" + urllib.parse.quote(active) + "&page="
+        if page > 1:
+            nav.append(f"<a href='{base}{page - 1}'>&laquo; lebih baru</a>")
+        nav.append(f"<span class='dim'>hal {page}/{total_pages}</span>")
+        if page < total_pages:
+            nav.append(f"<a href='{base}{page + 1}'>lebih lama &raquo;</a>")
+        parts.append("<div class='pager'>" + " ".join(nav) + "</div>")
     return _page("log viewer", "".join(parts))
 
 
@@ -281,7 +339,14 @@ def make_handler(root: Path):
             parsed = urllib.parse.urlparse(self.path)
             qs = urllib.parse.parse_qs(parsed.query)
             if parsed.path == "/":
-                self._send_html(page_index(root))
+                tab = (qs.get("tab") or [None])[0]
+                if tab is not None and not validate_name(tab):
+                    tab = None
+                try:
+                    page = int((qs.get("page") or ["1"])[0])
+                except ValueError:
+                    page = 1
+                self._send_html(page_index(root, tab=tab, page=page))
             elif parsed.path == "/run":
                 camp = (qs.get("c") or [""])[0]
                 rid = (qs.get("r") or [""])[0]
