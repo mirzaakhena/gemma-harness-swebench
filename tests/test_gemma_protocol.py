@@ -180,6 +180,22 @@ def test_parse_pass_observable_missing_or_empty():
     assert parse_pass_observable("PASS_OBSERVABLE:   \nDONE") is None
 
 
+def test_parse_pass_observable_strips_surrounding_quotes():
+    # r12 nyata: Gemma mendeklarasikan PASS_OBSERVABLE: 'changed, reloading.'
+    # (dengan kutip) -> grep literal gagal padahal string-nya sah di source.
+    from harness.stages.gemma_protocol import parse_pass_observable
+    assert (parse_pass_observable("PASS_OBSERVABLE: 'changed, reloading.'\nDONE")
+            == "changed, reloading.")
+    assert (parse_pass_observable('PASS_OBSERVABLE: "Watching for file changes"\nDONE')
+            == "Watching for file changes")
+
+
+def test_parse_pass_observable_keeps_unmatched_quote():
+    from harness.stages.gemma_protocol import parse_pass_observable
+    assert (parse_pass_observable("PASS_OBSERVABLE: it's watched\nDONE")
+            == "it's watched")
+
+
 def test_observable_rejection_missing_asks_for_declaration():
     from harness.stages.gemma_protocol import observable_rejection
     msg = observable_rejection(None)
