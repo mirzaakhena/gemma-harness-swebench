@@ -67,6 +67,38 @@ def done_rejection_reason(has_repro_md: bool, observed_fail: bool) -> str | None
     return None
 
 
+def parse_pass_observable(text: str) -> str | None:
+    """Deklarasi `PASS_OBSERVABLE: <literal>` di luar fenced block.
+
+    Lahir dari r9 (11422): model MENGARANG kutipan source di self-check
+    ("Detected change" + nomor baris fiktif) dan driver menerimanya tanpa
+    verifikasi. Deklarasi ini yang diverifikasi mekanis oleh driver.
+    """
+    outside = _FENCE_RE.sub("", text)
+    for line in outside.splitlines():
+        s = line.strip()
+        if s.startswith("PASS_OBSERVABLE:"):
+            val = s[len("PASS_OBSERVABLE:"):].strip()
+            if val:
+                return val
+    return None
+
+
+def observable_rejection(observable: str | None) -> str:
+    """Pesan penolakan DONE untuk klaim observable. English (model-facing)."""
+    if observable is None:
+        return ("Not done yet: state your PASS observable on its own line in "
+                "this exact form: PASS_OBSERVABLE: <the exact literal string "
+                "your script matches on to decide PASS>. Then declare DONE "
+                "again.")
+    return (f"Not done yet: the exact string '{observable}' appears nowhere "
+            "in the repository source or in your script. Open the module "
+            "that produces your PASS observable, quote the message exactly "
+            "as written there, update your script to match it, re-run the "
+            "script to see REPRO_STATUS: FAIL, then declare DONE with the "
+            "corrected PASS_OBSERVABLE line.")
+
+
 def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool) -> str | None:
     """Aturan SELESAI stage LOCALIZE. None = diterima.
 

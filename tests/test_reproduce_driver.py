@@ -59,6 +59,22 @@ def test_docker_exec_timeout_tolerates_bytes_and_none(monkeypatch):
     assert "bytes out" in out
 
 
+def test_observable_in_container_found(monkeypatch):
+    import harness.stages.run_reproduce_gemma as drv
+    monkeypatch.setattr(drv, "docker_write_file", lambda c, p, b: None)
+    monkeypatch.setattr(drv, "docker_exec",
+                        lambda c, cmd, timeout=60: ("FOUND\n", 0))
+    assert drv.observable_in_container("c1", "changed, reloading.") is True
+
+
+def test_observable_in_container_missing(monkeypatch):
+    import harness.stages.run_reproduce_gemma as drv
+    monkeypatch.setattr(drv, "docker_write_file", lambda c, p, b: None)
+    monkeypatch.setattr(drv, "docker_exec",
+                        lambda c, cmd, timeout=60: ("MISSING\n", 0))
+    assert drv.observable_in_container("c1", "Detected change") is False
+
+
 def test_emit_abort_writes_event_verdict_and_run_end(tmp_path):
     em = Emitter(tmp_path, "r-dev", "django__django-11422", 99)
     em.run_start()

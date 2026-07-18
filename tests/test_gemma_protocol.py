@@ -122,15 +122,52 @@ def test_localize_done_rejected_without_exploration():
 
 def test_rejection_messages_are_english():
     from harness.stages.gemma_protocol import (done_rejection_localize,
-                                               done_rejection_reason)
+                                               done_rejection_reason,
+                                               observable_rejection)
     msgs = [
         done_rejection_reason(has_repro_md=False, observed_fail=True),
         done_rejection_reason(has_repro_md=True, observed_fail=False),
         done_rejection_localize(has_localize_md=False, ran_any_bash=True),
         done_rejection_localize(has_localize_md=True, ran_any_bash=False),
+        observable_rejection("Detected change"),
+        observable_rejection(None),
     ]
     indonesian_markers = ("Belum", "kamu", "dulu", "serahkan", "jalankan")
     for m in msgs:
         assert m is not None
         for word in indonesian_markers:
             assert word not in m, f"pesan ke model masih ber-Indonesia: {m!r}"
+
+
+# --- PASS_OBSERVABLE (lever r10: klaim observable diverifikasi mekanis) -----
+
+def test_parse_pass_observable_found():
+    from harness.stages.gemma_protocol import parse_pass_observable
+    text = ("1. The source is ...\n"
+            "PASS_OBSERVABLE: changed, reloading.\n\nDONE\n")
+    assert parse_pass_observable(text) == "changed, reloading."
+
+
+def test_parse_pass_observable_ignores_fenced_blocks():
+    from harness.stages.gemma_protocol import parse_pass_observable
+    text = "```bash\necho 'PASS_OBSERVABLE: inside-fence'\n```\nDONE\n"
+    assert parse_pass_observable(text) is None
+
+
+def test_parse_pass_observable_missing_or_empty():
+    from harness.stages.gemma_protocol import parse_pass_observable
+    assert parse_pass_observable("no declaration here\nDONE") is None
+    assert parse_pass_observable("PASS_OBSERVABLE:   \nDONE") is None
+
+
+def test_observable_rejection_missing_asks_for_declaration():
+    from harness.stages.gemma_protocol import observable_rejection
+    msg = observable_rejection(None)
+    assert "PASS_OBSERVABLE:" in msg
+
+
+def test_observable_rejection_not_found_names_the_string():
+    from harness.stages.gemma_protocol import observable_rejection
+    msg = observable_rejection("Detected change")
+    assert "Detected change" in msg
+    assert "source" in msg

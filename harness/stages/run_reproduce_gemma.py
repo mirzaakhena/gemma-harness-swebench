@@ -20,7 +20,9 @@ from pathlib import Path
 
 from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_reason, has_done,
-                                           parse_actions)
+                                           observable_rejection,
+                                           parse_actions,
+                                           parse_pass_observable)
 from harness.stages.reproduce_gates import compose_repro_md
 
 PROTOCOL_NOTE = """
@@ -55,8 +57,10 @@ quoting evidence:
 
 1. Quote the exact code from the repository source (file + line) that will
    produce your PASS observable once the bug is fixed. If you cannot quote
-   it, your PASS condition is a guess — read the source first, then revise
-   your script.
+   it, your PASS condition is a guess — read the source first (open the file
+   with a bash action and look at the real lines), then revise your script.
+   Close your answer with one line in this exact form:
+   PASS_OBSERVABLE: <the exact literal string your script matches on to decide PASS>
 2. Show that your script exercises the same scenario the issue describes:
    name the entry point / command the user runs in the issue, and point to
    the line in YOUR script that runs that same path. If your script builds
@@ -126,6 +130,18 @@ def tail(s: str, n: int = 4000) -> str:
     return s if len(s) <= n else "[...dipotong...]\n" + s[-n:]
 
 
+def observable_in_container(container: str, observable: str) -> bool:
+    """Verifikasi mekanis klaim PASS_OBSERVABLE (lever r10): string harus
+    benar-benar ada — di source repo (pesan framework) ATAU di script model
+    sendiri (marker milik skenario). Grep -F: literal, tanpa regex."""
+    docker_write_file(container, "/tmp/.pass_observable", observable + "\n")
+    out, _ = docker_exec(
+        container,
+        "grep -rqF -f /tmp/.pass_observable /testbed && echo FOUND || echo MISSING",
+        timeout=60)
+    return "FOUND" in out
+
+
 def emit_abort(em: Emitter, reason: str) -> None:
     """Tutup run yang crash sesuai kontrak §8: event abort + verdict
     wall="abort" + baris end di runs.jsonl."""
@@ -180,6 +196,7 @@ def main() -> int:
     repro_md: str | None = None
     observed_fail = False
     self_check_prompted = False
+    pass_observable: str | None = None
     done = False
     try:
         for turn in range(1, args.max_turns + 1):
@@ -216,6 +233,8 @@ def main() -> int:
                     log("[driver] repro.md candidate received")
                     feedback_parts.append("OK: repro.md received.")
 
+            pass_observable = parse_pass_observable(reply) or pass_observable
+
             if has_done(reply):
                 reason = done_rejection_reason(has_repro_md=repro_md is not None,
                                                observed_fail=observed_fail)
@@ -226,10 +245,18 @@ def main() -> int:
                     self_check_prompted = True
                     log("[driver] DONE deferred: self-check round injected")
                     feedback_parts.append(SELF_CHECK_MSG)
-                else:
+                elif (pass_observable is not None
+                      and observable_in_container(container, pass_observable)):
                     done = True
-                    log(f"[driver] DONE at turn {turn} (last attempt {attempt})")
+                    log(f"[driver] DONE at turn {turn} (last attempt {attempt}); "
+                        f"pass observable verified: {pass_observable!r}")
                     break
+                else:
+                    msg = observable_rejection(pass_observable)
+                    if pass_observable is not None:
+                        pass_observable = None  # klaim gagal; wajib deklarasi ulang
+                    log(f"[driver] DONE rejected: {msg}")
+                    feedback_parts.append(msg)
 
             if not actions and not feedback_parts:
                 feedback_parts.append(
