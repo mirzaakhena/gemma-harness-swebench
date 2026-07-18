@@ -33,6 +33,12 @@ script. The fix belongs to a later stage.
      directly reports the behavior under test, then assert on that exact
      marker. A framework log message is a valid observable only when you
      have quoted it exactly from the repository source.
+   - Give sampling mechanisms their baseline: when your trigger must be
+     noticed by a mechanism that checks state periodically (a watcher, a
+     poller), fire the trigger only after that mechanism has observably
+     finished starting up PLUS one full sampling interval — read the
+     interval from the repository source. After the trigger, wait for the
+     resulting observable with a bounded deadline of several intervals.
    - FAITHFUL SETUP: obtain the thing under test the way real operation
      produces it — reach the state you assert against by exercising the real
      code path or entry point, so its genuine attributes hold exactly as they
