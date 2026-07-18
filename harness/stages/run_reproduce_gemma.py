@@ -21,9 +21,10 @@ from pathlib import Path
 import tempfile
 
 from harness.emit import Emitter
+from harness.stages import rule_catalog
 from harness.stages.gemma_protocol import (done_rejection_reason,
                                            format_reminder,
-                                           fresh_check_rejection, has_done,
+                                           fresh_pair_rejection, has_done,
                                            has_fences, next_step_nudge,
                                            observable_candidates,
                                            observable_rejection,
@@ -263,6 +264,9 @@ def main() -> int:
                             em.event("reproduce", "retry", attempt=attempt,
                                      budget={"msg_used": turn, "msg_limit": args.max_turns},
                                      detail={"why": retry_reason(out, code)})
+                            if code != 0 and "REPRO_STATUS" not in out:
+                                feedback_parts.append(
+                                    rule_catalog.inject("crash-repair"))
                 elif act.kind == "repro.md":
                     repro_md = act.body
                     log("[driver] repro.md candidate received")
@@ -291,16 +295,17 @@ def main() -> int:
                     feedback_parts.append(SELF_CHECK_MSG)
                 elif (pass_observable is not None
                       and observable_in_container(container, pass_observable)):
-                    fresh_out = fresh_sandbox_output(container, args.image)
-                    fresh_reject = fresh_check_rejection(fresh_out)
+                    fresh_out1 = fresh_sandbox_output(container, args.image)
+                    fresh_out2 = fresh_sandbox_output(container, args.image)
+                    fresh_reject = fresh_pair_rejection(fresh_out1, fresh_out2)
                     if fresh_reject is None:
                         done = True
                         log(f"[driver] DONE at turn {turn} (last attempt {attempt}); "
                             f"pass observable verified: {pass_observable!r}; "
-                            "fresh-sandbox pre-check OK")
+                            "fresh-sandbox pre-check OK (2 runs)")
                         break
-                    reject_event("done-rejected: fresh-sandbox run without "
-                                 "REPRO_STATUS: FAIL (not self-contained)")
+                    reject_event("done-rejected: fresh-sandbox pair without "
+                                 "consistent REPRO_STATUS: FAIL")
                     log("[driver] DONE rejected: fresh-sandbox pre-check failed")
                     feedback_parts.append(fresh_reject)
                 else:
@@ -312,12 +317,14 @@ def main() -> int:
                         pass_observable = None  # klaim gagal; wajib deklarasi ulang
                     log(f"[driver] DONE rejected: {msg}")
                     feedback_parts.append(msg)
+                    feedback_parts.append(rule_catalog.inject("source-pass-side"))
 
             if not has_done(reply):
                 nudge = next_step_nudge(observed_fail=observed_fail,
                                         has_repro_md=repro_md is not None)
                 if nudge is not None:
                     feedback_parts.append(nudge)
+                    feedback_parts.append(rule_catalog.inject("early-draft"))
 
             if not actions and not feedback_parts:
                 if has_fences(reply):

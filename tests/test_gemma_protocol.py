@@ -188,6 +188,7 @@ def test_retry_reason_handles_empty_output():
     from harness.stages.gemma_protocol import retry_reason
     why = retry_reason("", 2)
     assert "exited 2" in why
+    assert "no output" in why
 
 
 def test_retry_reason_truncates_long_lines():
@@ -196,20 +197,37 @@ def test_retry_reason_truncates_long_lines():
     assert len(why) <= 120
 
 
-# --- fresh-sandbox pre-check (r16: script bergantung state work container) --
+# --- fresh-sandbox pre-check 2x (r16 state-dependence; r20 flakiness) -------
 
-def test_fresh_check_rejection_none_when_fail_printed():
-    from harness.stages.gemma_protocol import fresh_check_rejection
-    assert fresh_check_rejection("blah\nREPRO_STATUS: FAIL\n") is None
+def test_fresh_pair_ok_when_both_fail():
+    from harness.stages.gemma_protocol import fresh_pair_rejection
+    out = "blah\nREPRO_STATUS: FAIL\n"
+    assert fresh_pair_rejection(out, out) is None
 
 
-def test_fresh_check_rejection_message_carries_output_tail():
-    from harness.stages.gemma_protocol import fresh_check_rejection
-    msg = fresh_check_rejection("Traceback ...\nFileNotFoundError: repro_project\n")
+def test_fresh_pair_rejects_missing_token_with_self_contained_rule():
+    from harness.stages.gemma_protocol import fresh_pair_rejection
+    msg = fresh_pair_rejection("REPRO_STATUS: FAIL\n",
+                               "Traceback ...\nFileNotFoundError: repro_project\n")
     assert msg is not None
-    assert "fresh sandbox" in msg
     assert "FileNotFoundError: repro_project" in msg
-    assert "inside the script" in msg
+    assert "inside the script itself" in msg  # quote self-contained dari kontrak
+
+
+def test_fresh_pair_rejects_inconsistent_runs_with_repeatable_rule():
+    from harness.stages.gemma_protocol import fresh_pair_rejection
+    msg = fresh_pair_rejection("REPRO_STATUS: FAIL\n", "REPRO_STATUS: PASS\n")
+    assert msg is not None
+    assert "identical output" in msg  # quote repeatable dari kontrak
+
+
+def test_fresh_pair_adds_positive_control_rule_when_control_mentioned():
+    from harness.stages.gemma_protocol import fresh_pair_rejection
+    msg = fresh_pair_rejection(
+        "REPRO_STATUS: FAIL\n",
+        "ERROR: Positive control failed. Settings change didn't trigger reload.\n")
+    assert msg is not None
+    assert "positive control" in msg
 
 
 # --- PASS_OBSERVABLE (lever r10: klaim observable diverifikasi mekanis) -----

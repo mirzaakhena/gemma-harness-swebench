@@ -139,25 +139,48 @@ def retry_reason(output: str, exit_code: int, max_len: int = 200) -> str:
     why = f"repro run exited {exit_code} without REPRO_STATUS: FAIL"
     if last:
         why += f"; last output line: {last}"
+    else:
+        why += "; the run produced no output"
     return why if len(why) <= max_len else why[:max_len - 1] + "…"
 
 
-def fresh_check_rejection(fresh_output: str, tail_chars: int = 1500) -> str | None:
-    """Vonis pre-check sandbox segar saat DONE (r16): script yang bergantung
-    state work container (mis. project yang dibuat via aksi bash terpisah)
-    lolos di mata driver tapi gugur di gate self-contained. Pre-check
-    menjalankan script di container segar SEBELUM DONE diterima; kegagalan
-    diumpankan balik lengkap dengan output yang disaksikan mesin."""
-    if "REPRO_STATUS: FAIL" in fresh_output:
+def _tail(s: str, n: int) -> str:
+    return s if len(s) <= n else s[-n:]
+
+
+def fresh_pair_rejection(out1: str, out2: str,
+                         tail_chars: int = 800) -> str | None:
+    """Vonis pre-check DUA run sandbox segar saat DONE — mirror gate
+    (reproduce_gates.evaluate_gates): kedua run wajib mencetak
+    REPRO_STATUS: FAIL. Lahir dari r16 (state-dependence, run tunggal
+    cukup) lalu r20 (script flaky: run-1 FAIL sah, run-2 diagnostik
+    control tanpa token — pre-check 1x lolos, gate 2x menangkap).
+    Kegagalan diumpankan balik + injeksi aturan kontrak terkait
+    (rule_catalog)."""
+    from harness.stages import rule_catalog
+
+    def status(out: str) -> str | None:
+        m = re.findall(r"^REPRO_STATUS: (PASS|FAIL)\s*$", out, re.MULTILINE)
+        return m[-1] if m else None
+
+    s1, s2 = status(out1), status(out2)
+    if s1 == "FAIL" and s2 == "FAIL":
         return None
-    tail = fresh_output if len(fresh_output) <= tail_chars else fresh_output[-tail_chars:]
-    return ("Not done yet: I ran your script in a fresh sandbox (a clean "
-            "copy of the repository, nothing else) and it did not print "
-            "REPRO_STATUS: FAIL. Your script must create everything it "
-            "needs inside the script itself — any project, settings, app, "
-            "or files. Fresh-sandbox output:\n" + tail +
-            "\nFix the script, re-run it to see REPRO_STATUS: FAIL, then "
-            "declare DONE.")
+
+    parts = ["Not done yet: I ran your script twice, each time in a fresh "
+             "sandbox (a clean copy of the repository, nothing else), and "
+             "the runs did not both print REPRO_STATUS: FAIL.",
+             f"Run 1 output tail:\n{_tail(out1, tail_chars)}",
+             f"Run 2 output tail:\n{_tail(out2, tail_chars)}"]
+    if s1 is None or s2 is None:
+        parts.append(rule_catalog.inject("self-contained"))
+    else:
+        parts.append(rule_catalog.inject("repeatable"))
+    if "control" in (out1 + out2).lower():
+        parts.append(rule_catalog.inject("positive-control"))
+    parts.append("Fix the script, re-run it to see REPRO_STATUS: FAIL, "
+                 "then declare DONE.")
+    return "\n\n".join(parts)
 
 
 def next_step_nudge(observed_fail: bool, has_repro_md: bool) -> str | None:
