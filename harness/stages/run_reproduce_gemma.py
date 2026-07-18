@@ -82,13 +82,36 @@ def chat(endpoint: str, model: str, messages: list[dict], timeout: int = 600) ->
     return data["choices"][0]["message"]["content"] or ""
 
 
+def _as_text(s) -> str:
+    if s is None:
+        return ""
+    if isinstance(s, bytes):
+        return s.decode("utf-8", errors="replace")
+    return s
+
+
 def docker_exec(container: str, cmd: str, timeout: int = 180) -> tuple[str, int]:
-    p = subprocess.run(
-        ["docker", "exec", container, "bash", "-lc", cmd],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=timeout,
-    )
-    return (p.stdout or "") + (p.stderr or ""), p.returncode
+    try:
+        p = subprocess.run(
+            ["docker", "exec", container, "bash", "-lc", cmd],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout,
+        )
+        return (p.stdout or "") + (p.stderr or ""), p.returncode
+    except subprocess.TimeoutExpired as e:
+        # Pelajaran r7: repro.py yang hang (mis. menunggu runserver tanpa
+        # batas) tidak boleh membunuh driver. Restart container membersihkan
+        # proses background yatim; isi disk /testbed tetap utuh.
+        partial = _as_text(e.stdout) + _as_text(e.stderr)
+        subprocess.run(["docker", "restart", "-t", "1", container],
+                       capture_output=True, timeout=120)
+        note = (f"[command timed out after {timeout}s and was killed; "
+                "the sandbox was restarted, so any background processes are "
+                "gone — files on disk are intact. Give your script its own "
+                "shorter internal timeouts so it always terminates.]")
+        if partial and not partial.endswith("\n"):
+            partial += "\n"
+        return partial + note, 124
 
 
 def docker_write_file(container: str, path: str, body: str) -> None:
@@ -101,6 +124,14 @@ def docker_write_file(container: str, path: str, body: str) -> None:
 
 def tail(s: str, n: int = 4000) -> str:
     return s if len(s) <= n else "[...dipotong...]\n" + s[-n:]
+
+
+def emit_abort(em: Emitter, reason: str) -> None:
+    """Tutup run yang crash sesuai kontrak §8: event abort + verdict
+    wall="abort" + baris end di runs.jsonl."""
+    em.event("reproduce", "abort", detail={"reason": reason})
+    em.write_verdict(phases={}, wall="abort", pass_l1=None, pass_l2=None)
+    em.run_end({"reproduce": "abort"}, "abort")
 
 
 def main() -> int:
@@ -150,60 +181,67 @@ def main() -> int:
     observed_fail = False
     self_check_prompted = False
     done = False
-    for turn in range(1, args.max_turns + 1):
-        try:
-            reply = chat(args.endpoint, args.model, messages)
-        except Exception as e:  # transient endpoint error -> satu retry per turn
-            log(f"[driver] chat error: {e}; retrying once")
-            reply = chat(args.endpoint, args.model, messages)
-        messages.append({"role": "assistant", "content": reply})
-        log(f"[gemma t{turn}] {reply}")
+    try:
+        for turn in range(1, args.max_turns + 1):
+            try:
+                reply = chat(args.endpoint, args.model, messages)
+            except Exception as e:  # transient endpoint error -> satu retry per turn
+                log(f"[driver] chat error: {e}; retrying once")
+                reply = chat(args.endpoint, args.model, messages)
+            messages.append({"role": "assistant", "content": reply})
+            log(f"[gemma t{turn}] {reply}")
 
-        actions = parse_actions(reply)
-        feedback_parts: list[str] = []
-        for act in actions:
-            if act.kind == "file":
-                docker_write_file(container, act.arg, act.body + "\n")
-                log(f"[driver] wrote {act.arg} ({len(act.body)} chars)")
-                feedback_parts.append(f"OK: file {act.arg} written.")
-            elif act.kind == "bash":
-                out, code = docker_exec(container, act.body)
-                log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
+            actions = parse_actions(reply)
+            feedback_parts: list[str] = []
+            for act in actions:
+                if act.kind == "file":
+                    docker_write_file(container, act.arg, act.body + "\n")
+                    log(f"[driver] wrote {act.arg} ({len(act.body)} chars)")
+                    feedback_parts.append(f"OK: file {act.arg} written.")
+                elif act.kind == "bash":
+                    out, code = docker_exec(container, act.body)
+                    log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
+                    feedback_parts.append(
+                        f"OUTPUT (exit {code}):\n{tail(out)}")
+                    if "repro.py" in act.body:
+                        if "REPRO_STATUS: FAIL" in out:
+                            observed_fail = True
+                        else:
+                            attempt += 1
+                            em.event("reproduce", "retry", attempt=attempt,
+                                     budget={"msg_used": turn, "msg_limit": args.max_turns},
+                                     detail={"why": "run repro.py tanpa REPRO_STATUS: FAIL"})
+                elif act.kind == "repro.md":
+                    repro_md = act.body
+                    log("[driver] repro.md candidate received")
+                    feedback_parts.append("OK: repro.md received.")
+
+            if has_done(reply):
+                reason = done_rejection_reason(has_repro_md=repro_md is not None,
+                                               observed_fail=observed_fail)
+                if reason is not None:
+                    log(f"[driver] DONE rejected: {reason}")
+                    feedback_parts.append(reason)
+                elif not self_check_prompted:
+                    self_check_prompted = True
+                    log("[driver] DONE deferred: self-check round injected")
+                    feedback_parts.append(SELF_CHECK_MSG)
+                else:
+                    done = True
+                    log(f"[driver] DONE at turn {turn} (last attempt {attempt})")
+                    break
+
+            if not actions and not feedback_parts:
                 feedback_parts.append(
-                    f"OUTPUT (exit {code}):\n{tail(out)}")
-                if "repro.py" in act.body:
-                    if "REPRO_STATUS: FAIL" in out:
-                        observed_fail = True
-                    else:
-                        attempt += 1
-                        em.event("reproduce", "retry", attempt=attempt,
-                                 budget={"msg_used": turn, "msg_limit": args.max_turns},
-                                 detail={"why": "run repro.py tanpa REPRO_STATUS: FAIL"})
-            elif act.kind == "repro.md":
-                repro_md = act.body
-                log("[driver] repro.md candidate received")
-                feedback_parts.append("OK: repro.md received.")
-
-        if has_done(reply):
-            reason = done_rejection_reason(has_repro_md=repro_md is not None,
-                                           observed_fail=observed_fail)
-            if reason is not None:
-                log(f"[driver] DONE rejected: {reason}")
-                feedback_parts.append(reason)
-            elif not self_check_prompted:
-                self_check_prompted = True
-                log("[driver] DONE deferred: self-check round injected")
-                feedback_parts.append(SELF_CHECK_MSG)
-            else:
-                done = True
-                log(f"[driver] DONE at turn {turn} (last attempt {attempt})")
-                break
-
-        if not actions and not feedback_parts:
-            feedback_parts.append(
-                "No action block detected. Use ```bash / ```file:<path> / "
-                "```repro.md per the protocol, or close with DONE.")
-        messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
+                    "No action block detected. Use ```bash / ```file:<path> / "
+                    "```repro.md per the protocol, or close with DONE.")
+            messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
+    except Exception as e:
+        log(f"[driver] crash: {e!r}")
+        emit_abort(em, f"driver crash: {e!r}")
+        subprocess.run(["docker", "stop", container], capture_output=True)
+        print(json.dumps({"done": False, "aborted": True, "error": str(e)}))
+        return 1
 
     # Salin artefak final
     files_dir = em.run_dir / "files"
