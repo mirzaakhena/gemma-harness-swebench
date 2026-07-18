@@ -50,6 +50,21 @@ Work step by step: act, wait for my output, then take the next step based on
 what you observed. Keep prose minimal; focus on the next action.
 """
 
+SELF_CHECK_MSG = """Final check before your DONE is accepted. Answer both,
+quoting evidence:
+
+1. Quote the exact code from the repository source (file + line) that will
+   produce your PASS observable once the bug is fixed. If you cannot quote
+   it, your PASS condition is a guess — read the source first, then revise
+   your script.
+2. Show that your script exercises the same scenario the issue describes:
+   name the entry point / command the user runs in the issue, and point to
+   the line in YOUR script that runs that same path. If your script builds
+   the state by hand instead, revise it to run the real path.
+
+If both answers hold, declare DONE again. Otherwise revise your script,
+re-run it to see REPRO_STATUS: FAIL, then declare DONE."""
+
 
 def chat(endpoint: str, model: str, messages: list[dict], timeout: int = 600) -> str:
     req = urllib.request.Request(
@@ -133,6 +148,7 @@ def main() -> int:
     attempt = 1
     repro_md: str | None = None
     observed_fail = False
+    self_check_prompted = False
     done = False
     for turn in range(1, args.max_turns + 1):
         try:
@@ -174,6 +190,10 @@ def main() -> int:
             if reason is not None:
                 log(f"[driver] DONE rejected: {reason}")
                 feedback_parts.append(reason)
+            elif not self_check_prompted:
+                self_check_prompted = True
+                log("[driver] DONE deferred: self-check round injected")
+                feedback_parts.append(SELF_CHECK_MSG)
             else:
                 done = True
                 log(f"[driver] DONE at turn {turn} (last attempt {attempt})")
