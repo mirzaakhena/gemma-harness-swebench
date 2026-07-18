@@ -59,6 +59,27 @@ memvonis final saat dokumen ini ditulis — pertanyaan menggantung):
 - Dokumen internal (docs/ ini, vault, commit message, chat dgn Mirza) boleh
   Indonesia.
 
+## 4b. Higiene prompt (WAJIB — berlaku untuk SEMUA prompt & skill)
+
+Keputusan Mirza 2026-07-18 (mengulang pengingat lama di vault):
+
+1. **Prompt = instruksi yang model BUTUHKAN untuk fokus, titik.** Jangan
+   menulis meta-informasi yang tidak mengubah tindakan model: penjelasan apa
+   yang harness lakukan di belakang layar, mekanisme penilaian, alasan
+   historis desain. Kriteria output boleh (itu spesifikasi tugas); narasi
+   mekanisme enforcement tidak (itu celah gaming + distraksi).
+   Contoh salah: "The harness appends the mechanical slots itself...".
+   Contoh benar: "Your repro.md contains exactly these lines: ...".
+2. **Scope positif, bukan larangan yang menunjuk target.** Larangan eksplisit
+   memberi model ide/celah tentang hal yang justru dilarang.
+   Preseden vault: "jangan edit file xyz" → ganti "kamu hanya bekerja di
+   bawah folder abc". Terapkan pola yang sama di semua kalimat scope
+   (mis. "your writable workspace is /testbed/.pipe/" alih-alih "do not
+   write outside .pipe / repo is read-only").
+3. Enforcement tetap MEKANIS di driver/gate — aturan yang dicabut dari prompt
+   TIDAK berarti hilang; dia pindah ke kode (pesan penolakan runtime cukup
+   memberi tahu instruksi berikutnya, bukan mekanisme pengawasannya).
+
 ## 5. Pembagian beban model vs harness
 
 - **Slot mekanis diisi HARNESS, bukan model** (ringankan model): repro.md →

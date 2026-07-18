@@ -59,14 +59,11 @@ def done_rejection_reason(has_repro_md: bool, observed_fail: bool) -> str | None
     yes + SELESAI padahal eksekusi repro-nya crash — konfirmasi tanpa bukti.
     """
     if not has_repro_md:
-        return ("Cannot accept DONE: you have not submitted the ```repro.md "
-                "block yet.")
+        return ("Not done yet: submit the ```repro.md block first, then "
+                "declare DONE.")
     if not observed_fail:
-        return ("Cannot accept DONE: I have not witnessed any execution of "
-                "`python /testbed/.pipe/repro.py` printing "
-                "`REPRO_STATUS: FAIL` in this session. Run your repro, "
-                "observe its output, and fix it until FAIL is visible — "
-                "only then declare DONE.")
+        return ("Not done yet: run `python /testbed/.pipe/repro.py` and get "
+                "`REPRO_STATUS: FAIL` in its output first, then declare DONE.")
     return None
 
 
@@ -77,10 +74,9 @@ def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool) -> str | 
     bash) sebelum menyerahkan peta — melarang localize buta dari prior.
     """
     if not has_localize_md:
-        return ("Cannot accept DONE: you have not submitted the "
-                "```localize.md block yet.")
+        return ("Not done yet: submit the ```localize.md block first, then "
+                "declare DONE.")
     if not ran_any_bash:
-        return ("Cannot accept DONE: you have performed zero exploration "
-                "(no bash actions). Read the code in the sandbox first; "
-                "localizing without opening a single file is guessing.")
+        return ("Not done yet: do some exploration first — open the relevant "
+                "code with bash actions, then submit your map.")
     return None

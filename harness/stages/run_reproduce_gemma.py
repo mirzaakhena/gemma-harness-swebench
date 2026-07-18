@@ -37,24 +37,17 @@ blocks; they are executed in order and I send the results back to you.
 ```file:/testbed/.pipe/repro.py
 <full file content>
 ```
-3. Submit the final repro.md artifact — interpretive slots only (SYMPTOM,
-   TRIGGER, EXPECTED vs ACTUAL); the harness appends REPRO COMMAND and
-   CONFIRMED-AT-BASE itself:
+3. Submit the final repro.md artifact (the lines listed in the contract):
 ```repro.md
 <repro.md content>
 ```
-Once ALL final outputs are ready (you have run repro.py and seen
-REPRO_STATUS: FAIL, and you have submitted the repro.md block), close with a
-single line containing exactly:
+Close with a single line containing exactly:
 DONE
+Declare DONE only after you have run repro.py, seen REPRO_STATUS: FAIL in its
+output, and submitted the repro.md block.
 
-EVIDENCE RULE: DONE is only accepted if, in this session, I (the driver) have
-witnessed your repro.py execution print REPRO_STATUS: FAIL. Writing
-CONFIRMED-AT-BASE: yes without ever seeing FAIL is a contract violation.
-Work step by step: explore first, wait for my output, then take the next
-step — do not pile every action into a single reply.
-
-Do not write prose beyond what is needed; focus on the next action.
+Work step by step: act, wait for my output, then take the next step based on
+what you observed. Keep prose minimal; focus on the next action.
 """
 
 

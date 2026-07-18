@@ -32,8 +32,7 @@ blocks; they are executed in order and I send the results back to you.
 ```bash
 <command>
 ```
-2. Write a small probe script — ONLY under /testbed/.pipe/ (writes anywhere
-   else are REJECTED; the repository is read-only for you):
+2. Write a probe script or note in your workspace /testbed/.pipe/:
 ```file:/testbed/.pipe/probe.py
 <file content>
 ```
@@ -41,12 +40,13 @@ blocks; they are executed in order and I send the results back to you.
 ```localize.md
 <localize.md content>
 ```
-Once confident (you have explored and your evidence points at the mechanism
-site), close with a single line containing exactly:
+Close with a single line containing exactly:
 DONE
+Declare DONE only after you have explored the code and your evidence points
+at the mechanism site.
 
-Work step by step: explore first, wait for my output, then take the next
-step — do not pile every action into a single reply.
+Work step by step: act, wait for my output, then take the next step based on
+what you observed. Keep prose minimal; focus on the next action.
 """
 
 
@@ -158,11 +158,10 @@ def main() -> int:
         for act in actions:
             if act.kind == "file":
                 if not act.arg.startswith("/testbed/.pipe/"):
-                    log(f"[driver] REJECTED write outside .pipe: {act.arg}")
+                    log(f"[driver] rejected write outside workspace: {act.arg}")
                     feedback_parts.append(
-                        f"REJECTED: writing {act.arg} is not allowed — the "
-                        "repository is read-only; probe scripts may only live "
-                        "under /testbed/.pipe/.")
+                        f"Your writable workspace is /testbed/.pipe/ — put "
+                        f"{Path(act.arg).name} there instead.")
                     continue
                 docker_write_file(container, act.arg, act.body + "\n")
                 log(f"[driver] wrote {act.arg} ({len(act.body)} chars)")
