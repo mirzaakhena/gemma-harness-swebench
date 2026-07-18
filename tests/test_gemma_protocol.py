@@ -67,3 +67,22 @@ def test_multiline_file_body_preserved():
     body = "import os\n\nif True:\n    print('x')"
     text = f"```file:/testbed/.pipe/repro.py\n{body}\n```"
     assert parse_actions(text)[0].body == body
+
+
+# --- done_rejection_reason (aturan bukti-dulu-baru-SELESAI) -----------------
+
+def test_done_accepted_with_md_and_observed_fail():
+    from harness.stages.gemma_protocol import done_rejection_reason
+    assert done_rejection_reason(has_repro_md=True, observed_fail=True) is None
+
+
+def test_done_rejected_without_observed_fail():
+    from harness.stages.gemma_protocol import done_rejection_reason
+    reason = done_rejection_reason(has_repro_md=True, observed_fail=False)
+    assert reason is not None and "REPRO_STATUS: FAIL" in reason
+
+
+def test_done_rejected_without_repro_md():
+    from harness.stages.gemma_protocol import done_rejection_reason
+    reason = done_rejection_reason(has_repro_md=False, observed_fail=True)
+    assert reason is not None and "repro.md" in reason

@@ -47,3 +47,19 @@ def parse_actions(text: str) -> list[Action]:
 def has_done(text: str) -> bool:
     outside = _FENCE_RE.sub("", text)
     return any(line.strip() == "SELESAI" for line in outside.splitlines())
+
+
+def done_rejection_reason(has_repro_md: bool, observed_fail: bool) -> str | None:
+    """Aturan bukti-dulu-baru-SELESAI. None = SELESAI diterima.
+
+    Lahir dari kegagalan run r2 (11422): model menyerahkan CONFIRMED-AT-BASE
+    yes + SELESAI padahal eksekusi repro-nya crash — konfirmasi tanpa bukti.
+    """
+    if not has_repro_md:
+        return ("Belum bisa SELESAI: blok ```repro.md belum kamu serahkan.")
+    if not observed_fail:
+        return ("Belum bisa SELESAI: aku belum pernah melihat eksekusi "
+                "`python /testbed/.pipe/repro.py` yang mencetak "
+                "`REPRO_STATUS: FAIL` di sesi ini. Jalankan repro-mu, lihat "
+                "outputnya, perbaiki sampai FAIL terlihat — baru SELESAI.")
+    return None

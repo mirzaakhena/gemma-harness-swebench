@@ -6,8 +6,8 @@ kerja, umpankan output balik. Telemetri via harness.emit; console.log
 di-append tiap langkah. Driver TIDAK memvonis: event `exit` + verdict.json
 ditulis harness setelah gate mekanis terpisah.
 
-Pemakaian (dari root main\):
-    python harness/stages/run_reproduce_gemma.py --case django__django-11422 \
+Pemakaian (dari root main):
+    python harness/stages/run_reproduce_gemma.py --case django__django-11422
         --rerun 2 --image ghcr.io/... [--max-turns 40]
 """
 from __future__ import annotations
@@ -19,7 +19,8 @@ import urllib.request
 from pathlib import Path
 
 from harness.emit import Emitter
-from harness.stages.gemma_protocol import has_done, parse_actions
+from harness.stages.gemma_protocol import (done_rejection_reason, has_done,
+                                           parse_actions)
 
 PROTOCOL_NOTE = """
 ## Cara bekerja (protokol aksi — WAJIB)
@@ -43,6 +44,12 @@ Setelah SEMUA output final siap (repro.py sudah kamu jalankan dan melihat
 REPRO_STATUS: FAIL, dan blok repro.md sudah kamu serahkan), tutup dengan satu
 baris berisi persis:
 SELESAI
+
+ATURAN BUKTI: SELESAI hanya diterima kalau di sesi ini aku (driver) sudah
+menyaksikan eksekusi repro.py-mu mencetak REPRO_STATUS: FAIL. Menulis
+CONFIRMED-AT-BASE: yes tanpa pernah melihat FAIL adalah pelanggaran kontrak.
+Kerjakan bertahap: eksplorasi dulu, tunggu output-ku, baru langkah berikutnya —
+jangan menumpuk semua aksi dalam satu balasan.
 
 Jangan menulis teks di luar keperluan; fokus pada aksi berikutnya.
 """
@@ -129,6 +136,7 @@ def main() -> int:
 
     attempt = 1
     repro_md: str | None = None
+    observed_fail = False
     done = False
     for turn in range(1, args.max_turns + 1):
         try:
@@ -151,20 +159,25 @@ def main() -> int:
                 log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
                 feedback_parts.append(
                     f"OUTPUT (exit {code}):\n{tail(out)}")
-                if "repro.py" in act.body and "REPRO_STATUS: FAIL" not in out:
-                    attempt += 1
-                    em.event("reproduce", "retry", attempt=attempt,
-                             budget={"msg_used": turn, "msg_limit": args.max_turns},
-                             detail={"why": "run repro.py tanpa REPRO_STATUS: FAIL"})
+                if "repro.py" in act.body:
+                    if "REPRO_STATUS: FAIL" in out:
+                        observed_fail = True
+                    else:
+                        attempt += 1
+                        em.event("reproduce", "retry", attempt=attempt,
+                                 budget={"msg_used": turn, "msg_limit": args.max_turns},
+                                 detail={"why": "run repro.py tanpa REPRO_STATUS: FAIL"})
             elif act.kind == "repro.md":
                 repro_md = act.body
                 log("[driver] kandidat repro.md diterima")
                 feedback_parts.append("OK: repro.md diterima.")
 
         if has_done(reply):
-            if repro_md is None:
-                feedback_parts.append(
-                    "Belum bisa SELESAI: blok ```repro.md belum kamu serahkan.")
+            reason = done_rejection_reason(has_repro_md=repro_md is not None,
+                                           observed_fail=observed_fail)
+            if reason is not None:
+                log(f"[driver] SELESAI DITOLAK: {reason}")
+                feedback_parts.append(reason)
             else:
                 done = True
                 log(f"[driver] SELESAI pada turn {turn} (attempt terakhir {attempt})")
