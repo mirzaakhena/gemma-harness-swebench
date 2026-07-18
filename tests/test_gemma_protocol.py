@@ -175,6 +175,22 @@ def test_next_step_nudge_silent_otherwise():
     assert next_step_nudge(observed_fail=True, has_repro_md=True) is None
 
 
+# --- fresh-sandbox pre-check (r16: script bergantung state work container) --
+
+def test_fresh_check_rejection_none_when_fail_printed():
+    from harness.stages.gemma_protocol import fresh_check_rejection
+    assert fresh_check_rejection("blah\nREPRO_STATUS: FAIL\n") is None
+
+
+def test_fresh_check_rejection_message_carries_output_tail():
+    from harness.stages.gemma_protocol import fresh_check_rejection
+    msg = fresh_check_rejection("Traceback ...\nFileNotFoundError: repro_project\n")
+    assert msg is not None
+    assert "fresh sandbox" in msg
+    assert "FileNotFoundError: repro_project" in msg
+    assert "inside the script" in msg
+
+
 # --- PASS_OBSERVABLE (lever r10: klaim observable diverifikasi mekanis) -----
 
 def test_parse_pass_observable_found():

@@ -127,6 +127,24 @@ def observable_rejection(observable: str | None) -> str:
             "corrected PASS_OBSERVABLE line.")
 
 
+def fresh_check_rejection(fresh_output: str, tail_chars: int = 1500) -> str | None:
+    """Vonis pre-check sandbox segar saat DONE (r16): script yang bergantung
+    state work container (mis. project yang dibuat via aksi bash terpisah)
+    lolos di mata driver tapi gugur di gate self-contained. Pre-check
+    menjalankan script di container segar SEBELUM DONE diterima; kegagalan
+    diumpankan balik lengkap dengan output yang disaksikan mesin."""
+    if "REPRO_STATUS: FAIL" in fresh_output:
+        return None
+    tail = fresh_output if len(fresh_output) <= tail_chars else fresh_output[-tail_chars:]
+    return ("Not done yet: I ran your script in a fresh sandbox (a clean "
+            "copy of the repository, nothing else) and it did not print "
+            "REPRO_STATUS: FAIL. Your script must create everything it "
+            "needs inside the script itself — any project, settings, app, "
+            "or files. Fresh-sandbox output:\n" + tail +
+            "\nFix the script, re-run it to see REPRO_STATUS: FAIL, then "
+            "declare DONE.")
+
+
 def next_step_nudge(observed_fail: bool, has_repro_md: bool) -> str | None:
     """Pemutus loop degeneratif (r13): model sudah menyaksikan FAIL tapi
     terus menulis-ulang script tiap turn tanpa pernah menyetor repro.md.

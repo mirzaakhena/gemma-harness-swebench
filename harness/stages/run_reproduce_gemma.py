@@ -18,14 +18,18 @@ import subprocess
 import urllib.request
 from pathlib import Path
 
+import tempfile
+
 from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_reason,
-                                           format_reminder, has_done,
+                                           format_reminder,
+                                           fresh_check_rejection, has_done,
                                            has_fences, next_step_nudge,
                                            observable_candidates,
                                            observable_rejection,
                                            parse_actions,
                                            parse_pass_observable)
+from harness.stages.repro_sandbox_runner import run_once
 from harness.stages.reproduce_gates import compose_repro_md
 
 PROTOCOL_NOTE = """
@@ -152,6 +156,18 @@ def observable_in_container(container: str, observable: str) -> bool:
     return "FOUND" in out
 
 
+def fresh_sandbox_output(container: str, image: str, timeout: int = 300) -> str:
+    """Salin repro.py dari work container, jalankan sekali di container
+    segar (tanpa patch); kembalikan output-nya."""
+    body, code = docker_exec(container, "cat /testbed/.pipe/repro.py")
+    if code != 0:
+        return "[pre-check] /testbed/.pipe/repro.py missing in work container"
+    tmpdir = tempfile.mkdtemp(prefix="fresh-check-")
+    repro = Path(tmpdir) / "repro.py"
+    repro.write_text(body, encoding="utf-8", newline="\n")
+    return run_once(image, tmpdir, timeout)["output"]
+
+
 def emit_abort(em: Emitter, reason: str) -> None:
     """Tutup run yang crash sesuai kontrak §8: event abort + verdict
     wall="abort" + baris end di runs.jsonl."""
@@ -257,10 +273,16 @@ def main() -> int:
                     feedback_parts.append(SELF_CHECK_MSG)
                 elif (pass_observable is not None
                       and observable_in_container(container, pass_observable)):
-                    done = True
-                    log(f"[driver] DONE at turn {turn} (last attempt {attempt}); "
-                        f"pass observable verified: {pass_observable!r}")
-                    break
+                    fresh_out = fresh_sandbox_output(container, args.image)
+                    fresh_reject = fresh_check_rejection(fresh_out)
+                    if fresh_reject is None:
+                        done = True
+                        log(f"[driver] DONE at turn {turn} (last attempt {attempt}); "
+                            f"pass observable verified: {pass_observable!r}; "
+                            "fresh-sandbox pre-check OK")
+                        break
+                    log("[driver] DONE rejected: fresh-sandbox pre-check failed")
+                    feedback_parts.append(fresh_reject)
                 else:
                     msg = observable_rejection(pass_observable)
                     if pass_observable is not None:
