@@ -28,7 +28,8 @@ from harness.stages.gemma_protocol import (done_rejection_reason,
                                            observable_candidates,
                                            observable_rejection,
                                            parse_actions,
-                                           parse_pass_observable)
+                                           parse_pass_observable,
+                                           retry_reason)
 from harness.stages.repro_sandbox_runner import run_once
 from harness.stages.reproduce_gates import compose_repro_md
 

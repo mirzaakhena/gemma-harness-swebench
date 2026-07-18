@@ -6,6 +6,7 @@ tanpa event abort (kontrak docs/kontrak-output.md §8).
 """
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -57,6 +58,36 @@ def test_docker_exec_timeout_tolerates_bytes_and_none(monkeypatch):
     out, code = docker_exec("c1", "x", timeout=5)
     assert code == 124
     assert "bytes out" in out
+
+
+def test_driver_module_has_no_unresolved_names():
+    # Regresi r19: retry_reason dipakai di main() tapi tak di-import ->
+    # NameError baru meledak saat runtime. Kompilasi + audit nama global
+    # fungsi-fungsi modul menangkapnya tanpa menjalankan docker.
+    import ast
+    import harness.stages.run_reproduce_gemma as drv
+    src = Path(drv.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    import builtins
+    known = set(dir(builtins)) | set(vars(drv).keys())
+    missing = set()
+
+    class _V(ast.NodeVisitor):
+        def visit_FunctionDef(self, node):
+            local = {a.arg for a in node.args.args}
+            for n in ast.walk(node):
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                    local.add(n.id)
+                elif isinstance(n, (ast.For,)) and isinstance(n.target, ast.Name):
+                    local.add(n.target.id)
+            for n in ast.walk(node):
+                if (isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+                        and n.id not in local and n.id not in known):
+                    missing.add(f"{node.name}: {n.id}")
+            self.generic_visit(node)
+
+    _V().visit(tree)
+    assert not missing, f"nama tak ter-resolve: {sorted(missing)}"
 
 
 def test_docker_write_file_sends_lf_only_bytes(monkeypatch):
