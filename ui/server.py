@@ -93,6 +93,16 @@ def run_turns(run_dir: Path) -> int | None:
     return best
 
 
+_CAMPAIGN_LABELS = {"r-dev": "REPRODUCE", "l-dev": "LOCALIZE",
+                    "f-dev": "FIX", "v-dev": "VERIFY"}
+
+
+def campaign_label(name: str) -> str:
+    """Label tab manusiawi (masukan Mirza); kampanye tak dikenal tampil
+    apa adanya."""
+    return _CAMPAIGN_LABELS.get(name, name)
+
+
 def order_campaigns(campaigns: list[str]) -> list[str]:
     """r-dev (REPRODUCE) selalu tab pertama (permintaan Mirza)."""
     return ([c for c in campaigns if c == "r-dev"]
@@ -257,8 +267,9 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
     tab_links = []
     for camp in campaigns:
         cls = " class='active'" if camp == active else ""
-        tab_links.append(f"<a{cls} href='/?tab="
-                         f"{urllib.parse.quote(camp)}'>{html.escape(camp)}</a>")
+        tab_links.append(
+            f"<a{cls} href='/?tab={urllib.parse.quote(camp)}'>"
+            f"{html.escape(campaign_label(camp))}</a>")
     parts.append("<div class='tabs'>" + "".join(tab_links) + "</div>")
 
     runs = sorted(list_runs(root / active),

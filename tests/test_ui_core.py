@@ -86,6 +86,13 @@ def test_run_turns_none_without_console(tmp_path):
     assert run_turns(tmp_path) is None
 
 
+def test_campaign_label_maps_known_names():
+    from ui.server import campaign_label
+    assert campaign_label("r-dev") == "REPRODUCE"
+    assert campaign_label("l-dev") == "LOCALIZE"
+    assert campaign_label("x-camp") == "x-camp"
+
+
 def test_order_campaigns_puts_rdev_first():
     from ui.server import order_campaigns
     assert order_campaigns(["l-dev", "r-dev"]) == ["r-dev", "l-dev"]
