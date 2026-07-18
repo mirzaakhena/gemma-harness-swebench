@@ -26,6 +26,7 @@ from harness.stages.gemma_protocol import (done_rejection_reason,
                                            format_reminder,
                                            fresh_pair_rejection, has_done,
                                            has_fences, is_repro_run,
+                                           literal_emitted_by_script,
                                            next_step_nudge,
                                            observable_candidates,
                                            observable_rejection,
@@ -161,11 +162,17 @@ def observable_in_container(container: str, observable: str) -> bool:
     candidates = observable_candidates(observable)
     docker_write_file(container, "/tmp/.pass_observable",
                       "\n".join(candidates) + "\n")
+    # Sumber repo SAJA (r26: --exclude-dir=.pipe menutup lubang self-match —
+    # literal pencarian di script sendiri bukan bukti string itu nyata).
     out, _ = docker_exec(
         container,
-        "grep -rqF -f /tmp/.pass_observable /testbed && echo FOUND || echo MISSING",
+        "grep -rqF -f /tmp/.pass_observable --exclude-dir=.pipe /testbed "
+        "&& echo FOUND || echo MISSING",
         timeout=60)
-    return "FOUND" in out
+    if "FOUND" in out:
+        return True
+    script, code = docker_exec(container, "cat /testbed/.pipe/repro.py")
+    return code == 0 and literal_emitted_by_script(script, observable)
 
 
 def fresh_sandbox_output(container: str, image: str,

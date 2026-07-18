@@ -263,6 +263,27 @@ def test_fresh_pair_adds_positive_control_rule_when_control_mentioned():
     assert "positive control" in msg
 
 
+# --- literal_emitted_by_script (r26: lubang self-match token hantu) ---------
+
+def test_literal_emitted_true_for_print_lines():
+    from harness.stages.gemma_protocol import literal_emitted_by_script
+    script = 'x = 1\nprint("MARKER: watched")\n'
+    assert literal_emitted_by_script(script, "MARKER: watched") is True
+
+
+def test_literal_emitted_false_for_search_lines():
+    # Kasus nyata r26: 'Restarting...' hanya ada di baris pencarian
+    # `if ... in line` -> bukan marker milik skenario, token hantu.
+    from harness.stages.gemma_protocol import literal_emitted_by_script
+    script = 'if "Restarting..." in line_inner:\n    ok = True\n'
+    assert literal_emitted_by_script(script, "Restarting...") is False
+
+
+def test_literal_emitted_false_when_absent():
+    from harness.stages.gemma_protocol import literal_emitted_by_script
+    assert literal_emitted_by_script("print('other')", "MARKER") is False
+
+
 # --- PASS_OBSERVABLE (lever r10: klaim observable diverifikasi mekanis) -----
 
 def test_parse_pass_observable_found():

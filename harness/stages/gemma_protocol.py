@@ -112,6 +112,20 @@ def observable_candidates(observable: str) -> list[str]:
     return out or [observable]
 
 
+def literal_emitted_by_script(script: str, literal: str) -> bool:
+    """Marker milik skenario sah hanya bila script MENCETAKNYA (baris
+    emisi print/write), bukan sekadar MENCARINYA di output framework.
+    Lahir dari r26: token hantu 'Restarting...' lolos grep karena literal
+    itu ada di baris pencarian `if ... in line` script sendiri."""
+    for line in script.splitlines():
+        if literal in line:
+            head = line.split(literal, 1)[0]
+            if ("print(" in head or "stdout.write" in head
+                    or "stderr.write" in head):
+                return True
+    return False
+
+
 def observable_rejection(observable: str | None) -> str:
     """Pesan penolakan DONE untuk klaim observable. English (model-facing)."""
     if observable is None:
@@ -119,12 +133,14 @@ def observable_rejection(observable: str | None) -> str:
                 "this exact form: PASS_OBSERVABLE: <the exact literal string "
                 "your script matches on to decide PASS>. Then declare DONE "
                 "again.")
-    return (f"Not done yet: the exact string '{observable}' appears nowhere "
-            "in the repository source or in your script. Open the module "
-            "that produces your PASS observable, quote the message exactly "
-            "as written there, update your script to match it, re-run the "
-            "script to see REPRO_STATUS: FAIL, then declare DONE with the "
-            "corrected PASS_OBSERVABLE line.")
+    return (f"Not done yet: the exact string '{observable}' does not appear "
+            "in the repository source, and your own script does not print "
+            "it either — so nothing can ever produce it. Either quote a "
+            "message exactly as it is written in the repository source "
+            "(open the file with a bash action first), or have your script "
+            "print this marker itself. Then re-run the script to see "
+            "REPRO_STATUS: FAIL and declare DONE with the corrected "
+            "PASS_OBSERVABLE line.")
 
 
 _REPRO_RUN_RE = re.compile(r"python[\d.]*\s+\S*repro\.py")
