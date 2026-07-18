@@ -246,3 +246,34 @@ def test_render_event_line_truncates_long_detail():
           "detail": {"blob": "x" * 500}}
     line = render_event_line(ev)
     assert len(line) < 300
+
+
+# --- sort by started datetime (permintaan Mirza 2026-07-19) ----------------
+
+def test_sort_runs_desc_by_started_datetime(tmp_path):
+    from ui.server import sort_runs_desc
+    camp = tmp_path / "r-dev"
+    old = camp / "r-dev--django__django-11422--r44"
+    new = camp / "r-dev--django__django-11999--r1"
+    old.mkdir(parents=True)
+    new.mkdir(parents=True)
+    (old / "events.jsonl").write_text(
+        '{"ts": "2026-07-19T02:00:00+07:00", "event": "enter"}\n',
+        encoding="utf-8")
+    (new / "events.jsonl").write_text(
+        '{"ts": "2026-07-19T04:50:00+07:00", "event": "enter"}\n',
+        encoding="utf-8")
+    runs = [{"run_id": old.name, "verdict": None, "wall": None},
+            {"run_id": new.name, "verdict": None, "wall": None}]
+    ordered = sort_runs_desc(runs, camp)
+    assert ordered[0]["run_id"] == new.name  # started terbaru duluan
+
+
+def test_sort_runs_desc_missing_events_falls_back_to_rerun(tmp_path):
+    from ui.server import sort_runs_desc
+    camp = tmp_path / "r-dev"
+    camp.mkdir(parents=True)
+    runs = [{"run_id": "x--c--r2", "verdict": None, "wall": None},
+            {"run_id": "x--c--r7", "verdict": None, "wall": None}]
+    ordered = sort_runs_desc(runs, camp)
+    assert ordered[0]["run_id"] == "x--c--r7"

@@ -115,6 +115,32 @@ def run_sort_key(run_id: str) -> tuple:
     return (int(m.group(1)) if m else -1, run_id)
 
 
+def run_started_ts(run_dir: Path):
+    """Datetime (aware) event pertama run; None bila tak terbaca."""
+    from datetime import datetime
+    try:
+        first = (Path(run_dir) / "events.jsonl").read_text(
+            encoding="utf-8", errors="replace").splitlines()[0]
+        return datetime.fromisoformat(json.loads(first)["ts"]).astimezone()
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return None
+
+
+def sort_runs_desc(runs: list[dict], campaign_dir: Path) -> list[dict]:
+    """Urut desc berdasar started datetime (event pertama) — permintaan
+    Mirza 2026-07-19: run terbaru case mana pun tampil di halaman pertama
+    (nomor rerun per-case, jadi r1 case baru > r44 case lama). Fallback
+    run tanpa events.jsonl: nomor rerun."""
+    from datetime import datetime, timezone
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+
+    def key(r: dict) -> tuple:
+        ts = run_started_ts(Path(campaign_dir) / r["run_id"])
+        return (ts or epoch, run_sort_key(r["run_id"]))
+
+    return sorted(runs, key=key, reverse=True)
+
+
 def paginate(items: list, page: int, per_page: int = 15) -> tuple[list, int]:
     """(potongan halaman, total_halaman); page 1-based, di-clamp."""
     total = max(1, -(-len(items) // per_page))
@@ -272,8 +298,7 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
             f"{html.escape(campaign_label(camp))}</a>")
     parts.append("<div class='tabs'>" + "".join(tab_links) + "</div>")
 
-    runs = sorted(list_runs(root / active),
-                  key=lambda r: run_sort_key(r["run_id"]), reverse=True)
+    runs = sort_runs_desc(list_runs(root / active), root / active)
     if not runs:
         parts.append("<p class='dim'>(belum ada run)</p>")
         return _page("log viewer", "".join(parts))
