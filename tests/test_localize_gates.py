@@ -20,6 +20,71 @@ evidence: Fungsi iter_modules_and_files (baris ~115) melakukan `continue` saat g
 """
 
 
+GOLD_PATCH = """diff --git a/django/utils/autoreload.py b/django/utils/autoreload.py
+--- a/django/utils/autoreload.py
++++ b/django/utils/autoreload.py
+@@ -110,6 +110,10 @@ def iter_modules_and_files(modules, extra_files):
+     for module in modules:
++        if getattr(module, "__spec__", None) is None:
++            continue
+@@ -220,3 +224,5 @@ def tail
+     x = 1
++    y = 2
+diff --git a/tests/utils_tests/test_autoreload.py b/tests/utils_tests/test_autoreload.py
+--- a/tests/utils_tests/test_autoreload.py
++++ b/tests/utils_tests/test_autoreload.py
+@@ -1,3 +1,4 @@
++import x
+"""
+
+
+def test_gold_touched_files_parses_b_side():
+    # L2 LOCALIZE (keputusan Mirza 2026-07-19): ground truth = file yang
+    # disentuh gold patch; parser membaca sisi b/ dari unified diff.
+    from harness.stages.localize_gates import gold_touched_files
+    assert gold_touched_files(GOLD_PATCH) == {
+        "django/utils/autoreload.py",
+        "tests/utils_tests/test_autoreload.py",
+    }
+
+
+def test_gold_touched_files_ignores_dev_null():
+    from harness.stages.localize_gates import gold_touched_files
+    patch = ("diff --git a/old.py b/old.py\n--- a/old.py\n+++ /dev/null\n"
+             "@@ -1 +0,0 @@\n-x\n")
+    assert gold_touched_files(patch) == {"old.py"}
+
+
+def test_gold_line_ranges_for_file():
+    # Overlap rentang baris = telemetri L3 advisory (bukan vonis) — "gaya
+    # boleh beda" ala flip test; rentang diambil dari sisi baru (+c,d).
+    from harness.stages.localize_gates import gold_line_ranges
+    ranges = gold_line_ranges(GOLD_PATCH, "django/utils/autoreload.py")
+    assert ranges == [(110, 119), (224, 228)]
+
+
+def test_evaluate_l2_file_match_pass_and_wrong_logic():
+    # Vonis L2 mekanis: file: di localize.md harus anggota himpunan file
+    # gold; mismatch -> wrong-logic (padanan flip-fail di REPRODUCE).
+    from harness.stages.localize_gates import evaluate_localize_l2
+    ok = evaluate_localize_l2("django/utils/autoreload.py", GOLD_PATCH,
+                              lines=(105, 130))
+    assert ok.file_match is True
+    assert ok.line_overlap is True   # 105-130 overlap hunk 110-119
+    bad = evaluate_localize_l2("django/core/handlers/base.py", GOLD_PATCH,
+                               lines=(1, 10))
+    assert bad.file_match is False
+    assert bad.line_overlap is None  # file salah -> overlap tak bermakna
+
+
+def test_evaluate_l2_no_overlap_is_advisory_only():
+    from harness.stages.localize_gates import evaluate_localize_l2
+    r = evaluate_localize_l2("django/utils/autoreload.py", GOLD_PATCH,
+                             lines=(500, 600))
+    assert r.file_match is True      # tetap match — vonis dari file saja
+    assert r.line_overlap is False   # advisory: situs beda dgn hunk gold
+
+
 def test_parse_localize_md_ok():
     s = parse_localize_md(MD_OK)
     assert s["chosen"] == "1"
