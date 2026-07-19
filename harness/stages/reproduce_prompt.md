@@ -30,6 +30,15 @@ script. The fix belongs to a later stage.
      user demonstrates, exercised through their own example. Broader wishes
      or related behaviors mentioned around the report stay out of the
      predicate.<!-- /rule -->
+   - <!-- rule:observable-behavior-change -->When the issue asks that an
+     input or usage be prevented, rejected, or disallowed, treat ANY
+     observable sign that it is no longer silently accepted as the
+     correct behavior: an exception of any type raised while building or
+     executing the scenario, or a warning whose message names the
+     feature. Run the scenario with both channels captured — a warning
+     recorder and a try/except that reports what was raised — and let
+     either signal satisfy the predicate, rather than requiring one
+     specific exception class or message.<!-- /rule -->
    - Prefer a marker line your own scenario prints; a framework log message
      is a valid observable only when you have quoted it exactly from the
      repository source.

@@ -33,7 +33,8 @@ def test_expected_rule_ids_present():
     for rid in ("self-contained", "repeatable", "early-draft",
                 "source-pass-side", "crash-repair", "positive-control",
                 "settle-before-trigger", "app-runtime",
-                "predicate-from-witnessed-output", "scope-minimal-predicate"):
+                "predicate-from-witnessed-output", "scope-minimal-predicate",
+                "observable-behavior-change"):
         assert rid in rule_catalog.RULES
 
 
@@ -141,6 +142,24 @@ def test_scope_minimal_predicate_rule_stays_in_core():
     core = _norm(rule_catalog.core_contract())
     assert "narrowest concrete claim" in core
     assert "stay out of the predicate" in core
+
+
+def test_observable_behavior_change_rule_stays_in_core():
+    # Lever R-a (11905 0/3): issue kelas "prevent/reject X" — model menuntut
+    # exception spesifik (TypeError/ValueError) padahal perilaku benar bisa
+    # berupa deprecation warning -> predikat tak pernah flip. Signal-less
+    # di base (tak ada sinyal mekanis pemicu injeksi) -> wajib rule CORE.
+    core = _norm(rule_catalog.core_contract())
+    assert "no longer silently accepted" in core
+    assert "any type" in core
+    assert "warning" in core
+    # marker rule ter-unwrap, tidak bocor ke model
+    assert "observable-behavior-change" not in core
+
+
+def test_observable_behavior_change_rule_is_injectable():
+    msg = rule_catalog.inject("observable-behavior-change")
+    assert _norm(rule_catalog.RULES["observable-behavior-change"]) in _norm(msg)
 
 
 def test_detail_rules_are_extracted_for_injection():
