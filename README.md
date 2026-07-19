@@ -101,10 +101,18 @@ Lever L (2026-07-19, dua case bandel; detail vault R-dev Log):
 - Telemetri kaya driver L (4c25b56): retry beralasan verbatim.
 - Dashboard: satu status gabungan L1+gold_eval (f9a4c7b, keputusan
   "lengkap+rapi+benar"); kolom case+run dipecah (069fd0e).
-- ARAH BERIKUT — L#3 trace-injection (disetujui Mirza, belum dibangun):
-  harness eksekusi repro.py di bawah coverage trace → inject daftar file
-  repo yang tereksekusi sbg kandidat pool + enforce candidates ⊆ pool;
-  base-world murni. Desain lengkap: vault R-dev Log section "VERDICT L#2".
+- L#3 trace-injection (d960096, bot-04): harness eksekusi repro.py di
+  container segar di bawah sys.settrace (localize_tracer.py) → pool file
+  repo tereksekusi diinject ke pesan user pertama + enforce candidates ⊆
+  pool (localize_trace.py, driver v2; gagal trace = abort; artefak
+  files/trace_pool.json). Base-world murni. HASIL: 0/6 (11964 0/3, 11797
+  0/3) — pool 201 file memuat file gold by construction, tapi file
+  favorit framing model ikut tereksekusi → konstrain keanggotaan tak
+  pernah menggigit. Kesimpulan lintas 4 kondisi (pra/L#1/L#2/L#3): akar
+  = PRIOR framing saat memilih lapisan, bukan bidang pandang. Verdict
+  lengkap: vault R-dev Log "VERDICT L#3". Arah berikut menunggu Mirza
+  (kandidat: selector fresh-context / sinyal pembeda intra-pool / parkir
+  kelas framing).
 
 UI viewer (`python ui\server.py --root ..\artifacts --port 8766`): tabs
 per fase (REPRODUCE pertama), sort desc berdasar STARTED datetime (run
