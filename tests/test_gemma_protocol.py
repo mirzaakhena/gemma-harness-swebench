@@ -354,6 +354,24 @@ def test_parse_pass_observable_keeps_unmatched_quote():
             == "it's watched")
 
 
+def test_parse_actions_recognizes_candidates_md():
+    # Lever L#2 LOCALIZE: blok setoran kandidat baru.
+    from harness.stages.gemma_protocol import parse_actions
+    acts = parse_actions("```candidates.md\nCANDIDATE 1\nfile: x.py\n```")
+    assert len(acts) == 1 and acts[0].kind == "candidates.md"
+
+
+def test_done_rejection_localize_blocks_on_candidates_error():
+    from harness.stages.gemma_protocol import done_rejection_localize
+    msg = done_rejection_localize(
+        has_localize_md=True, ran_any_bash=True,
+        candidates_error="Not done yet: submit candidates.md first.")
+    assert msg == "Not done yet: submit candidates.md first."
+    assert done_rejection_localize(
+        has_localize_md=True, ran_any_bash=True,
+        candidates_error=None) is None
+
+
 def test_parse_pass_observable_strips_surrounding_backticks():
     # r5 nyata (11797, re-test pasca-Paket-Predikat): Gemma membungkus
     # deklarasi dengan backtick markdown -> grep literal gagal -> 51

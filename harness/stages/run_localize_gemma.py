@@ -20,6 +20,9 @@ from pathlib import Path
 from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_localize, has_done,
                                            parse_actions)
+from harness.stages.localize_gates import (candidates_done_error,
+                                           parse_candidates_md,
+                                           parse_localize_md)
 
 PROTOCOL_NOTE = """
 ## How to work (action protocol — MANDATORY)
@@ -36,7 +39,12 @@ blocks; they are executed in order and I send the results back to you.
 ```file:/testbed/.pipe/probe.py
 <file content>
 ```
-3. Submit the final localize.md artifact (6 slots per the contract):
+3. Submit the candidates you weighed (per the contract — at least two,
+   from two different files):
+```candidates.md
+<candidates.md content>
+```
+4. Submit the final localize.md artifact (6 slots per the contract):
 ```localize.md
 <localize.md content>
 ```
@@ -126,7 +134,7 @@ def main() -> int:
     em.run_start()
     em.event("localize", "enter",
              budget={"msg_used": 0, "msg_limit": args.max_turns},
-             detail={"model": args.model, "driver": "run_localize_gemma-v0",
+             detail={"model": args.model, "driver": "run_localize_gemma-v1",
                      "input_files": str(input_dir)})
 
     system = contract + PROTOCOL_NOTE
@@ -142,8 +150,30 @@ def main() -> int:
 
     attempt = 1
     localize_md: str | None = None
+    candidates_md: str | None = None
     ran_any_bash = False
     done = False
+
+    def candidates_error_now() -> str | None:
+        """Cek mekanis enumerasi (Lever L#2): bentuk (pure) + keberadaan
+        file kandidat di repo container."""
+        loc_file: str | None = None
+        if localize_md is not None:
+            try:
+                loc_file = parse_localize_md(localize_md)["file"]
+            except ValueError:
+                loc_file = None  # format salah — gate L1 yang memvonis
+        err = candidates_done_error(candidates_md, loc_file)
+        if err is not None:
+            return err
+        for cand in parse_candidates_md(candidates_md):
+            target = cand["file"].lstrip("/")
+            _, code = docker_exec(container, f"test -f '/testbed/{target}'")
+            if code != 0:
+                return (f"Not done yet: candidate file {cand['file']!r} does "
+                        f"not exist in the repository — every candidate must "
+                        f"be a real file.")
+        return None
     for turn in range(1, args.max_turns + 1):
         try:
             reply = chat(args.endpoint, args.model, messages)
@@ -175,11 +205,16 @@ def main() -> int:
                 localize_md = act.body
                 log("[driver] localize.md candidate received")
                 feedback_parts.append("OK: localize.md received.")
+            elif act.kind == "candidates.md":
+                candidates_md = act.body
+                log("[driver] candidates.md received")
+                feedback_parts.append("OK: candidates.md received.")
 
         if has_done(reply):
             reason = done_rejection_localize(
                 has_localize_md=localize_md is not None,
-                ran_any_bash=ran_any_bash)
+                ran_any_bash=ran_any_bash,
+                candidates_error=candidates_error_now())
             if reason is not None:
                 attempt += 1
                 em.event("localize", "retry", attempt=attempt,
@@ -204,6 +239,10 @@ def main() -> int:
         (files_dir / "localize.md").write_text(localize_md + "\n",
                                                encoding="utf-8", newline="\n")
         log("[driver] files/localize.md written")
+    if candidates_md is not None:
+        (files_dir / "candidates.md").write_text(candidates_md + "\n",
+                                                 encoding="utf-8", newline="\n")
+        log("[driver] files/candidates.md written")
     (files_dir / "input-repro.md").write_text(repro_md, encoding="utf-8",
                                               newline="\n")
 

@@ -56,6 +56,77 @@ class LocalizeResult:
 # lapisan test-system: eval/localize_gold_eval.py.
 
 
+# --- Lever L#2: enumerasi kandidat mekanis (mandat Mirza 2026-07-19) --------
+# Rule pasif L#1 nol efek (11964 1/3->1/3, 11797 0/3->0/3). Kepatuhan
+# dipindah ke pagar kode ala bukti-dulu: DONE ditahan sampai candidates.md
+# valid (>=2 kandidat, file BERBEDA, evidence + expectation terisi) dan
+# file: localize.md anggota daftar kandidat. Semantik "beda lapisan" tidak
+# bisa dicek mesin — yang dipaksa adalah bentuknya; slot expectation
+# menambatkan tiap kandidat ke ekspektasi eksplisit user (bias framing
+# 11964). Cek keberadaan file kandidat di repo = tugas driver (docker).
+
+_CAND_SPLIT_RE = re.compile(r"^CANDIDATE\s+\d+\s*$", re.MULTILINE)
+_CAND_SLOT_RES = {
+    "file": re.compile(r"^file:\s*(.*)$", re.MULTILINE),
+    "evidence": re.compile(r"^evidence:\s*(.*)$", re.MULTILINE),
+    "expectation": re.compile(r"^expectation:\s*(.*)$", re.MULTILINE),
+}
+
+
+def parse_candidates_md(text: str) -> list[dict]:
+    """Parse candidates.md; ValueError menyebut semua slot bermasalah."""
+    blocks = [b for b in _CAND_SPLIT_RE.split(text) if b.strip()]
+    if not blocks:
+        raise ValueError("no CANDIDATE blocks found")
+    cands: list[dict] = []
+    problems: list[str] = []
+    for i, block in enumerate(blocks, start=1):
+        cand: dict = {}
+        for key, rx in _CAND_SLOT_RES.items():
+            m = rx.search(block)
+            val = m.group(1).strip() if m else ""
+            if not val:
+                problems.append(f"candidate {i}: missing or empty {key}")
+            cand[key] = val
+        cands.append(cand)
+    if problems:
+        raise ValueError("; ".join(problems))
+    return cands
+
+
+def candidates_done_error(candidates_text: str | None,
+                          localize_file: str | None) -> str | None:
+    """Feedback English penahan DONE (None = enumerasi valid).
+
+    Dipanggil driver saat model mendeklarasikan DONE; mekanis murni —
+    bentuk, bukan makna."""
+    spec = ("submit a ```candidates.md block with at least TWO candidates "
+            "from two different files, each in this form:\n"
+            "CANDIDATE <n>\nfile: <path>\nevidence: <what this code does "
+            "that can own the wrong behavior>\nexpectation: <how a change "
+            "here directly satisfies what the user explicitly expects in "
+            "the issue>")
+    if candidates_text is None:
+        return f"Not done yet: {spec}"
+    try:
+        cands = parse_candidates_md(candidates_text)
+    except ValueError as e:
+        return f"Not done yet: your candidates.md is incomplete ({e}) — {spec}"
+    if len(cands) < 2:
+        return ("Not done yet: enumerate at least two candidates — " + spec)
+    files = [c["file"].lstrip("/") for c in cands]
+    if len(set(files)) < 2:
+        return ("Not done yet: your candidates must come from at least two "
+                "different files — a second candidate in the same file does "
+                "not widen the search.")
+    if localize_file is not None and localize_file.lstrip("/") not in set(files):
+        return ("Not done yet: the file in your localize.md must be one of "
+                "the candidates you enumerated in candidates.md — either "
+                "add it as a candidate with its own evidence and "
+                "expectation, or choose among your candidates.")
+    return None
+
+
 def evaluate_localize_gates(md_text: str, file_exists: bool,
                             file_line_count: int | None) -> LocalizeResult:
     try:

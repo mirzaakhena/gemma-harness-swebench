@@ -42,7 +42,7 @@ def parse_actions(text: str) -> list[Action]:
         elif info.startswith("file:"):
             actions.append(Action(kind="file", arg=info[len("file:"):].strip(),
                                   body=body))
-        elif info in ("repro.md", "localize.md"):
+        elif info in ("repro.md", "localize.md", "candidates.md"):
             actions.append(Action(kind=info, arg=None, body=body))
     return actions
 
@@ -331,12 +331,18 @@ def format_reminder() -> str:
             "with a ```bash block.")
 
 
-def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool) -> str | None:
+def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool,
+                            candidates_error: str | None = None) -> str | None:
     """Aturan SELESAI stage LOCALIZE. None = diterima.
 
     Evidensi minimal: model harus benar-benar melakukan eksplorasi (>=1 aksi
     bash) sebelum menyerahkan peta — melarang localize buta dari prior.
+    Lever L#2 (mandat Mirza 2026-07-19): enumerasi kandidat mekanis —
+    `candidates_error` (dihitung pemanggil dari candidates.md + file
+    localize.md) menahan DONE sampai enumerasi lintas-file valid.
     """
+    if candidates_error is not None:
+        return candidates_error
     if not has_localize_md:
         return ("Not done yet: submit the ```localize.md block first, then "
                 "declare DONE.")

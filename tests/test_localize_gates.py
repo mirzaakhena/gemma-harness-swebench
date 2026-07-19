@@ -142,6 +142,71 @@ def test_gate_malformed_md_is_syntax_fail():
     assert r.verdict == "syntax-fail"
 
 
+# --- Lever L#2: enumerasi kandidat mekanis (mandat Mirza 2026-07-19) --------
+# Rule pasif L#1 nol efek (11964 1/3->1/3, 11797 0/3->0/3). Kepatuhan
+# dipindah ke pagar kode: candidates.md wajib (>=2 kandidat, file berbeda,
+# evidence + expectation non-kosong), file: localize.md harus anggota daftar.
+
+CANDS_OK = """CANDIDATE 1
+file: django/db/models/lookups.py
+evidence: Exact.process_rhs uses the target field pk when rhs is a values() queryset.
+expectation: str(b.query) would show GROUP BY on email, matching what the user expects.
+
+CANDIDATE 2
+file: django/db/models/sql/query.py
+evidence: get_group_by builds the GROUP BY clause from the select columns.
+expectation: the rendered subquery keeps the email grouping the user asked about.
+"""
+
+
+def test_parse_candidates_md_ok():
+    from harness.stages.localize_gates import parse_candidates_md
+    cands = parse_candidates_md(CANDS_OK)
+    assert len(cands) == 2
+    assert cands[0]["file"] == "django/db/models/lookups.py"
+    assert cands[1]["file"] == "django/db/models/sql/query.py"
+    assert cands[0]["evidence"].startswith("Exact.process_rhs")
+    assert cands[0]["expectation"]
+
+
+def test_candidates_done_error_none_when_valid_and_member():
+    from harness.stages.localize_gates import candidates_done_error
+    assert candidates_done_error(
+        CANDS_OK, "django/db/models/lookups.py") is None
+
+
+def test_candidates_done_error_missing_block():
+    from harness.stages.localize_gates import candidates_done_error
+    err = candidates_done_error(None, "x.py")
+    assert err is not None and "candidates.md" in err
+
+
+def test_candidates_done_error_needs_two_distinct_files():
+    from harness.stages.localize_gates import candidates_done_error
+    one = CANDS_OK.split("\nCANDIDATE 2")[0]
+    err = candidates_done_error(one, "django/db/models/lookups.py")
+    assert err is not None and "two" in err.lower()
+    dup = CANDS_OK.replace("django/db/models/sql/query.py",
+                           "django/db/models/lookups.py")
+    err2 = candidates_done_error(dup, "django/db/models/lookups.py")
+    assert err2 is not None and "different files" in err2
+
+
+def test_candidates_done_error_requires_slots():
+    from harness.stages.localize_gates import candidates_done_error
+    no_exp = CANDS_OK.replace(
+        "expectation: str(b.query) would show GROUP BY on email, matching what the user expects.",
+        "expectation:")
+    err = candidates_done_error(no_exp, "django/db/models/lookups.py")
+    assert err is not None and "expectation" in err
+
+
+def test_candidates_done_error_localize_file_must_be_member():
+    from harness.stages.localize_gates import candidates_done_error
+    err = candidates_done_error(CANDS_OK, "django/db/models/enums.py")
+    assert err is not None and "one of the candidates" in err
+
+
 # --- drift-guard kontrak localize_prompt.md (Lever L#1, Mirza 2026-07-19) ---
 
 def _contract_text():

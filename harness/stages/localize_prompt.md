@@ -12,7 +12,23 @@ belongs. The fix itself belongs to a later stage. The repository is your
 reading material; your writable workspace is `/testbed/.pipe/` (probe
 scripts, notes).
 
-## Your output: `localize.md`
+## Your outputs
+
+### 1. `candidates.md` — the locations you weighed (submit this FIRST)
+
+At least TWO candidates from two DIFFERENT files, each in this form:
+
+```
+CANDIDATE <n>
+file: <path relative to the repo root>
+evidence: <what this code does that can own the wrong behavior>
+expectation: <how a change here directly satisfies what the user explicitly expects in the issue>
+```
+
+Every candidate file must exist in the repository. Your final `localize.md`
+chooses among these candidates.
+
+### 2. `localize.md`
 
 ```
 chosen: <number of the chosen candidate; 1 if you only had one>
@@ -23,7 +39,8 @@ why: <the mechanism that makes this location the ROOT of the symptom, not merely
 evidence: <concrete proof in the form "function X around line Y does Z, which causes the symptom; proven by ...">
 ```
 
-`file` must be a real file in the repository; `lines` must lie within it.
+`file` must be a real file in the repository; `lines` must lie within it;
+`chosen` refers to the candidate number in your `candidates.md`.
 
 ## Quality rules
 
