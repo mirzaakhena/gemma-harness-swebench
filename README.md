@@ -81,8 +81,10 @@ vault "Prinsip Stabilisasi REPRODUCE".
 Boundary (framing Mirza): **product = harness + model, gold-blind total**;
 evaluasi kebenaran vs gold hidup TERPISAH di lapisan test-system
 `eval/localize_gold_eval.py` (CLI `--case --rerun --gold`; output
-`gold_eval.json` per run; qualified = file yang ditunjuk ∈ file yang
-disentuh gold, overlap baris = advisory). Gate product
+`gold_eval.json` per run). **Kriteria qualified = SHORTLIST** (keputusan
+Mirza 2026-07-19, b127f4c): ada kandidat candidates.md ∈ file yang
+disentuh gold — fase FIX mengiterasi shortlist; chosen file + overlap
+baris = advisory; pagar mekanis 2–3 kandidat. Gate product
 (`run_localize_gates.py`) murni L1. Input beku per case = repro Gemma
 qualified dari fase R (`--input-files`).
 
