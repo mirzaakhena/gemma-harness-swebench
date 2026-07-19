@@ -372,6 +372,19 @@ def test_done_rejection_localize_blocks_on_candidates_error():
         candidates_error=None) is None
 
 
+def test_done_rejection_localize_blocks_on_localize_error():
+    # Lever L-a (baseline 12747): cek rentang localize.md menahan DONE —
+    # dicek SETELAH artefak ada, SEBELUM syarat eksplorasi.
+    from harness.stages.gemma_protocol import done_rejection_localize
+    msg = done_rejection_localize(
+        has_localize_md=True, ran_any_bash=True,
+        localize_error="Not done yet: lines 380-450 extend beyond the end "
+                       "of file (445 lines).")
+    assert msg is not None and msg.startswith("Not done yet: lines 380-450")
+    assert done_rejection_localize(
+        has_localize_md=True, ran_any_bash=True, localize_error=None) is None
+
+
 def test_parse_pass_observable_strips_surrounding_backticks():
     # r5 nyata (11797, re-test pasca-Paket-Predikat): Gemma membungkus
     # deklarasi dengan backtick markdown -> grep literal gagal -> 51

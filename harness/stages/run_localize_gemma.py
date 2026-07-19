@@ -20,7 +20,8 @@ from pathlib import Path
 from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_localize, has_done,
                                            parse_actions)
-from harness.stages.localize_gates import (candidates_done_error,
+from harness.stages.localize_gates import (MAX_SPAN, candidates_done_error,
+                                           evaluate_localize_gates,
                                            parse_candidates_md,
                                            parse_localize_md)
 from harness.stages.localize_trace import (candidates_pool_error,
@@ -96,6 +97,52 @@ def docker_write_file(container: str, path: str, body: str) -> None:
 
 def tail(s: str, n: int = 4000) -> str:
     return s if len(s) <= n else "[...dipotong...]\n" + s[-n:]
+
+
+def localize_range_error(container: str, localize_text: str) -> str | None:
+    """Lever L-a (baseline 12747 l-dev r1-r3): penahan DONE atas localize.md.
+
+    Kelas kegagalan: rentang baris melewati akhir file (380-450 pada file
+    445 baris; juga 713-844) — gate L1 memvonisnya SETELAH run selesai,
+    driver menerima DONE tanpa cek -> nol retry, run hangus. Di sini vonis
+    yang SAMA (evaluate_localize_gates: format slot, start>=1, start<=end,
+    span<=MAX_SPAN, end<=EOF) dihitung SAAT DONE supaya model dapat retry.
+    Panjang file diukur `wc -l` di container kerja (pola run_localize_gates);
+    fail-closed bila file tak terbaca. None = localize.md lolos.
+    """
+    try:
+        slots = parse_localize_md(localize_text)
+    except ValueError as e:
+        return (f"Not done yet: your localize.md is malformed ({e}). "
+                "Submit a corrected ```localize.md block with all six "
+                "slots, then declare DONE again.")
+    target = slots["file"].lstrip("/")
+    out, code = docker_exec(
+        container,
+        f"test -f '/testbed/{target}' && wc -l < '/testbed/{target}'")
+    line_count: int | None = None
+    if code == 0:
+        try:
+            line_count = int(out.strip())
+        except ValueError:
+            line_count = None
+    if line_count is None:
+        return (f"Not done yet: the file {slots['file']} named in your "
+                "localize.md could not be read in the repository, so your "
+                "lines range cannot be verified. Point file: at a real "
+                "repository file path, then declare DONE again.")
+    r = evaluate_localize_gates(localize_text, file_exists=True,
+                                file_line_count=line_count)
+    if r.verdict == "pass":
+        return None
+    start, end = slots["lines"]
+    return ("Not done yet: your localize.md failed a mechanical check: "
+            + "; ".join(r.failures) + ". "
+            f"The file {slots['file']} has {line_count} lines and your "
+            f"lines slot says {start}-{end}. Re-open the file, point "
+            "lines: at a range that lies inside it (at most "
+            f"{MAX_SPAN} lines wide), and submit a corrected "
+            "```localize.md block, then declare DONE again.")
 
 
 def main() -> int:
@@ -255,7 +302,9 @@ def main() -> int:
             reason = done_rejection_localize(
                 has_localize_md=localize_md is not None,
                 ran_any_bash=ran_any_bash,
-                candidates_error=candidates_error_now())
+                candidates_error=candidates_error_now(),
+                localize_error=(None if localize_md is None else
+                                localize_range_error(container, localize_md)))
             if reason is not None:
                 attempt += 1
                 # Telemetri kaya (permintaan Mirza 2026-07-19; pelajaran

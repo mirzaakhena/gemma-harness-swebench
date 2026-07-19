@@ -332,7 +332,8 @@ def format_reminder() -> str:
 
 
 def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool,
-                            candidates_error: str | None = None) -> str | None:
+                            candidates_error: str | None = None,
+                            localize_error: str | None = None) -> str | None:
     """Aturan SELESAI stage LOCALIZE. None = diterima.
 
     Evidensi minimal: model harus benar-benar melakukan eksplorasi (>=1 aksi
@@ -340,12 +341,17 @@ def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool,
     Lever L#2 (mandat Mirza 2026-07-19): enumerasi kandidat mekanis —
     `candidates_error` (dihitung pemanggil dari candidates.md + file
     localize.md) menahan DONE sampai enumerasi lintas-file valid.
+    Lever L-a (baseline 12747): `localize_error` (dihitung pemanggil —
+    mirror gate L1 atas format + rentang baris localize.md) menahan DONE
+    sampai rentang yang ditunjuk benar-benar ada di dalam file.
     """
     if candidates_error is not None:
         return candidates_error
     if not has_localize_md:
         return ("Not done yet: submit the ```localize.md block first, then "
                 "declare DONE.")
+    if localize_error is not None:
+        return localize_error
     if not ran_any_bash:
         return ("Not done yet: do some exploration first — open the relevant "
                 "code with bash actions, then submit your map.")

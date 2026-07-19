@@ -144,6 +144,9 @@ def evaluate_localize_gates(md_text: str, file_exists: bool,
     failures: list[str] = []
     start, end = slots["lines"]
 
+    if start < 1:
+        failures.append(
+            f"lines must start at 1 or later, got {start}-{end}")
     if not file_exists:
         failures.append(f"file does not exist in the repo: {slots['file']}")
     else:

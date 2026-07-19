@@ -137,6 +137,15 @@ def test_gate_lines_beyond_eof_rejected():
     assert any("beyond the end of file" in f for f in r.failures)
 
 
+def test_gate_lines_zero_start_rejected():
+    # Lever L-a: rentang wajib >=1 — baris 0 tidak ada; definisi tunggal
+    # gate <-> driver (driver DONE-check me-mirror evaluate_localize_gates).
+    md = MD_OK.replace("lines: 105-130", "lines: 0-130")
+    r = evaluate_localize_gates(md, file_exists=True, file_line_count=640)
+    assert r.verdict == "fail"
+    assert any("start at 1" in f for f in r.failures)
+
+
 def test_gate_malformed_md_is_syntax_fail():
     r = evaluate_localize_gates("chosen: 1\n", file_exists=True, file_line_count=100)
     assert r.verdict == "syntax-fail"
