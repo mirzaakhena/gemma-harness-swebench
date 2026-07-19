@@ -34,7 +34,7 @@ def test_expected_rule_ids_present():
                 "source-pass-side", "crash-repair", "positive-control",
                 "settle-before-trigger", "app-runtime",
                 "predicate-from-witnessed-output", "scope-minimal-predicate",
-                "observable-behavior-change"):
+                "observable-behavior-change", "robust-scaffold"):
         assert rid in rule_catalog.RULES
 
 
@@ -160,6 +160,31 @@ def test_observable_behavior_change_rule_stays_in_core():
 def test_observable_behavior_change_rule_is_injectable():
     msg = rule_catalog.inject("observable-behavior-change")
     assert _norm(rule_catalog.RULES["observable-behavior-change"]) in _norm(msg)
+
+
+def test_robust_scaffold_rule_stays_in_core():
+    # Lever R-b (13768 0/3): scaffold minimal (konfigurasi framework tak
+    # lengkap + logging default terpasang) CRASH di dunia patched saat fix
+    # menambah jalur baru (logging -> error-reporting -> akses setting yang
+    # tak ada) -> token REPRO_STATUS hilang. Signal-less di base -> wajib
+    # CORE.
+    core = _norm(rule_catalog.core_contract())
+    assert "every setting" in core
+    assert "root of the logging hierarchy" in core
+    # marker rule ter-unwrap, tidak bocor ke model
+    assert "robust-scaffold" not in core
+
+
+def test_robust_scaffold_rule_is_case_agnostic():
+    # Rumusan generik — tanpa menyebut framework/setting spesifik kasusnya.
+    text = rule_catalog.RULES["robust-scaffold"]
+    assert "Django" not in text
+    assert "SECRET_KEY" not in text
+
+
+def test_robust_scaffold_rule_is_injectable():
+    msg = rule_catalog.inject("robust-scaffold")
+    assert _norm(rule_catalog.RULES["robust-scaffold"]) in _norm(msg)
 
 
 def test_detail_rules_are_extracted_for_injection():

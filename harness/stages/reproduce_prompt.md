@@ -77,6 +77,16 @@ script. The fix belongs to a later stage.
      that goes undetected means your script has a setup problem — print a
      diagnostic instead of a REPRO_STATUS line and repair the script
      first.<!-- /rule -->
+   - <!-- rule:robust-scaffold -->Build your scenario's runtime to stay
+     alive on code paths beyond the one you exercise: give the framework
+     or application every setting its minimal configuration requires, so
+     that its own error-reporting and logging paths can also run to
+     completion whenever they fire. When your predicate watches for
+     logged events, attach the capture at the root of the logging
+     hierarchy so the record is seen whichever logger name or level a
+     component uses, and recognize the record by the exception or object
+     your scenario itself raised rather than by message text you have
+     not observed.<!-- /rule -->
 
 <!-- detail:self-contained -->
 It runs with `python /testbed/.pipe/repro.py` and nothing else: create
