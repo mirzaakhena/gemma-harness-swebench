@@ -199,6 +199,185 @@ def merge_gold_verdict(vtext: str, icon: str, campaign: str,
     return vtext, icon
 
 
+# --- panel ringkasan per tahapan (permintaan Mirza 2026-07-20) --------------
+# Definisi status per case per stage: status case = hasil run TERBARU
+# (nomor rerun terbesar) case itu di kampanye tsb.
+#   PASS r-dev = verdict pass + pass_l1 true (flip terkonfirmasi).
+#   PASS l-*   = L1 pass DAN gold_eval qualified true — konsisten dengan
+#                status gabungan merge_gold_verdict di tabel.
+# Selain itu FAIL; verdict.json tak ada/rusak -> "?" (fail-soft).
+
+def latest_runs_by_case(runs: list[dict]) -> dict[str, str]:
+    """Map case_id -> run_id run TERBARU (nomor rerun terbesar)."""
+    best: dict[str, str] = {}
+    for r in runs:
+        rid = r.get("run_id")
+        if not isinstance(rid, str) or not rid:
+            continue
+        case, _ = split_run_id(rid)
+        if case not in best or run_sort_key(rid) > run_sort_key(best[case]):
+            best[case] = rid
+    return best
+
+
+def events_fail_detail(run_dir: Path) -> tuple[list[str], str | None]:
+    """(failures exit terakhir, reason abort terakhir) dari events.jsonl.
+
+    Sumber jujur satu-satunya utk alasan detail: event exit membawa
+    detail.failures (list) — bila kosong tapi ada detail.flip dgn
+    flip_ok=false, kutip flip.reason. Event abort membawa detail.reason
+    (crash driver) atau detail.why. Tak terekam -> ([], None).
+    """
+    exit_fails: list[str] = []
+    abort_reason: str | None = None
+    for line in tail_lines(Path(run_dir) / "events.jsonl", 10_000):
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        detail = ev.get("detail")
+        if not isinstance(detail, dict):
+            continue
+        if ev.get("event") == "exit":
+            fails = detail.get("failures")
+            exit_fails = ([str(f) for f in fails]
+                          if isinstance(fails, list) else [])
+            flip = detail.get("flip")
+            if (not exit_fails and isinstance(flip, dict)
+                    and flip.get("flip_ok") is False and flip.get("reason")):
+                exit_fails = ["flip: " + str(flip["reason"])]
+        elif ev.get("event") == "abort":
+            abort_reason = detail.get("reason") or detail.get("why")
+            abort_reason = str(abort_reason) if abort_reason else None
+    return exit_fails, abort_reason
+
+
+def _wrong_file_reasons(run_dir: Path) -> list[str]:
+    """Alasan 'wrong-file' dari gold_eval.json: kandidat vs gold_files."""
+    try:
+        g = json.loads((Path(run_dir) / "gold_eval.json")
+                       .read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(g, dict):
+        return []
+    cand = g.get("candidate_files")
+    if not isinstance(cand, list) or not cand:
+        # criterion chosen-file-v1: tanpa shortlist, pakai pointed_file
+        cand = [g["pointed_file"]] if g.get("pointed_file") else []
+    gold = g.get("gold_files") if isinstance(g.get("gold_files"), list) else []
+    return ["shortlist: file gold tidak masuk kandidat — kandidat: "
+            + (", ".join(str(c) for c in cand) or "?")
+            + " vs gold: " + (", ".join(str(f) for f in gold) or "?")]
+
+
+def case_status(campaign: str, run_dir: Path) -> dict:
+    """Status stage sebuah case dari run terbarunya (lihat definisi di atas).
+
+    Return {"status": "PASS"|"FAIL"|"?", "category": str, "reasons": [str]}.
+    JUJUR: alasan hanya dari artefak terekam; tanpa detail -> kategori saja.
+    """
+    run_dir = Path(run_dir)
+    vpath = run_dir / "verdict.json"
+    if not vpath.is_file():
+        return {"status": "?", "category": "tanpa verdict.json", "reasons": []}
+    try:
+        vj = json.loads(vpath.read_text(encoding="utf-8"))
+        phases = {k: (p or {}).get("verdict")
+                  for k, p in (vj.get("phases") or {}).items()}
+    except (OSError, ValueError, AttributeError):
+        return {"status": "?", "category": "verdict.json rusak", "reasons": []}
+
+    vtext, icon = index_row_verdict(phases, vj.get("wall"))
+    vtext, icon = merge_gold_verdict(vtext, icon, campaign, run_dir)
+
+    if vtext == "pass":
+        # l-*: merge_gold_verdict sudah menjamin qualified=true di sini
+        if campaign.startswith("l-") or vj.get("pass_l1") is True:
+            return {"status": "PASS", "category": "pass", "reasons": []}
+        return {"status": "FAIL", "category": "pass (flip tak terkonfirmasi)",
+                "reasons": ["verdict pass tapi pass_l1 != true — "
+                            "flip tidak terekam OK"]}
+
+    if vtext == "wrong-file":
+        return {"status": "FAIL", "category": "wrong-file",
+                "reasons": _wrong_file_reasons(run_dir)}
+    if vtext == "pass (no-eval)":
+        return {"status": "FAIL", "category": "pass (no-eval)",
+                "reasons": ["gold_eval.json tidak ada — "
+                            "belum dievaluasi test-system"]}
+
+    # kategori gagal product (wrong-logic/syntax-fail/fail/abort/...):
+    # kutip detail exit/abort dari events.jsonl bila terekam
+    exit_fails, abort_reason = events_fail_detail(run_dir)
+    reasons = list(exit_fails)
+    if vtext == "abort" and abort_reason:
+        reasons.append("abort: " + abort_reason)
+    return {"status": "FAIL", "category": vtext, "reasons": reasons}
+
+
+def stage_summary(campaign_dir: Path, campaign: str,
+                  runs: list[dict]) -> dict:
+    """Ringkasan stage: status run terbaru tiap case + rincian FAIL."""
+    latest = latest_runs_by_case(runs)
+    items = []
+    for case_id in sorted(latest):
+        rid = latest[case_id]
+        _, rerun = split_run_id(rid)
+        st = case_status(campaign, Path(campaign_dir) / rid)
+        items.append({"case": case_id, "run_id": rid,
+                      "rerun": rerun or rid, **st})
+    return {"total": len(items),
+            "pass": sum(1 for i in items if i["status"] == "PASS"),
+            "fail": sum(1 for i in items if i["status"] == "FAIL"),
+            "unknown": sum(1 for i in items if i["status"] == "?"),
+            "items": items}
+
+
+def _pct(x: int, n: int) -> str:
+    return f"{round(100 * x / n)}%" if n else "0%"
+
+
+def render_stage_summary(s: dict) -> str:
+    """Panel infografik: angka+persen, bar bertumpuk CSS, rincian FAIL
+    collapsible (details/summary). Tanpa case -> string kosong."""
+    n = s["total"]
+    if n == 0:
+        return ""
+    head = (f"<b>{n} cases</b> &middot; "
+            f"PASS {s['pass']} ({_pct(s['pass'], n)}) &middot; "
+            f"FAIL {s['fail']} ({_pct(s['fail'], n)})")
+    if s["unknown"]:
+        head += f" &middot; ? {s['unknown']} ({_pct(s['unknown'], n)})"
+    segs = []
+    for cnt, cls in ((s["pass"], "sp"), (s["fail"], "sf"),
+                     (s["unknown"], "su")):
+        if cnt:
+            segs.append(f"<span class='{cls}' "
+                        f"style='width:{_pct(cnt, n)}'></span>")
+    parts = ["<div class='summary'><p>", head, "</p>",
+             "<div class='sbar'>", "".join(segs), "</div>"]
+
+    problems = [i for i in s["items"] if i["status"] in ("FAIL", "?")]
+    if problems:
+        rows = []
+        for i in problems:
+            reasons = "; ".join(r[:200] for r in i["reasons"][:3]) \
+                      or "(detail tidak terekam)"
+            rows.append(f"<tr><td>{html.escape(i['case'])}</td>"
+                        f"<td class='dim'>{html.escape(i['rerun'])}</td>"
+                        f"<td>{html.escape(i['category'])}</td>"
+                        f"<td>{html.escape(reasons)}</td></tr>")
+        parts.append(f"<details><summary>rincian FAIL ({len(problems)})"
+                     "</summary><table><tr><th>case</th><th>run</th>"
+                     "<th>kategori</th><th>alasan</th></tr>"
+                     + "".join(rows) + "</table></details>")
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def run_duration_seconds(run_dir: Path) -> float | None:
     """Durasi run: ts event pertama → `finished` verdict.json; run yang
     belum bervonis (masih hidup) → mtime console.log terakhir."""
@@ -277,6 +456,14 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
 .tabs a.active{background:#000;color:#fff;border-color:#555}
 .pager{margin:.6em 0}
 .pager a{margin-right:1em}
+.summary{margin:.6em 0;padding:.5em .8em;border:1px solid #333;
+         background:#181818;border-radius:4px;max-width:640px}
+.summary p{margin:.2em 0}
+.sbar{display:flex;height:10px;background:#333;border-radius:3px;
+      overflow:hidden;margin:.45em 0}
+.sp{background:#2e7d32}.sf{background:#b03030}.su{background:#666}
+.summary details{margin-top:.35em}
+.summary summary{cursor:pointer;color:#7bf}
 </style>"""
 
 
@@ -341,6 +528,10 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
     if not runs:
         parts.append("<p class='dim'>(belum ada run)</p>")
         return _page("log viewer", "".join(parts))
+
+    # panel ringkasan per tahapan: dihitung dari SEMUA run (bukan halaman ini)
+    parts.append(render_stage_summary(
+        stage_summary(root / active, active, runs)))
 
     page_runs, total_pages = paginate(runs, page, PAGE_SIZE)
     rows = []
