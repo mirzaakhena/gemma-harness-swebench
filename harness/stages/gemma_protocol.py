@@ -80,9 +80,9 @@ def parse_pass_observable(text: str) -> str | None:
         if s.startswith("PASS_OBSERVABLE:"):
             val = s[len("PASS_OBSERVABLE:"):].strip()
             # Model lazim membungkus string dengan kutip (kasus nyata r12:
-            # 'changed, reloading.') — kutip berpasangan bukan bagian
-            # observable, buang satu lapis.
-            if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+            # 'changed, reloading.'; r5 11797: backtick markdown) — kutip
+            # berpasangan bukan bagian observable, buang satu lapis.
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"', "`"):
                 val = val[1:-1]
             if val:
                 return val

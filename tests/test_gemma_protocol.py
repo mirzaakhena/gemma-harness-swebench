@@ -354,6 +354,16 @@ def test_parse_pass_observable_keeps_unmatched_quote():
             == "it's watched")
 
 
+def test_parse_pass_observable_strips_surrounding_backticks():
+    # r5 nyata (11797, re-test pasca-Paket-Predikat): Gemma membungkus
+    # deklarasi dengan backtick markdown -> grep literal gagal -> 51
+    # penolakan DONE identik, 60 turn habis (artefak sah, gate qualified).
+    # Backtick = kutip markdown, perlakuannya sama dengan '/" (r12).
+    from harness.stages.gemma_protocol import parse_pass_observable
+    assert (parse_pass_observable("PASS_OBSERVABLE: `OBSERVABLE: GROUP_BY_PRESERVED`\nDONE")
+            == "OBSERVABLE: GROUP_BY_PRESERVED")
+
+
 def test_observable_candidates_full_string_first():
     from harness.stages.gemma_protocol import observable_candidates
     cands = observable_candidates("changed, reloading.")
