@@ -100,8 +100,8 @@ def candidates_done_error(candidates_text: str | None,
 
     Dipanggil driver saat model mendeklarasikan DONE; mekanis murni —
     bentuk, bukan makna."""
-    spec = ("submit a ```candidates.md block with at least TWO candidates "
-            "from two different files, each in this form:\n"
+    spec = ("submit a ```candidates.md block with at least TWO and at most "
+            "THREE candidates from different files, each in this form:\n"
             "CANDIDATE <n>\nfile: <path>\nevidence: <what this code does "
             "that can own the wrong behavior>\nexpectation: <how a change "
             "here directly satisfies what the user explicitly expects in "
@@ -114,6 +114,12 @@ def candidates_done_error(candidates_text: str | None,
         return f"Not done yet: your candidates.md is incomplete ({e}) — {spec}"
     if len(cands) < 2:
         return ("Not done yet: enumerate at least two candidates — " + spec)
+    # Pagar shortlist (keputusan Mirza 2026-07-19): kriteria pass = gold ∈
+    # kandidat → tanpa batas atas, daftar panjang mengosongkan makna
+    # shortlist (anti-gaming).
+    if len(cands) > 3:
+        return ("Not done yet: keep your shortlist to at most three "
+                "candidates — drop the weakest until three remain.")
     files = [c["file"].lstrip("/") for c in cands]
     if len(set(files)) < 2:
         return ("Not done yet: your candidates must come from at least two "

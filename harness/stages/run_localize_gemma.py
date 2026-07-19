@@ -43,7 +43,7 @@ blocks; they are executed in order and I send the results back to you.
 <file content>
 ```
 3. Submit the candidates you weighed (per the contract — at least two,
-   from two different files):
+   at most three, from different files):
 ```candidates.md
 <candidates.md content>
 ```

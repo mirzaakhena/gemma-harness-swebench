@@ -16,7 +16,8 @@ scripts, notes).
 
 ### 1. `candidates.md` — the locations you weighed (submit this FIRST)
 
-At least TWO candidates from two DIFFERENT files, each in this form:
+At least TWO and at most THREE candidates from DIFFERENT files, each in
+this form:
 
 ```
 CANDIDATE <n>

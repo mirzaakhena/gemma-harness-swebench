@@ -232,3 +232,30 @@ def test_contract_probe_rule_covers_layer_discrimination():
     import re
     text = re.sub(r"\s+", " ", _contract_text())
     assert "not evidence that the fix belongs there" in text
+
+
+# --- Pagar shortlist: kandidat 2-3 file (keputusan Mirza 2026-07-19) --------
+# Kriteria pass jadi "gold ∈ kandidat" — tanpa batas atas, daftar panjang
+# mengosongkan makna shortlist (anti-gaming).
+
+CANDS_FOUR = "\n".join(
+    f"CANDIDATE {i}\nfile: pkg/mod{i}.py\nevidence: does thing {i} that can own it.\n"
+    f"expectation: change here satisfies the user's explicit expectation."
+    for i in range(1, 5))
+
+
+def test_candidates_done_error_rejects_more_than_three():
+    from harness.stages.localize_gates import candidates_done_error
+    err = candidates_done_error(CANDS_FOUR, "pkg/mod1.py")
+    assert err is not None and "three" in err.lower()
+
+
+def test_candidates_done_error_accepts_three():
+    from harness.stages.localize_gates import candidates_done_error
+    three = CANDS_FOUR.split("\nCANDIDATE 4")[0]
+    assert candidates_done_error(three, "pkg/mod2.py") is None
+
+
+def test_contract_names_shortlist_bounds():
+    text = _contract_text()
+    assert "at most THREE" in text

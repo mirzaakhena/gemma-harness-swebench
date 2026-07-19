@@ -69,6 +69,18 @@ class LocalizeL2Result:
     gold_files: set[str] = field(default_factory=set)
 
 
+def shortlist_qualified(candidate_files: list[str] | None, pointed_file: str,
+                        gold_files: set[str]) -> tuple[bool, str]:
+    """Kriteria qualified LOCALIZE (keputusan Mirza 2026-07-19 via buttons):
+    ada kandidat ∈ file gold — fase FIX mengiterasi shortlist, yang penting
+    jawaban benar masuk daftar pendek (pagar 2-3 kandidat di gate driver).
+    Fallback run era pra-candidates: chosen file (ditandai criterion)."""
+    if candidate_files is None:
+        return pointed_file.lstrip("/") in gold_files, "chosen-file-v1"
+    return (any(f.lstrip("/") in gold_files for f in candidate_files),
+            "shortlist-v2")
+
+
 def evaluate_localize_l2(pointed_file: str, gold_patch_text: str,
                          lines: tuple[int, int]) -> LocalizeL2Result:
     gold_files = gold_touched_files(gold_patch_text)
@@ -106,15 +118,27 @@ def main() -> int:
     slots = parse_localize_md(md_path.read_text(encoding="utf-8"))
     gold_text = Path(args.gold).read_text(encoding="utf-8")
     r = evaluate_localize_l2(slots["file"], gold_text, lines=slots["lines"])
+
+    cand_path = run_dir / "files" / "candidates.md"
+    candidate_files: list[str] | None = None
+    if cand_path.is_file():
+        from harness.stages.localize_gates import parse_candidates_md
+        candidate_files = [c["file"] for c in
+                           parse_candidates_md(
+                               cand_path.read_text(encoding="utf-8"))]
+    qualified, criterion = shortlist_qualified(candidate_files,
+                                               slots["file"], r.gold_files)
     result = {
         "case": args.case,
         "rerun": args.rerun,
         "pointed_file": slots["file"],
         "pointed_lines": list(slots["lines"]),
+        "candidate_files": candidate_files,
         "gold_files": sorted(r.gold_files),
         "file_match": r.file_match,
         "line_overlap": r.line_overlap,
-        "qualified": r.file_match,
+        "criterion": criterion,
+        "qualified": qualified,
     }
     out_path = run_dir / "gold_eval.json"
     out_path.write_bytes(
