@@ -68,10 +68,14 @@ nyata r7–r29 (riwayat: vault `R-dev Log — fase REPRODUCE`):
   `--contract-variant full` (A/B tooling)
 
 Status case REPRODUCE (2026-07-19): 11422 STABIL (streak 3, r39–r41);
-11999 STABIL 6/6 (A/B slim vs full); 11964 STABIL 3/3 (adversarial);
-survey 5 case fail-harness-lama berjalan — 11910 selesai 2/3, sisa
-11797/12308/13220/13401. Riwayat lengkap: vault R-dev Log; distilasi
-metode: vault "Prinsip Stabilisasi REPRODUCE".
+11999 STABIL 6/6 (A/B slim vs full); 11964 STABIL 3/3 (adversarial).
+Survey 5 case fail-harness-lama TUNTAS: 11910 2/3; 11797 & 13220 pra-lever
+0/3 (kelas predikat-literal-rapuh & over-testing gold-unsatisfiable) →
+pasca Paket Predikat (5ffbd35: rule:predicate-from-witnessed-output +
+rule:scope-minimal-predicate di CORE) keduanya 3/3; 12308 & 13401 3/3
+langsung. Kandidat fix antrian: verifikator PASS_OBSERVABLE trim backtick
+(kelas r5-11797). Riwayat lengkap: vault R-dev Log; distilasi metode:
+vault "Prinsip Stabilisasi REPRODUCE".
 
 UI viewer (`python ui\server.py --root ..\artifacts --port 8766`): tabs
 per fase (REPRODUCE pertama), sort desc berdasar STARTED datetime (run
