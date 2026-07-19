@@ -115,6 +115,14 @@ def run_sort_key(run_id: str) -> tuple:
     return (int(m.group(1)) if m else -1, run_id)
 
 
+def split_run_id(run_id: str) -> tuple[str, str]:
+    """Pecah run_id <campaign>--<case_id>--r<N> jadi (case_id, "rN")
+    (permintaan Mirza 2026-07-19: kolom case & run terpisah di dashboard).
+    Format tak dikenal -> (run_id, "") supaya tetap tampil apa adanya."""
+    m = re.match(r"^.+?--(.+)--(r\d+)$", run_id)
+    return (m.group(1), m.group(2)) if m else (run_id, "")
+
+
 def run_started_ts(run_dir: Path):
     """Datetime (aware) event pertama run; None bila tak terbaca."""
     from datetime import datetime
@@ -323,13 +331,15 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
         if not vpath.is_file():
             dur += " (live)"
         turns = run_turns(root / active / rid)
+        case_id, rerun = split_run_id(rid)
         rows.append(
-            f"<tr><td><a href='{href}'>{html.escape(rid)}</a></td>"
+            f"<tr><td>{html.escape(case_id)}</td>"
+            f"<td><a href='{href}'>{html.escape(rerun or rid)}</a></td>"
             f"<td>{icon}</td>"
             f"<td>{html.escape(vtext)}</td>"
             f"<td class='dim'>{html.escape(dur)}</td>"
             f"<td class='dim'>{turns if turns is not None else '-'}</td></tr>")
-    parts.append("<table><tr><th>run</th><th></th><th>verdict</th>"
+    parts.append("<table><tr><th>case</th><th>run</th><th></th><th>verdict</th>"
                  "<th>durasi</th><th>turns</th></tr>"
                  + "".join(rows) + "</table>")
 

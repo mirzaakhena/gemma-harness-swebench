@@ -248,6 +248,37 @@ def test_render_event_line_truncates_long_detail():
     assert len(line) < 300
 
 
+# --- kolom case & run terpisah (permintaan Mirza 2026-07-19) ----------------
+
+def test_split_run_id_basic():
+    from ui.server import split_run_id
+    assert split_run_id("r-dev--django__django-13220--r6") == (
+        "django__django-13220", "r6")
+
+
+def test_split_run_id_case_with_dashes_and_underscores():
+    from ui.server import split_run_id
+    assert split_run_id("c1--sympy__sympy-13971--r12") == (
+        "sympy__sympy-13971", "r12")
+
+
+def test_split_run_id_fallback_nonconforming():
+    from ui.server import split_run_id
+    # direktori nyasar tanpa format <campaign>--<case>--rN: tampil apa adanya
+    assert split_run_id("stray-dir") == ("stray-dir", "")
+
+
+def test_page_index_splits_case_and_run_columns(tmp_path):
+    from ui.server import page_index
+    run = tmp_path / "r-dev" / "r-dev--django__django-13220--r6"
+    run.mkdir(parents=True)
+    out = page_index(tmp_path)
+    assert "<th>case</th><th>run</th>" in out
+    assert "<td>django__django-13220</td>" in out          # case polos
+    assert ">r6</a>" in out                                # rN ber-link
+    assert "r-dev--django__django-13220--r6</a>" not in out  # run_id penuh hilang
+
+
 # --- sort by started datetime (permintaan Mirza 2026-07-19) ----------------
 
 def test_sort_runs_desc_by_started_datetime(tmp_path):
