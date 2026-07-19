@@ -168,6 +168,37 @@ def verdict_icon(v) -> str:
     return ""
 
 
+def merge_gold_verdict(vtext: str, icon: str, campaign: str,
+                       run_dir: Path) -> tuple[str, str]:
+    """Merge vonis product L1 dengan lapisan test-system gold_eval.json
+    (keputusan Mirza 2026-07-19) — HANYA di render, viewer tetap read-only.
+
+    - vtext bukan "pass" → apa adanya (fail/wrong-logic/abort dst).
+    - "pass" + gold_eval.json: qualified=true → pass ✅;
+      qualified=false → "wrong-file" ❌.
+    - "pass" tanpa gold_eval.json (atau rusak): kampanye "l-*" (konvensi
+      LOCALIZE) → "pass (no-eval)" ⏳ supaya beda dari pass penuh;
+      kampanye lain (mis. r-dev REPRODUCE) → perilaku lama.
+    """
+    if vtext != "pass":
+        return vtext, icon
+    gpath = Path(run_dir) / "gold_eval.json"
+    if gpath.is_file():
+        try:
+            obj = json.loads(gpath.read_text(encoding="utf-8"))
+            qualified = obj.get("qualified") if isinstance(obj, dict) else None
+        except (OSError, ValueError):
+            qualified = None
+        if qualified is True:
+            return "pass", verdict_icon("pass")
+        if qualified is False:
+            return "wrong-file", verdict_icon("fail")
+        # gold_eval rusak/tanpa field: jatuh ke aturan "belum ada eval"
+    if campaign.startswith("l-"):
+        return "pass (no-eval)", "⏳ "
+    return vtext, icon
+
+
 def run_duration_seconds(run_dir: Path) -> float | None:
     """Durasi run: ts event pertama → `finished` verdict.json; run yang
     belum bervonis (masih hidup) → mtime console.log terakhir."""
@@ -323,6 +354,8 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
                 phases = {k: (p or {}).get("verdict")
                           for k, p in (vj.get("phases") or {}).items()}
                 vtext, icon = index_row_verdict(phases, vj.get("wall"))
+                vtext, icon = merge_gold_verdict(vtext, icon, active,
+                                                 root / active / rid)
             except (ValueError, OSError, AttributeError):
                 vtext = "(verdict.json rusak)"
         href = ("/run?c=" + urllib.parse.quote(active)

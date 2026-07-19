@@ -308,3 +308,91 @@ def test_sort_runs_desc_missing_events_falls_back_to_rerun(tmp_path):
             {"run_id": "x--c--r7", "verdict": None, "wall": None}]
     ordered = sort_runs_desc(runs, camp)
     assert ordered[0]["run_id"] == "x--c--r7"
+
+
+# --- merge gold_eval.json ke verdict tampilan (keputusan Mirza 2026-07-19) --
+# Satu status gabungan di viewer: vonis product L1 (verdict.json) di-merge
+# dengan lapisan test-system (gold_eval.json, field "qualified") HANYA saat
+# render — viewer tetap read-only terhadap artifacts.
+
+def _write_gold(run_dir, qualified):
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "gold_eval.json").write_text(
+        json.dumps({"qualified": qualified}), encoding="utf-8")
+
+
+def test_merge_gold_verdict_non_pass_unchanged(tmp_path):
+    from ui.server import merge_gold_verdict
+    _write_gold(tmp_path, True)  # gold ada pun, non-pass tak tersentuh
+    assert merge_gold_verdict("wrong-logic", "❌ ", "l-dev", tmp_path) == (
+        "wrong-logic", "❌ ")
+    assert merge_gold_verdict("abort", "", "l-dev", tmp_path) == ("abort", "")
+
+
+def test_merge_gold_verdict_qualified_true_stays_pass(tmp_path):
+    from ui.server import merge_gold_verdict
+    _write_gold(tmp_path, True)
+    text, icon = merge_gold_verdict("pass", "✅ ", "l-dev", tmp_path)
+    assert text == "pass" and icon.startswith("✅")
+
+
+def test_merge_gold_verdict_qualified_false_becomes_wrong_file(tmp_path):
+    from ui.server import merge_gold_verdict
+    _write_gold(tmp_path, False)
+    text, icon = merge_gold_verdict("pass", "✅ ", "l-dev", tmp_path)
+    assert text == "wrong-file" and icon.startswith("❌")
+
+
+def test_merge_gold_verdict_missing_gold_l_campaign_pending(tmp_path):
+    from ui.server import merge_gold_verdict
+    tmp_path.mkdir(exist_ok=True)  # run dir tanpa gold_eval.json
+    text, icon = merge_gold_verdict("pass", "✅ ", "l-dev", tmp_path)
+    assert text == "pass (no-eval)"
+    assert icon.startswith("⏳")  # HARUS dibedakan dari ✅ hijau
+
+
+def test_merge_gold_verdict_missing_gold_other_campaign_unchanged(tmp_path):
+    from ui.server import merge_gold_verdict
+    # r-dev (REPRODUCE) tak punya konvensi gold_eval → perilaku lama
+    assert merge_gold_verdict("pass", "✅ ", "r-dev", tmp_path) == (
+        "pass", "✅ ")
+
+
+def test_merge_gold_verdict_broken_gold_treated_as_missing(tmp_path):
+    from ui.server import merge_gold_verdict
+    (tmp_path / "gold_eval.json").write_text("BUKAN JSON{{{", encoding="utf-8")
+    text, icon = merge_gold_verdict("pass", "✅ ", "l-dev", tmp_path)
+    assert text == "pass (no-eval)" and icon.startswith("⏳")
+
+
+def _mk_localize_run(root, camp, case, qualified):
+    run = root / camp / f"{camp}--{case}--r1"
+    run.mkdir(parents=True)
+    (run / "verdict.json").write_text(json.dumps({
+        "phases": {"localize": {"verdict": "pass"}}, "wall": None,
+        "finished": "2026-07-19T00:00:01+07:00"}), encoding="utf-8")
+    if qualified is not None:
+        _write_gold(run, qualified)
+    return run
+
+
+def test_page_index_merges_gold_eval_into_verdict_column(tmp_path):
+    from ui.server import page_index
+    _mk_localize_run(tmp_path, "l-dev", "django__django-11797", False)
+    out = page_index(tmp_path, tab="l-dev")
+    assert "wrong-file" in out and "❌" in out
+    assert ">pass<" not in out  # pass product tak boleh tampil mentah
+
+
+def test_page_index_qualified_true_shows_green_pass(tmp_path):
+    from ui.server import page_index
+    _mk_localize_run(tmp_path, "l-dev", "django__django-12308", True)
+    out = page_index(tmp_path, tab="l-dev")
+    assert "✅" in out and "wrong-file" not in out and "⏳" not in out
+
+
+def test_page_index_missing_gold_shows_no_eval_pending(tmp_path):
+    from ui.server import page_index
+    _mk_localize_run(tmp_path, "l-dev", "django__django-11422", None)
+    out = page_index(tmp_path, tab="l-dev")
+    assert "pass (no-eval)" in out and "⏳" in out and "✅" not in out
