@@ -131,8 +131,14 @@ def main() -> int:
     subprocess.run(["docker", "run", "-d", "--name", container, args.image,
                     "sleep", "infinity"], check=True, capture_output=True)
     docker_write_file(container, "/testbed/.pipe/repro.py", repro_py)
+    # Lever L#4 (helper probe, autopsi 11964): boilerplate framework utk
+    # probe ber-Model dipindah ke modul yang di-ship — kelas probe-crash
+    # app-registry mati by construction.
+    probe_rt = Path(__file__).with_name("probe_runtime.py").read_text(
+        encoding="utf-8")
+    docker_write_file(container, "/testbed/.pipe/probe_runtime.py", probe_rt)
     log(f"[driver] container {container} started; input repro installed "
-        f"from {input_dir}")
+        f"from {input_dir}; probe_runtime shipped")
 
     em.run_start()
 

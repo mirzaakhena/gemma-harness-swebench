@@ -62,7 +62,11 @@ evidence: <concrete proof in the form "function X around line Y does Z, which ca
    candidate on plausibility alone. When more than one layer could host
    the fix, run a probe that discriminates between them; a file appearing
    in the traceback or execution path is not evidence that the fix
-   belongs there.
+   belongs there. For probes that need the framework running:
+   `import probe_runtime; probe_runtime.setup()` boots it with an
+   in-memory database; define ad-hoc models with `class Meta:
+   app_label = 'probe'` and call `probe_runtime.create_tables(Model)`
+   before touching the database (the module lives in `/testbed/.pipe/`).
 4. **The narrower the range, the better.** Pointing at `1-1500` is pointing
    at nothing.
 5. Before submitting, ask yourself: "if an engineer read only my
