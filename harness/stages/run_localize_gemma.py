@@ -188,6 +188,12 @@ def main() -> int:
         for act in actions:
             if act.kind == "file":
                 if not act.arg.startswith("/testbed/.pipe/"):
+                    attempt += 1
+                    em.event("localize", "retry", attempt=attempt,
+                             budget={"msg_used": turn,
+                                     "msg_limit": args.max_turns},
+                             detail={"why": ("write outside workspace "
+                                             f"rejected: {act.arg}")})
                     log(f"[driver] rejected write outside workspace: {act.arg}")
                     feedback_parts.append(
                         f"Your writable workspace is /testbed/.pipe/ — put "
@@ -217,9 +223,15 @@ def main() -> int:
                 candidates_error=candidates_error_now())
             if reason is not None:
                 attempt += 1
+                # Telemetri kaya (permintaan Mirza 2026-07-19; pelajaran
+                # Prinsip Stabilisasi §5): alasan VERBATIM + posisi artefak
+                # — autopsi tanpa rekonstruksi console.
                 em.event("localize", "retry", attempt=attempt,
                          budget={"msg_used": turn, "msg_limit": args.max_turns},
-                         detail={"why": "DONE rejected"})
+                         detail={"why": f"done-rejected: {reason}",
+                                 "has_localize_md": localize_md is not None,
+                                 "has_candidates_md": candidates_md is not None,
+                                 "ran_any_bash": ran_any_bash})
                 log(f"[driver] DONE rejected: {reason}")
                 feedback_parts.append(reason)
             else:
