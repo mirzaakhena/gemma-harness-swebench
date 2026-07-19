@@ -140,3 +140,30 @@ def test_gate_lines_beyond_eof_rejected():
 def test_gate_malformed_md_is_syntax_fail():
     r = evaluate_localize_gates("chosen: 1\n", file_exists=True, file_line_count=100)
     assert r.verdict == "syntax-fail"
+
+
+# --- drift-guard kontrak localize_prompt.md (Lever L#1, Mirza 2026-07-19) ---
+
+def _contract_text():
+    from pathlib import Path
+    import harness.stages.localize_gates as lg
+    return (Path(lg.__file__).parent / "localize_prompt.md").read_text(
+        encoding="utf-8")
+
+
+def test_contract_has_definition_site_ownership_rule():
+    # Kelas salah-lapisan batch L pertama (11964 1/3 alternative-fix-site,
+    # 11797 0/3 manifestation-layer): model paham mekanisme tapi menunjuk
+    # infrastruktur generik/lapisan manifestasi. Signal-less di dunia
+    # product -> lever = rule kontrak (CORE), bukan detector.
+    text = _contract_text()
+    assert "OWNS the wrong decision" in text
+    assert "one level upstream" in text
+
+
+def test_contract_probe_rule_covers_layer_discrimination():
+    # 11797: model berhenti di file yang tampil di jalur eksekusi tanpa
+    # probe pembeda antar lapisan kandidat.
+    import re
+    text = re.sub(r"\s+", " ", _contract_text())
+    assert "not evidence that the fix belongs there" in text

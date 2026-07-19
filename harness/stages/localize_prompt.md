@@ -31,13 +31,22 @@ evidence: <concrete proof in the form "function X around line Y does Z, which ca
    PERFORMS the causal mechanism ("function X at line Y does Z") — not a
    description that the symptom "changes/propagates through" some file. If
    all you can describe is the flow of the symptom, keep digging.
-2. **When static evidence runs out, get execution evidence.** Write and run
+2. **Attribute to the layer that OWNS the wrong decision** — the specific
+   class, lookup, or method where the incorrect value is first computed —
+   not the generic infrastructure (a base class, a query builder, a
+   compiler) that renders, transports, or executes it downstream. Landing
+   on a broad shared module is a signal to look one level upstream: find
+   which narrower definition site feeds it the wrong decision.
+3. **When static evidence runs out, get execution evidence.** Write and run
    small probe scripts in `/testbed/.pipe/` (prints, direct calls into
    suspect functions) to discriminate between candidates — never pick a
-   candidate on plausibility alone.
-3. **The narrower the range, the better.** Pointing at `1-1500` is pointing
+   candidate on plausibility alone. When more than one layer could host
+   the fix, run a probe that discriminates between them; a file appearing
+   in the traceback or execution path is not evidence that the fix
+   belongs there.
+4. **The narrower the range, the better.** Pointing at `1-1500` is pointing
    at nothing.
-4. Before submitting, ask yourself: "if an engineer read only my
+5. Before submitting, ask yourself: "if an engineer read only my
    localize.md, would they immediately know WHAT to edit and WHERE?"
 
 Work iteratively: explore, probe, revise. Only your final output counts.
