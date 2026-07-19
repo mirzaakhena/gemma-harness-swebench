@@ -73,9 +73,24 @@ Survey 5 case fail-harness-lama TUNTAS: 11910 2/3; 11797 & 13220 pra-lever
 0/3 (kelas predikat-literal-rapuh & over-testing gold-unsatisfiable) →
 pasca Paket Predikat (5ffbd35: rule:predicate-from-witnessed-output +
 rule:scope-minimal-predicate di CORE) keduanya 3/3; 12308 & 13401 3/3
-langsung. Kandidat fix antrian: verifikator PASS_OBSERVABLE trim backtick
-(kelas r5-11797). Riwayat lengkap: vault R-dev Log; distilasi metode:
+langsung. Riwayat lengkap: vault R-dev Log; distilasi metode:
 vault "Prinsip Stabilisasi REPRODUCE".
+
+## Fase LOCALIZE — dev-loop ronde 2 (2026-07-19)
+
+Boundary (framing Mirza): **product = harness + model, gold-blind total**;
+evaluasi kebenaran vs gold hidup TERPISAH di lapisan test-system
+`eval/localize_gold_eval.py` (CLI `--case --rerun --gold`; output
+`gold_eval.json` per run; qualified = file yang ditunjuk ∈ file yang
+disentuh gold, overlap baris = advisory). Gate product
+(`run_localize_gates.py`) murni L1. Input beku per case = repro Gemma
+qualified dari fase R (`--input-files`).
+
+Status batch 7 case (@3 run, streak-minimum): 11422 sanity ✅ · 11999 3/3 ·
+12308 3/3 (situs identik + overlap true 3×) · 13401 3/3 · 13220 3/3 ·
+11964 1/3 · 11797 0/3 — total 19 run, 14 qualified (74%). Dua case gagal
+sekelas "salah lapisan" (alternative-fix-site / manifestation-layer) —
+bahan lever LOCALIZE pertama, lihat vault R-dev Log.
 
 UI viewer (`python ui\server.py --root ..\artifacts --port 8766`): tabs
 per fase (REPRODUCE pertama), sort desc berdasar STARTED datetime (run
