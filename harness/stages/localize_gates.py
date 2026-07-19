@@ -51,77 +51,9 @@ class LocalizeResult:
     verdict: str  # pass | fail | syntax-fail
     failures: list[str] = field(default_factory=list)
 
-
-# --- L2: ground truth = gold patch (keputusan Mirza 2026-07-19) -------------
-# Vonis mekanis: file yang ditunjuk localize.md harus anggota himpunan file
-# yang disentuh gold.patch (padanan flip test; gold HANYA untuk harness,
-# pasca-model). Overlap rentang baris vs hunk gold = telemetri advisory —
-# "gaya boleh beda", situs mekanisme tak wajib == baris hunk fix.
-
-_DIFF_NEW_RE = re.compile(r"^\+\+\+\s+(?:b/)?(.+?)\s*$", re.MULTILINE)
-_DIFF_OLD_RE = re.compile(r"^---\s+(?:a/)?(.+?)\s*$", re.MULTILINE)
-_HUNK_RE = re.compile(r"^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@")
-
-
-def gold_touched_files(gold_patch_text: str) -> set[str]:
-    """Himpunan path file yang disentuh gold patch (sisi b/; file terhapus
-    diambil dari sisi a/ karena b-nya /dev/null)."""
-    files: set[str] = set()
-    old_paths = _DIFF_OLD_RE.findall(gold_patch_text)
-    new_paths = _DIFF_NEW_RE.findall(gold_patch_text)
-    for path in new_paths:
-        if path != "/dev/null":
-            files.add(path)
-    for path in old_paths:
-        if path != "/dev/null" and path not in files:
-            # pasangan +++ /dev/null (file dihapus) → pakai sisi lama
-            files.add(path)
-    # buang path lama yang sebenarnya punya pasangan baru (rename/normal):
-    # path a/ selalu ikut ter-find; simpan hanya bila b-side-nya /dev/null.
-    paired_new = set(new_paths)
-    if "/dev/null" not in paired_new:
-        files -= (set(old_paths) - paired_new)
-    return files
-
-
-def gold_line_ranges(gold_patch_text: str, target_file: str) -> list[tuple[int, int]]:
-    """Rentang baris (sisi baru) hunk-hunk gold utk satu file — bahan
-    telemetri overlap advisory."""
-    ranges: list[tuple[int, int]] = []
-    current: str | None = None
-    for line in gold_patch_text.splitlines():
-        m_new = re.match(r"^\+\+\+\s+(?:b/)?(.+?)\s*$", line)
-        if m_new:
-            current = None if m_new.group(1) == "/dev/null" else m_new.group(1)
-            continue
-        m_hunk = _HUNK_RE.match(line)
-        if m_hunk and current == target_file:
-            start = int(m_hunk.group(1))
-            count = int(m_hunk.group(2) or 1)
-            ranges.append((start, start + count - 1))
-    return ranges
-
-
-@dataclass
-class LocalizeL2Result:
-    file_match: bool
-    line_overlap: bool | None  # None bila file salah (overlap tak bermakna)
-    gold_files: set[str] = field(default_factory=set)
-
-
-def evaluate_localize_l2(pointed_file: str, gold_patch_text: str,
-                         lines: tuple[int, int]) -> LocalizeL2Result:
-    gold_files = gold_touched_files(gold_patch_text)
-    target = pointed_file.lstrip("/")
-    if target not in gold_files:
-        return LocalizeL2Result(file_match=False, line_overlap=None,
-                                gold_files=gold_files)
-    start, end = lines
-    overlap = any(start <= h_end and end >= h_start
-                  for h_start, h_end in gold_line_ranges(gold_patch_text,
-                                                         target))
-    return LocalizeL2Result(file_match=True, line_overlap=overlap,
-                            gold_files=gold_files)
+# Catatan boundary (framing Mirza 2026-07-19): product (harness + model)
+# gold-blind total — evaluasi kebenaran vs gold patch hidup TERPISAH di
+# lapisan test-system: eval/localize_gold_eval.py.
 
 
 def evaluate_localize_gates(md_text: str, file_exists: bool,
