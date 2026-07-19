@@ -16,29 +16,45 @@ import subprocess
 from pathlib import Path
 
 TRACE_SENTINEL = "===TRACE_POOL==="
+REPO_SENTINEL = "===REPO_FILES==="
 POOL_HEADER = "FILES EXECUTED DURING REPRODUCTION"
 
 
 def parse_trace_output(raw: str) -> list[str]:
     """Ambil pool dari stdout trace run; ValueError bila trace tak sehat.
 
-    Pool kosong ditolak: tanpa file repo yang tersaksikan, lever jadi
-    no-op senyap — lebih baik gagal keras (kelas no-silent-caps).
+    Format multi-proses (sejak abort 11910 r1): setelah TRACE_SENTINEL,
+    SATU baris JSON array per proses (setoran sitecustomize); setelah
+    REPO_SENTINEL, daftar `git ls-files` — pool = union setoran ∩ file
+    repo (file scaffold buatan repro di /testbed tersaring). Pool kosong
+    ditolak: tanpa file repo yang tersaksikan, lever jadi no-op senyap —
+    lebih baik gagal keras (kelas no-silent-caps).
     """
-    if TRACE_SENTINEL not in raw:
+    if TRACE_SENTINEL not in raw or REPO_SENTINEL not in raw:
         raise ValueError(
-            f"trace output has no sentinel {TRACE_SENTINEL!r}; "
-            f"tail: {raw[-500:]!r}")
-    payload = raw.split(TRACE_SENTINEL, 1)[1].strip()
-    try:
-        pool = json.loads(payload)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"trace pool is not valid JSON: {e}") from e
-    if not isinstance(pool, list) or not all(isinstance(p, str) for p in pool):
-        raise ValueError(f"trace pool must be a list of paths, got: {pool!r}")
-    if not pool:
-        raise ValueError("trace pool is empty — repro executed no repo file")
-    return sorted(set(pool))
+            f"trace output has no sentinel {TRACE_SENTINEL!r}/"
+            f"{REPO_SENTINEL!r}; tail: {raw[-500:]!r}")
+    middle, repo_part = raw.split(TRACE_SENTINEL, 1)[1].split(REPO_SENTINEL, 1)
+    union: set[str] = set()
+    for line in middle.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            pool = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"trace pool line is not valid JSON: {e}") from e
+        if (not isinstance(pool, list)
+                or not all(isinstance(p, str) for p in pool)):
+            raise ValueError(f"trace pool line must be a list, got: {pool!r}")
+        union.update(pool)
+    repo_files = {l.strip() for l in repo_part.strip().splitlines()
+                  if l.strip()}
+    result = union & repo_files
+    if not result:
+        raise ValueError("trace pool is empty — no traced process "
+                         "executed a repository file")
+    return sorted(result)
 
 
 def format_trace_pool_message(pool: list[str]) -> str:
@@ -79,12 +95,20 @@ def run_trace(image: str, files_host_dir: str,
         "-v", f"{tracer_dir}:/tracer-in:ro",
         image,
         "bash", "-lc",
-        "mkdir -p /testbed/.pipe && cp /pipe-in/repro.py /testbed/.pipe/repro.py "
+        "mkdir -p /testbed/.pipe /tmp/tracehook /tmp/trace_out "
+        "&& cp /pipe-in/repro.py /testbed/.pipe/repro.py "
         "&& { [ -f /pipe-in/pipe_runtime.py ] "
         "&& cp /pipe-in/pipe_runtime.py /testbed/.pipe/pipe_runtime.py; true; } "
+        "&& cp /tracer-in/localize_tracer.py /tmp/tracehook/localize_tracer.py "
+        "&& cp /tracer-in/trace_sitecustomize.py /tmp/tracehook/sitecustomize.py "
         "&& cd /testbed "
-        "&& python /tracer-in/localize_tracer.py /testbed/.pipe/repro.py 2>&1; "
-        f"echo '{TRACE_SENTINEL}'; cat /tmp/trace_pool.json",
+        "&& TRACE_POOL_DIR=/tmp/trace_out "
+        "PYTHONPATH=/tmp/tracehook:$PYTHONPATH "
+        "python /testbed/.pipe/repro.py 2>&1; "
+        f"echo '{TRACE_SENTINEL}'; "
+        "for f in /tmp/trace_out/pool-*.json; do "
+        "[ -f \"$f\" ] && cat \"$f\" && echo; done; "
+        f"echo '{REPO_SENTINEL}'; git -C /testbed ls-files",
     ]
     p = subprocess.run(cmd, capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=timeout)

@@ -37,17 +37,29 @@ def test_tracer_relativize():
     assert relativize("/testbed/django/apps/config.py") == "django/apps/config.py"
 
 
-# --- parse output trace run --------------------------------------------------
+# --- parse output trace run (multi-proses + intersect repo) ----------------
 
-def _raw(pool, prefix="REPRO_STATUS: FAIL\n"):
-    from harness.stages.localize_trace import TRACE_SENTINEL
-    return prefix + TRACE_SENTINEL + "\n" + json.dumps(pool)
+def _raw(pools, repo_files, prefix="REPRO_STATUS: FAIL\n"):
+    from harness.stages.localize_trace import REPO_SENTINEL, TRACE_SENTINEL
+    lines = [json.dumps(p) for p in pools]
+    return (prefix + TRACE_SENTINEL + "\n" + "\n".join(lines) + "\n"
+            + REPO_SENTINEL + "\n" + "\n".join(repo_files))
 
 
-def test_parse_trace_output_ok_sorted_dedup():
+def test_parse_trace_output_unions_processes_and_sorts():
     from harness.stages.localize_trace import parse_trace_output
-    pool = parse_trace_output(_raw(["b.py", "a.py", "b.py"]))
-    assert pool == ["a.py", "b.py"]
+    pool = parse_trace_output(_raw(
+        [["b.py", "a.py"], ["c.py", "b.py"]], ["a.py", "b.py", "c.py"]))
+    assert pool == ["a.py", "b.py", "c.py"]
+
+
+def test_parse_trace_output_intersects_with_repo_files():
+    # File scaffold buatan repro (manage.py dkk) tereksekusi di /testbed
+    # tapi bukan file repo -> dibuang via git ls-files.
+    from harness.stages.localize_trace import parse_trace_output
+    pool = parse_trace_output(_raw(
+        [["django/x.py", "test_project/manage.py"]], ["django/x.py"]))
+    assert pool == ["django/x.py"]
 
 
 def test_parse_trace_output_missing_sentinel():
@@ -56,18 +68,19 @@ def test_parse_trace_output_missing_sentinel():
         parse_trace_output("REPRO_STATUS: FAIL\nno pool here")
 
 
-def test_parse_trace_output_bad_json():
-    from harness.stages.localize_trace import TRACE_SENTINEL, parse_trace_output
+def test_parse_trace_output_bad_json_line_rejected():
+    from harness.stages.localize_trace import REPO_SENTINEL, TRACE_SENTINEL, parse_trace_output
     with pytest.raises(ValueError):
-        parse_trace_output(TRACE_SENTINEL + "\n{not json")
+        parse_trace_output(TRACE_SENTINEL + "\n{not json\n"
+                           + REPO_SENTINEL + "\nx.py")
 
 
 def test_parse_trace_output_empty_pool_rejected():
-    # Pool kosong = trace gagal menyaksikan eksekusi repo — tak boleh
-    # diinject diam-diam (lever jadi no-op senyap).
+    # Pool kosong = tak ada proses yang menyaksikan file repo (kelas abort
+    # 11910 r1) -- tak boleh diinject diam-diam.
     from harness.stages.localize_trace import parse_trace_output
     with pytest.raises(ValueError):
-        parse_trace_output(_raw([]))
+        parse_trace_output(_raw([[]], ["a.py"]))
 
 
 # --- injeksi pesan user ------------------------------------------------------
