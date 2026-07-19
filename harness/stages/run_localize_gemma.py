@@ -23,6 +23,9 @@ from harness.stages.gemma_protocol import (done_rejection_localize, has_done,
 from harness.stages.localize_gates import (candidates_done_error,
                                            parse_candidates_md,
                                            parse_localize_md)
+from harness.stages.localize_trace import (candidates_pool_error,
+                                           format_trace_pool_message,
+                                           run_trace)
 
 PROTOCOL_NOTE = """
 ## How to work (action protocol — MANDATORY)
@@ -132,10 +135,32 @@ def main() -> int:
         f"from {input_dir}")
 
     em.run_start()
+
+    # Lever L#3 (trace-injection): repro dieksekusi di container SEGAR di
+    # bawah coverage trace; pool file repo yang tereksekusi diinject ke
+    # pesan user pertama + enforce candidates ⊆ pool. Gagal trace = abort
+    # (lever wajib hidup, bukan fail-open senyap).
+    try:
+        trace_pool, _trace_raw = run_trace(args.image,
+                                           str(input_dir.resolve()))
+    except Exception as e:
+        em.event("localize", "abort",
+                 detail={"why": f"trace-injection run failed: {e}"})
+        log(f"[driver] trace run failed: {e}")
+        subprocess.run(["docker", "stop", container], capture_output=True)
+        return 1
+    pool_set = {p.lstrip("/") for p in trace_pool}
+    (em.run_dir / "files" / "trace_pool.json").write_text(
+        json.dumps(trace_pool, ensure_ascii=False, indent=0) + "\n",
+        encoding="utf-8", newline="\n")
+    log(f"[driver] trace pool: {len(trace_pool)} repo files executed "
+        f"during repro (files/trace_pool.json)")
+
     em.event("localize", "enter",
              budget={"msg_used": 0, "msg_limit": args.max_turns},
-             detail={"model": args.model, "driver": "run_localize_gemma-v1",
-                     "input_files": str(input_dir)})
+             detail={"model": args.model, "driver": "run_localize_gemma-v2",
+                     "input_files": str(input_dir),
+                     "trace_pool_files": len(trace_pool)})
 
     system = contract + PROTOCOL_NOTE
     messages = [
@@ -144,8 +169,9 @@ def main() -> int:
          "PROBLEM STATEMENT:\n" + problem +
          "\n\nREPRODUCE ARTIFACTS (frozen input, already gate-approved):\n" +
          repro_md +
-         "\nThe repro script is installed at /testbed/.pipe/repro.py.\n\n"
-         "Start working now. The /testbed sandbox is at the base commit."},
+         "\nThe repro script is installed at /testbed/.pipe/repro.py.\n\n" +
+         format_trace_pool_message(trace_pool) +
+         "\n\nStart working now. The /testbed sandbox is at the base commit."},
     ]
 
     attempt = 1
@@ -166,14 +192,17 @@ def main() -> int:
         err = candidates_done_error(candidates_md, loc_file)
         if err is not None:
             return err
-        for cand in parse_candidates_md(candidates_md):
+        cands = parse_candidates_md(candidates_md)
+        for cand in cands:
             target = cand["file"].lstrip("/")
             _, code = docker_exec(container, f"test -f '/testbed/{target}'")
             if code != 0:
                 return (f"Not done yet: candidate file {cand['file']!r} does "
                         f"not exist in the repository — every candidate must "
                         f"be a real file.")
-        return None
+        # Lever L#3: kandidat wajib anggota pool file yang tereksekusi
+        # saat repro (subset check mekanis).
+        return candidates_pool_error([c["file"] for c in cands], pool_set)
     for turn in range(1, args.max_turns + 1):
         try:
             reply = chat(args.endpoint, args.model, messages)

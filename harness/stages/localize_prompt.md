@@ -25,7 +25,9 @@ evidence: <what this code does that can own the wrong behavior>
 expectation: <how a change here directly satisfies what the user explicitly expects in the issue>
 ```
 
-Every candidate file must exist in the repository. Your final `localize.md`
+Every candidate file must exist in the repository, and must come from the
+FILES EXECUTED DURING REPRODUCTION list provided with the problem statement —
+the root cause executed while the bug reproduced. Your final `localize.md`
 chooses among these candidates.
 
 ### 2. `localize.md`
