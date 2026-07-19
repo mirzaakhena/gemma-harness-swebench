@@ -89,8 +89,22 @@ qualified dari fase R (`--input-files`).
 Status batch 7 case (@3 run, streak-minimum): 11422 sanity ✅ · 11999 3/3 ·
 12308 3/3 (situs identik + overlap true 3×) · 13401 3/3 · 13220 3/3 ·
 11964 1/3 · 11797 0/3 — total 19 run, 14 qualified (74%). Dua case gagal
-sekelas "salah lapisan" (alternative-fix-site / manifestation-layer) —
-bahan lever LOCALIZE pertama, lihat vault R-dev Log.
+sekelas "salah lapisan" (alternative-fix-site / manifestation-layer).
+
+Lever L (2026-07-19, dua case bandel; detail vault R-dev Log):
+- L#1 rule kontrak definition-site-ownership + probe lintas-lapisan
+  (f8c1d9f): 11964 1/3, 11797 0/3 — NOL efek (rule pasif).
+- L#2 enumerasi kandidat mekanis (f69e86a): candidates.md wajib (≥2
+  kandidat, file beda, evidence+expectation, file ada; localize.md ∈
+  kandidat) — mekanisme 100% patuh, kebenaran NOL membaik (11964 0/3,
+  11797 0/3): file akar tak pernah masuk bidang pandang model.
+- Telemetri kaya driver L (4c25b56): retry beralasan verbatim.
+- Dashboard: satu status gabungan L1+gold_eval (f9a4c7b, keputusan
+  "lengkap+rapi+benar"); kolom case+run dipecah (069fd0e).
+- ARAH BERIKUT — L#3 trace-injection (disetujui Mirza, belum dibangun):
+  harness eksekusi repro.py di bawah coverage trace → inject daftar file
+  repo yang tereksekusi sbg kandidat pool + enforce candidates ⊆ pool;
+  base-world murni. Desain lengkap: vault R-dev Log section "VERDICT L#2".
 
 UI viewer (`python ui\server.py --root ..\artifacts --port 8766`): tabs
 per fase (REPRODUCE pertama), sort desc berdasar STARTED datetime (run
