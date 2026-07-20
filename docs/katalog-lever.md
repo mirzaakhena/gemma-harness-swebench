@@ -139,6 +139,30 @@ yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan a
   kedua lebih sulit terlihat, karena script-nya *tampak* punya assert — jadi kalau kelak
   ada pemeriksaan otomatis atas kualitas repro (LV-01/LV-10b), "ada assert" bukan predikat
   yang cukup; yang harus dicek adalah **apakah cabang gagal-mengamati bisa mendarat di PASS**.
+- **Bukti penguat (case keenam — predikat substring dua-arah tanpa kontrol positif, di run
+  FULL GREEN) — django-11039**, `r-dev--django__django-11039--r2/files/repro.py`
+  (temuan bot-01, 2026-07-20). Repro qualified, dipakai fase FIX, berujung `resolved=true`
+  (F2P 1/1, P2P 88/88). Seluruh vonisnya adalah satu baris:
+  `if "BEGIN" in stdout and "COMMIT" in stdout: FAIL else: PASS` atas stdout child process
+  `manage.py sqlmigrate`. Konsekuensi yang bisa dibaca langsung dari script:
+  - **Sisi PASS didefinisikan oleh KETIADAAN.** stdout kosong karena perintah mati, settings
+    salah, backend sintetis gagal di-import, atau `manage.py` tidak ketemu — semuanya tidak
+    memuat `BEGIN`, jadi semuanya mencetak `REPRO_STATUS: PASS`. Tanda tangan identik dengan
+    12286, hanya substringnya beda.
+  - **Nol kontrol positif.** Tidak ada satu pun cabang yang memaksa script membuktikan bahwa
+    ia betul-betul menjalankan `sqlmigrate` dan betul-betul mampu **melihat** `BEGIN` kalau
+    ada. Bandingkan dengan `r-dev--django__django-11422--r44` dan `--13768--r4`, yang
+    keduanya memasang kontrol positif eksplisit dan menolak mencetak status kalau kontrolnya
+    gagal — jadi bentuk yang benar **ada di korpus ini** dan bukan hal eksotis.
+  - **`self.output_transaction = False` tanpa syarat akan LOLOS repro ini.** Predikatnya
+    "BEGIN tidak muncul", bukan "BEGIN muncul untuk backend yang mendukung DDL transaksional
+    dan hilang untuk yang tidak" — sekali lagi tidak ada sisi negatif.
+  Nilai tambahnya di atas 12286: di sini kelonggaran itu **tidak lahir dari kemalasan model**.
+  Checkpoint r2 (`files/repro-first-fail.py`) memakai koneksi Django **sungguhan** dan
+  mematikan `connection.features.can_rollback_ddl` langsung — bentuk yang jauh lebih tepat
+  sasaran — lalu dibuang setelah penolakan judge (LV-05/LV-08). Ini kejadian **kedua** setelah
+  13230 di mana yardstick yang dibekukan terbukti lebih longgar daripada yang sudah disaksikan
+  driver, dan sebabnya sama.
 - **Diagnosa:** dua lapis.
   - *Akar-model* pada pilihan fix-nya sendiri (`{}` vs `globals()`; early-return khusus
     `Exists`) — pemahaman semantik, dan terbukti muncul konsisten & independen di LOCALIZE
@@ -364,6 +388,44 @@ bukan tentang bug-nya, melainkan tentang mekanika harness.** Kelas-kelasnya di b
   yang lalu jadi sebab langsung pelanggaran LV-11. Di Catatan penutup 12915 butir 4, rantai
   ini masih ditulis sebagai *kemungkinan* ("kalau r1 yang lolos gate..."); di 12286 lemparan
   koinnya mendarat di sisi itu dan rantainya **terealisasi utuh dalam satu case**.
+- **Bukti penguat (case kelima — dan yang pertama di mana penolakan judge bisa ditunjuk
+  sebagai sebab langsung sebuah verdict GAGAL, bukan cuma churn) — django-11039**, run
+  `r-dev--django__django-11039--r1` **dan** `--r2` (temuan bot-01, 2026-07-20).
+  **Judge menolak di 2 dari 2 run, dan di kedua run exec-pair hijau sudah disaksikan lebih
+  dulu.** Bukti: r1 `console.log` baris 830 (`checkpoint saved`), 858–862 (exec-pair 2 run
+  segar, dua-duanya `output_transaction: True` + `REPRO_STATUS: FAIL`, exit 0), 864–869
+  (temuan `[judge]` + `DONE deferred`); r2 baris 1171 (`checkpoint saved`), 1195–1211
+  (exec-pair hijau), 1213–1221 (`[judge]` + `DONE deferred`). `events.jsonl` kedua run:
+  satu event `done-deferred: independent review found issues`.
+  - **Kategori aturan berbeda di dua run, dan itu penting untuk desain (b).** Di **r2**
+    temuannya **murni `mechanics`** — judge mengutip *"when the behavior depends on how the
+    program is launched, your script spawns that launch as a real child process"* dan
+    *"specifically mandates the use of `pipe_runtime.App`"*. Jadi **(b) sebagaimana tertulis
+    akan menyelamatkan r2**; ini case **ketiga** setelah 12915 dan 12286 di mana (b) tepat
+    sasaran. Di **r1** temuannya **campuran**: satu butir `app-runtime` (mechanics) dan satu
+    butir *"predicate tests the observable the user complains about"* (correctness) — jadi
+    (b) hanya menyaring separuhnya, dan LV-13(a) tetap yang lebih luas.
+  - **Ongkos r1 = seluruh run.** Checkpoint r1 (in-process, `connections` di-patch dengan mock
+    yang `features.can_rollback_ddl = False`, assert `cmd.output_transaction is True → FAIL`)
+    **memenuhi gold**: dengan gold patch, `migration.atomic and connection.features.
+    can_rollback_ddl` = `True and False` = `False` → cabang PASS. Flip base FAIL → gold PASS
+    akan lolos. *(Verifikasi ini tekstual — dibaca dari gold.patch dan dari script — bukan
+    hasil eksekusi ulang; tapi jalurnya tunggal dan tidak ada cabang lain yang bisa dilewati.)*
+    Setelah ditolak, model membangun **backend database sintetis di disk** dengan
+    `class DatabaseWrapper(...): features = DatabaseFeatures()` sebagai **class attribute** —
+    yang ditimpa `BaseDatabaseWrapper.__init__` lewat `self.features = self.features_class(self)`,
+    sehingga `can_rollback_ddl` tetap `True` dan **gold patch tidak mengubah apa pun**.
+    Hasil: `flip={'base': 'FAIL', 'patched': 'FAIL'}`, verdict **`wrong-logic`** dengan alasan
+    *"likely gold-unsatisfiable predicate"* (`console.log` baris 1538). **Predikat yang
+    gold-unsatisfiable itu lahir di dalam desain yang judge sendiri diktekan** — di r2 judge
+    bahkan menuliskannya secara harfiah: *"the script should use a mock or a custom database
+    backend/setting that ensures the child process sees `can_rollback_ddl = False`"*.
+  - **Yang ini tambahkan di atas 12915:** di 12915 A/B-nya adalah *judge menolak vs tidak
+    menolak*. Di 11039 judge menolak di dua-duanya, dan yang berbeda hanyalah **seberapa
+    beruntung tebakan backend sintetis pengganti**. Jadi selain "presedensi vonis diberikan ke
+    komponen yang tidak stabil", ada klaim yang lebih keras: **penolakan judge memindahkan run
+    dari ruang desain yang terbukti bekerja ke ruang desain yang belum diuji siapa pun**, dan
+    di 1 dari 2 lemparan ruang baru itu mengandung bug yang menggugurkan run.
 - **Diagnosa — akar-harness, hampir murni.** Dua cacat terpisah:
   1. **Pemicu aturan terlalu luas.** Teks di `harness/stages/reproduce_prompt.md`
      (`rule:app-runtime`) berbunyi *"When your scenario runs an application as a child
@@ -438,6 +500,39 @@ bukan tentang bug-nya, melainkan tentang mekanika harness.** Kelas-kelasnya di b
   redireksi `sys.stdout` ke `StringIO` untuk **menangkap kembali baris yang di-echo `App`** —
   persis kanal yang `app.output()`/`app.lines()` di usulan lever ini akan sediakan.
   Kelas "one-shot vs ready line" kini **3 case, 8 kejadian**; kelas halusinasi API **6 nama**.
+- **Bukti penguat (case keempat + sweep frekuensi seluruh korpus) — django-11039 dan
+  tabulasi lintas-case** (temuan bot-01, 2026-07-20). Dari `events.jsonl` 11039:
+  - Kelas **"`start()` gagal ready pada perintah one-shot"** muncul lagi dengan **nama error
+    ketujuh**: `ValueError: ready_token is required` (r1). Bentuknya beda — bukan proses mati
+    duluan, melainkan `App.__init__` menolak dibuat tanpa `ready_token` — tapi lubangnya
+    persis sama: `sqlmigrate` adalah perintah sekali-jalan yang tidak punya ready line, dan
+    API tidak menyediakan cara menjalankannya.
+  - Kelas **halusinasi/salah-pakai kwargs** muncul **3×** (r1: `capture_output`; r2:
+    `capture_output`, `text`).
+  **Angka lintas-korpus (sweep `events.jsonl` seluruh 120 run `r-dev`, 65 di antaranya
+  qualified):**
+  - Kelas **"one-shot vs ready line"** (`app failed to become ready` + `ready_token is
+    required`): **27 kejadian, 15 run, 5 case** (11039, 11422, 12286, 12915, 13660). Entri ini
+    sebelumnya mencatat "3 case, 8 kejadian" — angka sebenarnya **lebih dari tiga kali lipat**.
+    Ini kelas kegagalan REPRODUCE terbesar kedua di korpus.
+  - Kelas **`__init__() got an unexpected keyword argument`**: **33 kejadian, 21 run, 8 case**;
+    **30 dari 33 hanya dua nama**, `text` (16×, 5 case) dan `capture_output` (14×, 5 case).
+    Sisanya `env` (12286), `field_name` (10914), `app_path` (11797).
+- **Catatan atribusi yang jujur, dan ia sekaligus menutup satu kandidat lever yang
+  menggantung.** `text=` dan `capture_output=` **ambigu**: keduanya kwarg sah `subprocess.run`
+  di Python 3.7+, dan keduanya juga ditebak model untuk `App`. Di 13660 mereka dicatat sebagai
+  halusinasi API `App`; di 11039 model mendiagnosis sendiri sebaliknya (`console.log` r1 baris
+  1121: *"The environment is using Python 3.6, where `subprocess.run` does not support
+  `capture_output` or `text`"*). **Catatan penutup 12915 butir 6** menggantungkan kandidat
+  lever *"model menargetkan Python modern, testbed Python 3.6"* dengan syarat: naikkan jadi
+  entri kalau muncul di case ketiga. Syarat itu **terpenuhi** (5 case, 30 kejadian) — tetapi
+  vonisnya tetap **BUKAN entri baru**, dan alasannya bukan frekuensi melainkan aturan main #4:
+  **kedua pembacaan bermuara pada usulan lever yang sama persis**, yaitu menyediakan satu cara
+  yang didukung untuk menjalankan perintah sekali-jalan dan **membaca kembali outputnya**
+  (`App.run_once()` + `app.output()` di entri ini). Begitu itu ada, model tidak punya alasan
+  menebak `capture_output=` pada `App` **maupun** meraih `subprocess.run` modern. Satu
+  mekanisme, satu lever. Yang berubah adalah bobotnya: dengan 30 kejadian di 5 case, ini
+  bukan lagi ekor panjang.
 - **Diagnosa — akar-harness dominan, dengan komponen model kecil.**
   - *Akar-harness:* `App` memodelkan satu bentuk dunia saja (server berumur panjang dengan
     ready line). (i) `start()` **wajib** ready_token dan melempar RuntimeError kalau proses
@@ -562,6 +657,29 @@ bukan tentang bug-nya, melainkan tentang mekanika harness.** Kelas-kelasnya di b
   baik daripada penggantinya" kini 4 dari 4 case** (13660, 13230, 12915, 12286) — dan di
   12286 "lebih baik" bisa dinyatakan tanpa selera sama sekali: checkpoint-nya kebal LV-09
   secara struktural, penggantinya tidak.
+- **Bukti penguat (case kelima — dan yang paling telak sejauh ini, karena "checkpoint lebih
+  baik" di sini berarti "checkpoint LOLOS dan penggantinya GUGUR") — django-11039**, run
+  `r-dev--django__django-11039--r1` (temuan bot-01, 2026-07-20). `console.log` baris 830
+  menyimpan `files/repro-first-fail.py`; setelah penolakan judge di baris 869, model mengembara
+  **7 turn (t11–t17)** dan tidak pernah kembali. Bedanya dengan empat case sebelumnya:
+  **checkpoint yang dibuang itu memenuhi gold, penggantinya tidak.** Checkpoint mem-patch
+  `connections` dengan mock yang `features.can_rollback_ddl = False` dan mengassert
+  `cmd.output_transaction is True → FAIL`; di dunia gold nilai itu menjadi `False` → PASS, jadi
+  flip lolos. Pengganti yang dibekukan memakai backend sintetis dengan `features` sebagai
+  **class attribute**, yang ditimpa `BaseDatabaseWrapper.__init__`, sehingga gold patch tidak
+  mengubah apa pun → `flip: base FAIL, patched FAIL` → verdict **`wrong-logic`**. *(Klaim
+  "checkpoint memenuhi gold" ini verifikasi tekstual dari gold.patch + script, bukan eksekusi
+  ulang.)* Ambang N=4 yang diusulkan entri ini akan memicu tepat di t15, saat model sedang
+  bergulat dengan `ModuleNotFoundError` backend sintetisnya sendiri.
+  Pola **"checkpoint yang dibuang lebih baik daripada penggantinya" kini 5 dari 5 case**
+  (13660, 13230, 12915, 12286, 11039) — dan 11039 adalah yang pertama di mana selisihnya
+  adalah selisih **lolos vs gugur**, bukan turn atau kelonggaran yardstick.
+  Titik data kedua di case yang sama: **r2 juga membuang checkpoint-nya** (baris 1171,
+  in-process, mematikan `can_rollback_ddl` pada koneksi Django sungguhan) setelah penolakan
+  judge, lalu mengembara **8 turn (t15–t21)**. r2 lolos, tapi yardstick bekunya lebih longgar
+  daripada checkpoint yang dibuang (LV-01, bukti penguat keenam). Jadi di **satu case**, dua
+  run, checkpoint dibuang **2 dari 2 kali**, dan dua-duanya merugikan — sekali dengan
+  menggugurkan run, sekali dengan melonggarkan alat ukur.
 - **Diagnosa:** akar-harness (mekanisme ada tapi pasif). Berbeda dari `next-step nudge`
   (`4541654`) yang menangani loop degeneratif — di sini modelnya justru produktif, hanya
   saja produktif ke arah yang salah.
@@ -876,6 +994,47 @@ n=1 vs n=1; jangan dijadikan aturan sebelum ada case ketiga.
     penting — menghapus seluruh tekanan yang mendorong model menimpa repro beku (LV-11).
     Ini case kedua setelah 11910 di mana (a) tepat sasaran, dan yang **pertama** di mana
     ongkosnya harus dibaca dari run yang papan skornya hijau sempurna.
+- **Bukti penguat untuk bagian (b) — django-11039, dan ini rekaman paling rapat di korpus
+  atas MEKANISME degradasinya, bukan cuma akibatnya** (temuan bot-01, 2026-07-20).
+  Di 11910 yang tercatat adalah akibat (cabang error jatuh ke PASS); di 12915 yang tercatat
+  adalah sebabnya di kode (parser dua-nilai). Di 11039 **seluruh rantainya terekam dalam satu
+  run, tiga langkah berturut-turut**, semuanya di `r-dev--django__django-11039--r1/console.log`:
+  1. **t15 (baris 1356):** model menulis cabang jujur —
+     `print("REPRO_STATUS: ERROR (Command failed)")` untuk kasus child process gagal.
+  2. **baris 1408 → `events.jsonl` retry terakhir:** cabang itu benar-benar menyala, dan
+     driver membalas `repro run exited 0 without REPRO_STATUS: FAIL; last output line:
+     REPRO_STATUS: ERROR (Command failed)`. Yaitu: **pesan yang sama persis dengan pesan untuk
+     script yang tidak mencetak status sama sekali.** Model tidak diberi tahu bahwa masalahnya
+     adalah kosakata; ia hanya diberi tahu bahwa outputnya salah.
+  3. **t16 (baris 1476):** model membuang prefiks kanoniknya dan menggantinya dengan
+     `print("Command failed, cannot determine status")` — cabang itu kini **tidak mencetak
+     `REPRO_STATUS` sama sekali**. Itulah bentuk yang dibekukan sebagai `files/repro.py` r1.
+  Lalu di **r2** cabang itu **hilang sepenuhnya**: `if "BEGIN" in stdout and "COMMIT" in
+  stdout: FAIL else: PASS`, tanpa penjaga apa pun. Jadi urutannya: **token jujur → pesan
+  tanpa token → cabangnya dihapus dan semua kegagalan katastrofik mendarat di PASS.**
+  **Dua hal yang TIDAK boleh diklaim dari ini, dan pemisahannya penting:**
+  - Langkah 1→3 adalah **sebab-akibat yang terekam** di dalam satu run: driver menolak, model
+    mengubah cabang itu di turn berikutnya. Ini bukti kausal.
+  - Langkah r1→r2 **bukan pembelajaran**: r2 adalah run segar tanpa memori r1. Yang benar
+    dikatakan: tekanan yang sama dijatuhkan dua kali dan mendarat di dua tempat berbeda, dan
+    karena kita **rerun sampai qualified**, script yang akhirnya dibekukan ditarik dari
+    distribusi yang sudah digeser ke arah permisif. Klaim *"gate menyeleksi repro yang lebih
+    lemah"* **tidak didukung sebagai mekanisme** di case ini — r1 gugur karena predikat
+    gold-unsatisfiable (LV-05/LV-08), sama sekali bukan karena penjaganya. Yang didukung
+    bukti adalah pernyataan yang lebih sempit dan lebih bisa dipertahankan: **loop retry
+    menggeser distribusi bentuk repro ke arah permisif, dan rerun-sampai-lolos mengambil
+    sampel dari distribusi yang sudah bergeser itu.**
+- **Frekuensi kosakata "tidak tahu" di korpus (sweep bot-01, 2026-07-20)** — angka ini
+  menggantikan "n=1 (12915)" sebagai basis bagian (b): **model menciptakan status ketiga atau
+  menolak mencetak status di 5 dari 23 case** yang punya repro qualified. Rinciannya:
+  `REPRO_STATUS: ERROR` (12915 r1 & r2, 13768 r3, 11422 r43), `REPRO_STATUS: ERROR_ENVIRONMENT`
+  (10914 r1), `REPRO_STATUS: ERROR (Command failed)` (11039 r1), plus **dua kasus di mana model
+  sengaja TIDAK mencetak status** ketika kontrol positifnya gagal, lengkap dengan komentar yang
+  menjelaskan alasannya (`11422 r44`: *"Do not return REPRO_STATUS here"*; `13768 r4`:
+  *"We do not print REPRO_STATUS here to avoid false positives/negatives"*). **Tak satu pun
+  dari tujuh bentuk itu bisa dilihat `_STATUS_RE`.** Kesimpulan yang layak dinaikkan: ini bukan
+  kekurangan yang harus "diajarkan" ke model — model sudah menuliskannya sendiri, berulang
+  kali, di case-case yang tak berhubungan. Yang kurang adalah pembacanya.
 - **Usulan lever (dua bagian, keduanya mekanis):**
   - (a) **Gerbang pre-flight FIX.** Sebelum pesan pertama ke model, driver menjalankan
     repro beku di container kerja yang masih pristine. Kalau keluarannya bukan
@@ -1397,6 +1556,33 @@ padahal secara non-fungsional lebih buruk dari gold** — lihat LV-14.
     jelas tidak, dan bisa dibuktikan dengan **satu contoh input**. Dan sekali lagi
     `gold_eval.json` fase FIX mencatat `file_match: true` + `line_overlap: true` — dua-duanya
     hijau, dua-duanya benar, dua-duanya **buta pada isi hunk**.
+- **Bukti penguat (case ketiga — divergensinya nyaris nol, dan justru itu yang berguna:
+  ia menunjukkan BATAS instrumentasi (a)) — django-11039** (temuan bot-01, 2026-07-20).
+  Bukti: `f-dev--django__django-11039--r1/files/fix.diff` vs
+  `cases/gold/django__django-11039/gold.patch`.
+  - **Baris kodenya identik.** Kedua patch menulis
+    `self.output_transaction = migration.atomic and connection.features.can_rollback_ddl`
+    di file dan titik sisip yang sama. `gold_eval.json`: `file_match: true`,
+    `line_overlap: true`. Ini **divergensi fungsional nol** — case pertama di korpus di mana
+    itu bisa dikatakan.
+  - **Yang berbeda hanya komentarnya, dan komentarnya kini berbohong.** Gold **memperbarui**
+    komentar di atas baris itu: `# Show begin/end around output only for atomic migrations`
+    → `# Show begin/end around output for atomic migrations, if the database supports
+    transactional DDL.` Model **membiarkan komentar lama**, sehingga file hasilnya memuat
+    komentar yang menyatakan syaratnya hanya `atomic` tepat di atas kode yang syaratnya
+    `atomic AND can_rollback_ddl`.
+  - **Kenapa ini layak dicatat di entri ini dan bukan diabaikan:** instrumentasi (a)
+    sebagaimana diusulkan membandingkan **himpunan identifier di baris `+`**. Di sini
+    `gold_only_symbols` = himpunan kosong dan `model_only_symbols` = himpunan kosong —
+    (a) akan melaporkan "setara", dan **itu benar untuk perilaku runtime tetapi meleset untuk
+    isi hunk**. Jadi 11039 adalah **kasus batas yang menandai apa yang (a) tidak lihat:
+    komentar, docstring, dan seluruh perubahan non-identifier.** Tidak mengubah usulan (a) —
+    memperbaikinya agar membaca komentar akan menukar detektor murah-dan-tepat dengan
+    detektor berisik — tetapi wajib ditulis supaya `gold_only_symbols: []` kelak tidak
+    dibaca sebagai "patch setara gold".
+  - **Kalibrasi kepentingan, supaya tidak dilebihkan:** komentar basi bukan regresi dan tidak
+    terukur test mana pun; ongkos run-nya nol (full green, 7 turn di FIX). Nilainya murni
+    sebagai **batas detektor**, bukan sebagai kerugian.
 - **Diagnosa — dan bagian terpentingnya adalah memisahkan dua hal yang mudah tercampur:**
   1. **Batas metodologi (BUKAN akar-harness, BUKAN akar-model).** Bahwa L2 tidak menangkap
      regresi non-fungsional adalah sifat dari *definisi ground truth* yang kita pakai:
@@ -1685,3 +1871,219 @@ validasi (setelah 11099, 14017, 13230, 12915).
    benar; hampir semua yang menentukan **ongkosnya** — 9 turn REPRODUCE + 4 turn FIX, yaitu
    sekitar setengah dari seluruh run — adalah akar-harness. Papan skor tidak merekam satu
    pun dari ongkos itu.
+
+---
+
+## Autopsi django-11039 — full green yang dibayar dengan satu run gugur
+## (bot-01, 2026-07-20)
+
+**Korpus:** `artifacts/r-dev/r-dev--django__django-11039--r1` (GAGAL, `wrong-logic`,
+17 turn, 10 attempt), `--r2` (qualified, 21 turn, 12 attempt),
+`artifacts/l-dev/l-dev--django__django-11039--r1` (qualified, 2 turn),
+`artifacts/f-dev/f-dev--django__django-11039--r1` (menang attempt 1, 7 turn).
+Gold: `cases/gold/django__django-11039/gold.patch`. Bug: `sqlmigrate` membungkus outputnya
+dengan `BEGIN`/`COMMIT` berdasarkan `migration.atomic` saja, tanpa memeriksa
+`connection.features.can_rollback_ddl`.
+
+**Hasil (terverifikasi ulang dari artefak):** FULL GREEN. `swebench_eval.json` →
+`resolved=true`, `patch_successfully_applied=true`, F2P **1/1**
+(`test_sqlmigrate_for_non_transactional_databases`), P2P **88/88**, `f2p_failed=[]`,
+`p2p_failed=[]`. `gold_eval.json` fase FIX: `file_match: true`, `line_overlap: true`.
+LOCALIZE `pointed_lines: [55, 60]`, `line_overlap: true` — **kali ini sitasinya tepat**
+(bandingkan 13230 dan 12286 di LV-13b).
+
+**Kenapa r1 gugur — dan sebabnya bisa ditunjuk ke satu baris.** Setelah judge menolak
+checkpoint in-process-nya, model membangun backend database sintetis:
+
+> `class DatabaseWrapper(DatabaseWrapper):` dengan `features = DatabaseFeatures()` sebagai
+> **class attribute**.
+
+`BaseDatabaseWrapper.__init__` menimpanya lewat `self.features = self.features_class(self)`,
+jadi `can_rollback_ddl` tetap `True` dan **gold patch tidak mengubah apa pun**:
+`flip_run.json` r1 menunjukkan dunia gold masih mencetak `BEGIN; ... COMMIT;` +
+`REPRO_STATUS: FAIL`. Verdict `wrong-logic`, alasan *"likely gold-unsatisfiable predicate"*.
+r2 memperbaikinya dengan override di `__init__` sesudah `super().__init__()`.
+**Checkpoint r1 yang dibuang memenuhi gold** (verifikasi tekstual, lihat LV-08) — jadi
+kegagalan ini bukan "model tidak paham bug-nya", melainkan model dipaksa pindah ke ruang
+desain yang belum diuji siapa pun, lalu tersandung di sana.
+
+**Nol retry yang sebabnya "salah paham bug"** — konsisten dengan 13660, 13230, 12915, 12286.
+Pemahaman model benar sejak awal di kedua run (`repro.md` r1 t9 menyebut baris 56
+`self.output_transaction = migration.atomic` dengan tepat).
+
+**Ke mana temuan run ini masuk (semuanya bukti penguat — NOL entri baru):**
+
+- LV-01 — bukti penguat keenam: predikat `if BEGIN and COMMIT: FAIL else: PASS`, nol kontrol
+  positif, `output_transaction = False` tanpa syarat akan lolos.
+- LV-05 — bukti penguat kelima: judge menolak **2 dari 2 run** setelah exec-pair hijau
+  disaksikan; r2 kategori murni `mechanics` (case ketiga di mana (b) tepat sasaran), r1
+  campuran; dan **pertama kalinya penolakan judge bisa ditunjuk sebagai sebab langsung sebuah
+  verdict gagal**.
+- LV-06 — bukti penguat keempat: nama ketujuh (`ValueError: ready_token is required`) +
+  sweep frekuensi yang menaikkan kelas one-shot dari "3 case, 8 kejadian" ke
+  **5 case, 27 kejadian**; sekaligus menutup kandidat lever "Python 3.6" dari catatan penutup
+  12915 butir 6 sebagai bagian dari LV-06, bukan entri sendiri.
+- LV-08 — bukti penguat kelima, dan yang terkuat: checkpoint dibuang **2 dari 2 run**, dan di
+  r1 selisihnya adalah **lolos vs gugur**. Pola "checkpoint lebih baik daripada penggantinya"
+  kini **5 dari 5 case**.
+- LV-10(b) — bukti penguat: rantai degradasi tiga langkah terekam dalam satu run
+  (token `ERROR` → pesan tanpa token → cabangnya dihapus), plus frekuensi kosakata
+  "tidak tahu" di **5 dari 23 case**.
+- LV-14 — bukti penguat ketiga, dan ia menandai **batas** instrumentasi (a): divergensi
+  fungsional nol, tetapi model membiarkan komentar lama yang kini berbohong terhadap kodenya;
+  `gold_only_symbols` akan kosong dan melaporkan "setara".
+
+**Vonis atas pertanyaan "apakah ini mekanisme baru": BUKAN.** Pertanyaan yang diajukan adalah
+apakah "kualitas repro menurun antar-rerun dan gate menyeleksi yang lebih permisif" berdiri
+sebagai mekanisme sendiri. Jawaban dari bukti: **tidak, dua kali.** (i) Penurunan yang
+**terekam kausal** terjadi **di dalam** r1 (t15 → t16), dan akarnya adalah regex dua-nilai di
+`reproduce_gates.py` baris 11 — yaitu LV-10(b), titik vonis yang sama, perbaikan yang sama.
+(ii) Perbedaan r1 → r2 **bukan seleksi atas kelonggaran**: r1 gugur karena predikat
+gold-unsatisfiable, sama sekali bukan karena penjaganya. Per aturan main #4, ini bukti
+penguat, bukan entri. Yang **sah** dinaikkan dari observasi ini adalah rumusan yang lebih
+sempit: **loop retry menggeser distribusi bentuk repro ke arah permisif, dan karena kita
+rerun sampai qualified, script yang dibekukan adalah sampel dari distribusi yang sudah
+bergeser.** Itu memperkuat LV-10(b) dan tidak menuntut lever baru.
+
+---
+
+## Tabel frekuensi kelas kegagalan (per 2026-07-20)
+
+**Section ini BOLEH diperbarui** — beda dari entri lever yang append-only. Setiap pembaruan
+wajib bertanggal dan menyebut denominatornya. Alasan keberadaannya: setelah lima autopsi
+berturut-turut tanpa mekanisme baru, yang kurang bukan lagi katalog kelas melainkan
+**urutan prioritas berbasis frekuensi**.
+
+### Metode dan denominator (baca ini sebelum memakai angkanya)
+
+- **Populasi run:** seluruh `artifacts/r-dev/*` = **120 run**, di antaranya **65 qualified**
+  (`verdict.json` → `pass_l1: true`), tersebar di **23 case**. Plus seluruh
+  `artifacts/f-dev/*` = **12 run**, 10 case.
+- **Peringatan bias yang wajib dibaca bersama angka per-run:** `django-11422` sendirian
+  menyumbang **44 dari 120 run** (13 qualified) karena kampanye rerun. Angka **per-run**
+  karenanya condong ke satu case. Untuk K1–K5 dipakai **satu repro qualified per case**
+  (run qualified terakhir tiap case) = **sampel 23 file**, sehingga tiap case punya bobot 1.
+- **K1, K2, K4, K5 dinilai MANUAL**, dengan membaca 23 file itu satu per satu (1.630 baris).
+  Alasannya: detektor AST yang ditulis untuk tugas ini **over-count** — ia menandai 18 run
+  sebagai K1, padahal sebagian besar adalah rantai `elif` yang sisi PASS-nya justru menuntut
+  bukti positif (mis. 15320: `startswith('(SELECT') and endswith(')')`). Angka otomatis itu
+  **tidak dipakai** dan tidak boleh dikutip.
+- **K3 dan kelas-kelas di tabel B dinilai OTOMATIS** (grep/regex atas `events.jsonl` dan
+  `repro.py`) dan bisa direproduksi persis.
+
+### Tabel A — kualitas 23 repro qualified (satu per case, penilaian manual)
+
+- **K1 — pola vonis `if <gejala>: FAIL else: PASS`** (PASS adalah cabang "gejala tidak
+  teramati"): **10 dari 23 case**. Yaitu 11039, 11099, 11910, 12286, 12747, 12915, 13158,
+  13401, 13658, 14017.
+- **K1-ketat — kegagalan katastrofik benar-benar mendarat di PASS** (K1 **dan** tidak ada
+  penjaga exception/exit yang mengalihkannya): **3 dari 23 case** — **11039, 11910, 12286**.
+  Pemisahan ini penting dan sebelumnya tidak pernah dibuat: 7 dari 10 K1 punya `except` yang
+  membelokkan crash ke FAIL atau ke exit non-nol, jadi mereka longgar tetapi **tidak
+  berbahaya dengan cara yang sama**. Ketiga case K1-ketat itu persis ketiga case yang sudah
+  ditulis panjang di LV-01/LV-10 — jadi kelas terburuknya **memang sudah terkatalog lengkap**,
+  dan frekuensinya **13%**, bukan mayoritas.
+- **K2 — ada cabang yang tidak mencetak `REPRO_STATUS` sama sekali:** **8 dari 23 case**
+  (10914, 11099, 11422, 11910, 12747, 12915, 13230, 13768). **Temuan yang membalik tafsir
+  kriteria ini:** **3 dari 8 adalah perilaku yang BENAR** — 11422 r44 dan 13768 r4 menahan
+  status justru karena **kontrol positifnya gagal**, dan 10914 r1 menahannya karena
+  environment terbukti tidak bisa mereproduksi bug. K2 karenanya **bukan metrik cacat**;
+  ia mengukur "model punya sesuatu untuk dikatakan yang tidak bisa diucapkan kontrak" —
+  dan itu argumen untuk LV-10(b), bukan tuduhan terhadap repro-nya.
+- **K3 — mengimpor `pipe_runtime`:** **4 dari 23 case** (11422, 11910, 12286, 13660);
+  per-run **12 dari 65 repro qualified**. Kelas ini **tidak menyebar** — ia terkonsentrasi di
+  case-case yang judge-nya mengutip `rule:app-runtime`.
+- **K4 — tidak punya kontrol positif yang ikut menentukan kelulusan:** **19 dari 23 case.**
+  Ini **kriteria dengan prevalensi tertinggi di seluruh tabel**, dan yang paling kurang
+  terwakili di katalog: sampai sekarang ia hanya muncul sebagai anak kalimat di LV-01
+  (13230, 12915, 12286). Empat yang **punya** kontrol: 10914 (precondition environment
+  `tempfile` 0o600 yang menggugurkan vonis kalau tak terpenuhi), 11422 r44 (ubah `settings.py`
+  dulu dan wajib melihat reloader menyala), 13768 r4 (emit log kontrol dan wajib menangkapnya),
+  14017 (uji `Exists() & Q()` yang memang bekerja sebelum menguji arah yang rusak).
+  Keempatnya membuktikan bentuknya **murah dan sudah ada di korpus** — jadi ini kandidat
+  paling konkret untuk memberi isi pada usulan LV-01 yang selama ini buntu di *"perketat repro
+  itu mudah dikatakan, sulit dimekaniskan tanpa membocorkan gold"*: **kontrol positif tidak
+  butuh gold sama sekali.**
+- **K5 — vonisnya cuma substring / "tidak melempar exception", bukan nilai atau struktur:**
+  **12 dari 23 case** (11039, 11422, 11797, 11910, 12286, 12308, 12915, 13658, 13660, 13768,
+  14017, 15320). Sebelas sisanya memakai perbandingan nilai/struktur
+  (mis. 13220 `err1 == err2`, 13401 `set_len == 1`, 15400 `result == 15`,
+  13230 `comments == "http://comments/1/"`). Jadi **hampir tepat separuh** korpus qualified
+  bertumpu pada bukti tekstual/negatif.
+
+**Irisan yang paling layak dibaca:** **K4 ∧ K5 = 10 dari 23 case** — separuh korpus qualified
+memutuskan nasib sebuah fix dari sebuah substring, tanpa satu pun cek bahwa alat ukurnya
+menyala. Itu, bukan K1, adalah profil kelemahan yardstick yang sebenarnya.
+
+### Tabel B — frekuensi kelas kegagalan (otomatis, seluruh 120 run `r-dev`)
+
+Dihitung dari `detail.why` di `events.jsonl`. Satu event = satu kejadian.
+
+- **Penolakan judge menahan DONE** (LV-05): **20 kejadian, 20 run, 11 dari 24 case.**
+  Ini kelas dengan **sebaran case terluas** di korpus — tersentuh oleh hampir separuh case,
+  bukan hanya oleh yang sudah diautopsi. **Catatan kejujuran yang wajib menyertainya:**
+  dari 20 run yang ditahan judge, **12 tetap berakhir qualified (60%)**, sementara laju
+  qualified korpus keseluruhan **54% (65/120)**. Jadi di tingkat agregat, penolakan judge
+  **tidak terlihat menurunkan laju kelulusan**. Ongkosnya terbukti nyata dalam **turn**
+  (13230: 7; 12915: 16; 12286: 9; 11039: 7 dan 8) dan **sekali** dalam verdict (11039 r1),
+  tetapi siapa pun yang memakai tabel ini untuk membenarkan LV-05 harus memakai argumen
+  ongkos-turn dan risiko-ekor, **bukan** klaim "judge menggugurkan run".
+- **`App` gagal pada perintah one-shot** (LV-06): **27 kejadian, 15 run, 5 case**
+  (11039, 11422, 12286, 12915, 13660). Naik tajam dari "3 case, 8 kejadian" yang tercatat
+  di LV-06.
+- **`__init__() got an unexpected keyword argument`** (LV-06, atribusi campuran `App` vs
+  `subprocess` Python 3.6): **33 kejadian, 21 run, 8 case**; **30 dari 33 hanya dua nama**,
+  `text` (16×) dan `capture_output` (14×). Ini **kelas bernama terbesar di korpus**.
+- **Repro mencetak PASS di dunia base sehingga gate menolak DONE:** **83 kejadian, 14 run,
+  8 case.** Angka terbesar di tabel ini, dan ia **bukan cacat** — ini gate bekerja persis
+  sebagaimana mestinya, menolak repro yang belum mereproduksi. Dicatat justru sebagai
+  pembanding: mekanisme yang mengikat memang menghasilkan volume penolakan seperti ini, dan
+  itulah bentuk yang diharapkan dari LV-10(a) kalau dipasang.
+- **`REPRO_STATUS: ERROR` muncul di aliran retry** (LV-10b): **8 kejadian, 3 run, 3 case.**
+  Angka ini **jauh lebih kecil daripada prevalensi sebenarnya** dan tidak boleh dipakai
+  sendirian: ia hanya menghitung kejadian di mana cabang ERROR **kebetulan menyala saat
+  dinilai**. Prevalensi yang benar untuk (b) ada di Tabel A/K2 dan di bukti penguat LV-10:
+  **5 dari 23 case** menuliskan kosakata "tidak tahu" dalam bentuk apa pun.
+
+### Tabel C — LV-09 lintas seluruh `f-dev` (12 run)
+
+`grep -c "No module named 'pipe_runtime'"` atas tiap `console.log`:
+
+- **Repro beku mengimpor `pipe_runtime` — 5 run, 3 case:** 11910 r1 (**588** kejadian, console
+  17.927 baris, `pass_l1=false`), 13660 r1 (38), 13660 r3 (6), 12286 r1 (7), 13660 r2 (3).
+- **Repro beku bersih — 7 run, 7 case:** 10914, 11039, 11099, 12915, 13230, 13658, 14017 —
+  **nol kejadian di ketujuhnya.**
+- **Korelasi dengan hasil L2:** kelompok terpapar **1 dari 5 `resolved=true`**; kelompok bersih
+  **6 dari 7**. Arahnya searah dengan bukti kode (`run_fix_gemma.py:231–232`) dan dengan lima
+  titik korelasi yang sudah ditulis di LV-09.
+- **Confounder yang wajib disebut, kalau tidak angka ini menyesatkan:** ketiga run 13660 gagal
+  L2 karena `exec(cmd, {})` (LV-01/LV-04), **bukan** karena modul yang hilang — jadi 3 dari 5
+  anggota kelompok terpapar punya sebab kegagalan yang berdiri sendiri. Dan di sisi bersih,
+  14017 juga `resolved=false`. Rasio 1/5 vs 6/7 karenanya **tidak boleh dibaca sebagai efek
+  kausal LV-09**; yang sah diklaim tetap seperti sebelumnya: LV-09 hanya bisa menggigit repro
+  yang punya dependency runtime, dan besaran gigitannya terukur dalam turn (11910: 80 turn
+  tanpa hasil; 12286: 4 dari 7 turn), bukan dalam laju resolved.
+
+### Konsekuensi untuk urutan pemasangan
+
+Frekuensi **tidak membalik** urutan yang sudah disarankan (LV-10a → LV-09 → LV-05b → LV-11),
+tetapi ia menggeser dua hal:
+
+1. **LV-06 naik.** Dengan 27 + 30 kejadian di 5–8 case, ia kini kelas kegagalan REPRODUCE
+   terbesar yang terukur, dan perbaikannya (`App.run_once()` + `app.output()`) tidak
+   menyentuh penalaran model sama sekali. Sebelumnya ia dinilai "tinggi tapi akan jarang
+   terpicu kalau LV-05 dipasang duluan" — angka ini menunjukkan basisnya lebih lebar
+   daripada yang bisa dihapus LV-05.
+2. **Kontrol positif (K4, 19/23) layak jadi isi konkret pertama untuk LV-01.** Selama ini
+   LV-01 macet karena "perketat repro" tidak punya bentuk mekanis yang tidak membocorkan
+   gold. Kontrol positif **tidak membocorkan apa pun** — ia hanya menuntut script membuktikan
+   bahwa alat ukurnya menyala — dan empat case di korpus sudah menuliskannya sendiri tanpa
+   diminta. Ini belum dinaikkan jadi usulan resmi di LV-01 (butuh spec, dan aturan main #6
+   melarang mengubah kontrak berdasarkan pengamatan yang belum diuji); dicatat di sini
+   sebagai arah yang paling didukung data.
+
+**Yang TIDAK bisa diukur andal, dan sengaja dibiarkan kosong:** apakah repro longgar
+**menyebabkan** patch yang tidak setara gold. Untuk menjawabnya perlu `gold_only_symbols`
+(LV-14a) terpasang lebih dulu di seluruh korpus; tanpa itu, satu-satunya jalan adalah membaca
+setiap pasang diff dengan tangan, dan sampel yang ada (12915, 12286, 11039) terlalu kecil dan
+terlalu dipilih untuk menghasilkan angka.
