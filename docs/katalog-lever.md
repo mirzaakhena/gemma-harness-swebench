@@ -2960,3 +2960,264 @@ lebih penting:** **daya beda F2P resmi**. 13590 menambah instansi kedua di mana 
 yang jelas merusak tetap lolos test resmi (D1; yang pertama 13658/KH-06). **n=2, dan itu
 bukan angka.** Mengukurnya butuh harness sabotase-per-case yang belum ada; sampai itu ada,
 jangan mengutip "batas metodologi" sebagai frekuensi.
+
+---
+
+## Catatan penutup autopsi batch bot-02 (2026-07-21) — estafet 22-case, bagian 7 django
+
+**Korpus:** 7 case dijalankan RLFV penuh lewat `scripts/run_rlfv_batch.py`
+(`django__django-13710, 13028, 14580, 14672, 14752, 14915, 15347`), state
+`artifacts/batch-bot02.json`. Model `google/gemma-4-31B-it`. Autopsi tiap case oleh satu
+subagent read-only; integrasi (tulisan ini) serial oleh bot-02. **Sabotase §3d TIDAK
+dieksekusi** — lihat catatan di akhir section; rekomendasi per-case dicatat tapi tidak
+dijalankan (mode frekuensi, katalog jenuh). Metode klasifikasi K1–K5 = manual, satu repro
+qualified per case, konsisten dengan 27 file sebelumnya.
+
+### Papan skor yang membedakan (bukan angka agregat)
+
+- **Hijau ASLI (patch SETARA gold secara semantik) — 3:** 15347, 14915, 14672.
+- **Hijau DENGAN CATATAN (patch LEBIH SEMPIT dari gold; tetap memperbaiki bug, divergen di
+  sudut yang tak diuji test mana pun) — 2:** 13710, 13028.
+- **Merah, akar HARNESS (bukan model) — 2:** 14580 (trace-injection gagal atas repro
+  subprocess), 14752 (judge/LV-05 memaksa model membuang repro minimal-benar).
+- **Kegagalan sisi-model MURNI: 0.** Di 14752 kelemahan eksekusi model nyata TAPI sekunder —
+  ia muncul hanya SETELAH judge memaksa model meninggalkan checkpoint known-good-nya.
+- **Lulus-palsu tipe file-salah (à la 13658): 0.** Kelima resolved punya `file_match=true`
+  DAN `line_overlap=true`. (Ingat: recall detektor ini rendah — file_match=true bukan bukti
+  benar; itulah kenapa §3b di bawah tetap dijalankan.)
+
+### Per-case (ringkas; bukti di run dir yang disebut)
+
+- **15347** (`f-dev--…--r1`, resolved, F2P 1/1, P2P 29/29). §3b **SETARA**: patch
+  byte-identik gold — `if obj.extra_tags:` → `if obj.extra_tags is not None:` di
+  `MessageEncoder.default` (`storage/cookie.py`). Repro (`r-dev--…--r1`) **K4 saja** (K1/
+  K1-ketat/K2/K3/K5 semua TIDAK; vonis nilai eksak `== ""`, default mendarat FAIL).
+  Under-general yang lolos: paksa `None→""` di sisi decode. **Contoh hijau-sahih yang
+  dicapai TANPA bantuan yardstick** (mirip 14238/14382) — berguna sebagai baseline
+  pembanding. LV-09 bersih. Perkuat: profil K4 dominan (predikat bagus pun tetap K4, seperti
+  11179).
+- **14915** (`f-dev--…--r1`, resolved, F2P 1/1 `test_choice_value_hash`, P2P 23/23). §3b
+  **SETARA**: `def __hash__(self): return hash(self.value)` di `ModelChoiceIteratorValue`
+  (`forms/models.py`), identik gold, tak bocor ke kelas generik. Repro **K1+K4+K5**,
+  K1-ketat TIDAK (`except Exception`→FAIL menahan katastrofik). Under-general yang lolos:
+  `return id(self)` — hashable → tak ada `TypeError` → PASS, tapi `mciv(1) in {1:…}` gagal
+  cocok → `data-fields` diam-diam tak terpasang; repro buta karena tak assert `data-fields`
+  (K4). **Hijau di sini benar hanya karena model menyalin fix minimal-benar, bukan karena
+  yardstick** — perkuat LV-01.
+- **14672** (`f-dev--…--r1`, resolved, F2P 169/169). §3b **SETARA**:
+  `make_hashable(self.through_fields)` di `ManyToManyRel.identity`, identik gold. Repro
+  **K1+K4+K5** (K2 versi BENAR: cabang tak-terduga di-`raise` ulang, bukan diam→PASS;
+  K1-ketat TIDAK). Under-general yang lolos: `tuple(self.through_fields)`. Churn tinggi
+  (5 retry; model sempat merusak file dengan import salah) lalu konvergen ke gold. LV-09
+  bersih. **Kaveat yang layak masuk LV-14 (lihat di bawah): `swebench_spec.json` case ini
+  `PASS_TO_PASS: []` kosong by-spec** (SWE-bench_Lite) — seluruh ~169 test masuk F2P karena
+  `test_patch` mengubah `through_fields` Event jadi list → `TypeError` meruntuhkan `setUp`
+  seluruh modul di base. Konsekuensi: **nol pagar regresi; "resolved" bersandar 100% pada
+  F2P.** Aman di sini HANYA karena §3b SETARA — kalau patch bukan gold, false-green sangat
+  mungkin lolos. **Untuk instance ber-P2P kosong, verifikasi §3b wajib; hijau swebench
+  sendiri tidak cukup.**
+- **13710** (`f-dev--…--r1`, resolved, F2P 1/1, P2P 62/62, file+line match). §3b **LEBIH
+  SEMPIT (divergen gold)** — instansiasi **LV-14**. Gold menaruh blok `verbose_name_plural`
+  SEBELUM defaulting `verbose_name` (memakai None-ness sebagai sinyal); model menaruhnya
+  SESUDAH, sehingga `if self.verbose_name is not None:` SELALU True dan cabang
+  `else: self.model._meta.verbose_name_plural` menjadi **DEAD CODE**. Akibat: model SELALU
+  membentuk plural `format_lazy('{}s', verbose_name)` dan **tidak pernah menghormati**
+  `Meta.verbose_name_plural` ireguler. Regresi konkret: inline tanpa nama pada model
+  ber-`verbose_name_plural="children"` → "childs", bukan "children". Keempat sub-kasus F2P
+  SEMUA menyetel `verbose_name` inline (jalur di mana model==gold) → tidak membedakan; 62
+  P2P tidak menyentuh jalur bare-inline. Higiene: 3 file kosong (`fix_options.py`,
+  `repro_app/*`) ikut di-commit; `gold_eval.touched_files` menyaringnya sehingga
+  `file_match=true` bersifat murah hati. Repro **K4+K5** (vonis substring `"Custom Child
+  Name" in plural`); under-general yang lolos: `verbose_name_plural = verbose_name` (tanpa
+  "s") tetap PASS repro walau F2P resmi menolak. LV-09 bersih.
+- **13028** (`f-dev--…--r1`, resolved, F2P 2/2, P2P 276/276, file+line match). §3b **LEBIH
+  SEMPIT (under-general), fungsional-setara di domain teruji, BUKAN lulus-palsu.** Gold
+  memakai prinsip `hasattr(expression,'resolve_expression')` (apakah ini ekspresi); model
+  mengunci penanda insidental `not hasattr(expression,'_state')` (mengecualikan instance
+  model). Bersinggungan-terbalik: sama di instance-model dan di ekspresi asli tak-filterable
+  (itu sebabnya 276 P2P hijau), tetapi meninggalkan **lubang laten** — objek
+  non-ekspresi-non-model ber-`filterable=False` → model RAISE, gold TIDAK (praktis tak ada
+  di Django nyata). Repro **K1+K4+K5**, K1-ketat TIDAK (`except Exception`→`ERROR`, contoh
+  BENAR di sisi K1-ketat). Under-general yang lolos: `def check_filterable(self, expression):
+  return` (netralkan `raise` total) lolos repro DAN `test_field_with_filterable` (yang hanya
+  `assertSequenceEqual([a3,a4])`). LV-09 bersih. Perkuat **LV-14 + LV-01**.
+- **14580** — **MERAH di LOCALIZE, akar HARNESS. Ini temuan paling baru batch ini; dicatat
+  sebagai bug-robustness, BUKAN lever gaming** (detail di sub-section terpisah di bawah).
+  REPRODUCE-nya sendiri qualified dan repro-nya **NON-K4** (satu-satunya di batch ini) —
+  lihat tally.
+- **14752** — **MERAH di REPRODUCE, akar HARNESS (LV-05).** Perkuat LV-05/LV-06/LV-07/LV-10/
+  LV-12; detail di bukti penguat masing-masing di bawah. Tidak menambah sampel Tabel A
+  (tidak ada repro qualified).
+
+### Bukti penguat yang ditambahkan ke entri lever (per case)
+
+- **LV-01 (yardstick longgar):** +15347 (K4-saja, predikat nilai bagus tetap K4), +14915
+  (K1+K4+K5, under-general `id(self)`), +14672 (K1+K4+K5, under-general `tuple()`), +13710
+  (K4+K5, substring), +13028 (K1+K4+K5, `check_filterable: return`). **Lima kali berturut:
+  hijau ≠ yardstick menggigit** — tiga di antaranya (15347, 14915, 14672) hijau-benar yang
+  dicapai TANPA bantuan repro; dua (13710, 13028) hijau atas patch yang divergen dari gold.
+- **LV-14 (isi patch-vs-gold tak dibandingkan):** +13710 (dead-code else → plural salah
+  untuk model ber-plural ireguler; lolos F2P+P2P karena jalur tak diuji), +13028 (penanda
+  `_state` insidental vs prinsip `resolve_expression`; lubang laten), +kaveat 14672 (P2P
+  kosong by-spec → nol pagar regresi; §3b wajib).
+- **LV-05 (judge menahan bukti yang sudah disaksikan):** +14752 — di r1 **dan** r3 driver
+  menyimpan checkpoint known-good `repro-first-fail.py` = in-process
+  `hasattr(AutocompleteJsonView,'serialize_result')` → base FAIL; karena gold **menambah**
+  method itu, flip base→gold PASS praktis dijamin. Judge menolak: r1 murni **`correctness`**
+  ("test the observable / follow the user's action path"), r3 campuran
+  (`correctness` + `pipe_runtime`/action-path `mechanics`). Model pivot ke orkestrasi
+  admin+HTTP+login → **3 run habis-budget, nol qualified**. **LV-05(b) mekanika-saja TIDAK
+  menyelamatkan r1 dan hanya separuh r3** → menguatkan **LV-13(a)** (kewajiban bukti >
+  filter kategori); pola persis 13230. Ini bukti paling telak sejauh ini bahwa penolakan
+  judge memindahkan run dari desain-terbukti-lolos ke desain-tak-teruji yang gagal total,
+  dan case wall-clock terpanjang di korpus REPRODUCE (r1 1495s / r2 1339s / r3 2244s
+  ≈ 84 menit).
+- **LV-06 (`App` one-shot / ready-line):** +14752 r3 — **5×** `app failed to become ready
+  (30s)` pada `runserver` model, plus dua halusinasi API (`django.apps.Applicationcstdlib`,
+  `Apps.register_app`).
+- **LV-07 / LV-10 (mislabel `wrong-logic`/"gold-unsatisfiable"):** +14752 r3 — flip
+  base=FAIL/patched=FAIL divonis `wrong-logic`/"gold-unsatisfiable predicate" padahal sebab
+  riil = **CSRF 403**: `session.post('/admin/login/')` tanpa `csrfmiddlewaretoken`
+  (`gate_runs.json`: base & patched dua-duanya `Login failed with status 403`), sehingga
+  jalur autocomplete tak pernah tercapai di kedua dunia. Kemunculan lain "environment repro
+  rusak → dibaca sebagai predikat model salah".
+- **LV-12 (preferensikan repro in-process):** +14752 — checkpoint model = in-process
+  `hasattr` (nol orkestrasi, akan flip); setelah ditolak judge model membangun full-project +
+  `runserver` + login HTTP → titik gagal berlipat (path, migrasi, kesiapan server, CSRF,
+  JSONDecode) dan **~59 kejadian `ModuleNotFoundError` scaffolding** lintas 3 run. Bukti
+  langsung tesis LV-12; sub-flavor baru: di sini titik-gagal-tak-terkait-bug = **langkah
+  autentikasi**, bukan predikat/URLconf.
+
+### Temuan bug-robustness harness (BARU) — django-14580: trace-injection gagal atas repro subprocess
+
+**Ini bukan lever gaming dan sengaja TIDAK diberi nomor LV** (bar tinggi, katalog jenuh untuk
+kelas gaming; dan aturan main "jangan namai kelas baru terlalu cepat"). Dicatat di sini
+sebagai bug-robustness + gap kontrak lintas-fase, dengan syarat kapan boleh naik jadi entri.
+
+- **Gejala:** LOCALIZE gagal **3/3 rerun deterministik**. `verdict.json` tiap run
+  `pass_l1=false`, verdict `syntax-fail`, `failures=["artefak wajib tidak ada:
+  localize.md"]`. `files/` KOSONG total ketiga run — model **tidak pernah dipanggil**.
+- **Akar (dari `console.log`/`events.jsonl` `l-dev--django__django-14580--r1..r3`):** driver
+  LOCALIZE menjalankan repro input **di bawah trace** untuk membangun "trace pool" (file
+  repository yang disentuh repro) sebagai benih lokalisasi. Repro 14580 menjalankan seluruh
+  kode Django lewat `subprocess.run([sys.executable, manage.py, ...])`, jadi proses parent
+  yang di-trace **tidak pernah** meng-import/mengeksekusi satu pun file `/testbed/django/…`
+  (semua kode repo jalan di proses ANAK). → event `abort` (`why: "trace pool is empty — no
+  traced process executed a repository file"`) → stage abort **SEBELUM** LLM → `localize.md`
+  tak pernah ada. "localize.md not found" adalah **gejala hilir**, bukan sebab.
+- **Klasifikasi tegas:** kegagalan **HARNESS**, bukan model (model tak jalan), bukan
+  eval-penamaan (gate PRODUK yang gagal, `pass_l1=false`), bukan mismatch nama-file (`files/`
+  kosong). Deterministik → retry 3× mustahil lolos.
+- **Gap kontrak lintas-fase:** kualifikasi REPRODUCE (flip OK) **tidak menjamin** repro bisa
+  di-trace di LOCALIZE. Berbagi akar (repro berbentuk subprocess) dengan **LV-12** — bisa
+  dibaca sebagai konsekuensi hilir LV-12 yang belum tercatat: repro subprocess bukan hanya
+  membakar turn (LV-06) dan menyeret titik gagal (LV-12), ia **mematikan fase LOCALIZE
+  sepenuhnya**.
+- **Syarat naik jadi entri lever:** kalau sweep menunjukkan ≥3 case lain dengan repro
+  qualified berbentuk subprocess yang juga menggugurkan LOCALIZE via trace-pool-kosong, maka
+  *"gate REPRODUCE wajib menolak repro yang tidak mengeksekusi file repo in-process"* (atau
+  *"trace-injection L mengikuti fork ke subprocess anak"*) layak jadi entri mekanis. Sekarang
+  **n=1**; dicatat sebagai bug-robustness dulu. Rekomendasi (JANGAN eksekusi): trace juga
+  subprocess anak (follow-fork / `sitecustomize` `settrace`), ATAU gate R menambah cek
+  "repro mengeksekusi file repository in-process" sebagai syarat handoff ke L.
+- **Repro qualified 14580 sendiri** (`r-dev--…--r1`, flip terverifikasi FAIL@base/PASS@gold):
+  **NON-K4** (diskriminasi asli + flip verified — satu-satunya NON-K4 di batch bot-02),
+  K1+K5(substring-ketat pesan error persis), K1-ketat YA-PARSIAL (hanya cabang `migrate`:
+  error lain → PASS; langkah `makemigrations` dijaga `sys.exit(1)`), K2 YA-wajar. LV-09
+  bersih.
+
+### Pembaruan Tabel frekuensi bertanggal 2026-07-21 (bot-02) — 6 case baru ber-repro-qualified
+
+**Denominator.** Sampel Tabel A naik **27 → 33 case** (+6: 13710, 13028, 14672, 14915,
+15347, 14580; tiap satu punya repro qualified yang belum pernah masuk hitungan). **14752
+TIDAK menambah** (nol repro qualified). `r-dev` delta batch ini: **+9 run** (6 qualified di 6
+case baru + 3 non-qualified dari 14752 r1/r2/r3). Sampel `f-dev` **+5 run** (kelima resolved;
+14580 tak punya f-dev karena berhenti di L, 14752 tak punya karena berhenti di R).
+
+**Klasifikasi 6 repro baru** (manual, metode sama):
+
+- **13710** — K1 T, K1-ketat T, K2 T, K3 T, **K4 Y**, **K5 Y** (substring).
+- **13028** — K1 Y, K1-ketat T (`except`→ERROR), K2 T, K3 T, **K4 Y**, **K5 Y**.
+- **14672** — K1 Y, K1-ketat T, **K2 Y (BENAR** — cabang re-raise), K3 T, **K4 Y**, **K5 Y**.
+- **14915** — K1 Y, K1-ketat T, K2 T (cabang tak-terjangkau), K3 T, **K4 Y**, **K5 Y**.
+- **15347** — K1 T, K1-ketat T, K2 T, K3 T, **K4 Y**, K5 T (vonis nilai eksak).
+- **14580** — K1 Y, **K1-ketat Y (parsial**, cabang `migrate` saja), **K2 Y (wajar)**, K3 T,
+  **K4 TIDAK** (diskriminasi asli + flip verified), K5 Y (substring-ketat).
+
+**Hitungan K1–K5 diperbarui (denominator 33 case, satu repro qualified per case):**
+
+- **K1: 16 dari 33** (48%). Naik empat: +13028, +14672, +14915, +14580.
+- **K1-ketat: 5 dari 33** (15%). Naik satu: **+14580** (parsial — hanya cabang `migrate`
+  yang meloloskan error tak-terkait ke PASS; `makemigrations` dijaga). Daftar kini 11039,
+  11910, 12286, 14238, 14580. Proporsi tetap minoritas — **KH-05 tidak terbantah**.
+- **K2: 11 dari 33**. Naik dua: +14672, +14580 — **dua-duanya subset "K2 karena repro
+  berlaku jujur"**, sehingga subset-benar naik dari **4/9 → 6/11** (14672 re-raise cabang
+  tak-terduga; 14580 menahan status saat setup `makemigrations` gagal). K2 makin jelas
+  **bukan metrik cacat**.
+- **K3: 4 dari 33**. Tidak berubah (nol dari enam repro baru mengimpor `pipe_runtime`).
+  Kelas ini tetap tidak menyebar.
+- **K4: 27 dari 33** (82%). Naik lima (+13710, 13028, 14672, 14915, 15347); **14580 NON-K4**.
+  **Tetap kriteria dengan prevalensi tertinggi.** Yang **punya** kontrol positif kini 6:
+  10914, 11422 r44, 13768 r4, 14017, 14382 r2, **14580** (kontrol jenis flip — repro
+  membedakan base vs gold via string error spesifik).
+- **K5: 20 dari 33** (61%). Naik lima (+13710, 13028, 14672, 14915, 14580; **15347 TIDAK** —
+  vonis nilai eksak `== ""`).
+- **Irisan K4 ∧ K5: 16 dari 33** (48%). Naik empat (13710, 13028, 14672, 14915; 15347 K4
+  tanpa K5, 14580 K5 tanpa K4). **Tetap profil kelemahan yardstick yang sebenarnya.**
+
+**Pembacaan yang searah dengan sesi bot-01, tidak membalik apa pun.** Enam repro baru
+menambah bukti bahwa **K4 (kontrol positif absen) adalah sumbu dominan**, dan bahwa **kualitas
+predikat lepas dari kontrol**: 15347 punya predikat nilai terbaik di batch (K5 TIDAK) dan
+tetap K4; 14580 justru satu-satunya yang punya kontrol (jenis flip) dan predikatnya K5. Ini
+mengulang pemisahan yang sudah dicatat lewat 11179 dan trio 14382/14238/13590.
+
+**Tabel B — increment dari 14752** (regex atas `detail.why` `events.jsonl` r1/r2/r3):
+
+- **Repro scaffolding gagal `ModuleNotFoundError` (bentuk orkestrasi, LV-12):** +14752 —
+  **~59 kejadian lintas 3 run** (`app`/`project`/`repro_app`); ketiga run habis-budget tanpa
+  qualified. Case wall-clock terpanjang & terboros di korpus REPRODUCE (≈84 menit).
+- **`App` gagal ready (LV-06):** +14752 r3, **5×** `app failed to become ready (30s)`.
+- **Penolakan judge menahan DONE (LV-05):** +14752, **2 run** (r1, r3). (Delta saja — matcher
+  angka basis tabel lama belum dipastikan; lihat peringatan bot-01 sesi ketiga.)
+- **Baris baru — `REPRO_STATUS`/flip mislabel karena langkah AUTH rusak (LV-07/LV-10):**
+  +14752 r3 (CSRF 403). Bentuk kedelapan-plus "environment repro rusak dibaca sebagai
+  predikat salah".
+
+**Tabel C (LV-09) — `grep -c "No module named 'pipe_runtime'"` atas 5 `console.log` `f-dev`
+baru:** kelima **0**. Kelompok **bersih** naik +5 run/+5 case (13710, 13028, 14672, 14915,
+15347), **kelima `resolved=true`**. Kelompok **terpapar TIDAK BERUBAH** (5 run, 3 case, 1
+dari 5). Confounder lama tetap berlaku; rasio tetap **tidak boleh dibaca kausal**.
+
+**Tabel D (OFF-GOLD) — sweep 5 `f-dev` baru** (semua punya `swebench_eval.json` DAN
+`gold_eval.json`): **`resolved=true` 5 dari 5** (13710, 13028, 14672, 14915, 15347);
+**`resolved=true` DAN `file_match=false`: 0 dari 5** — hit korpus tetap **hanya 13658**.
+`line_overlap=false`: 0. Jadi denominator `f-dev` ber-kedua-file naik ke **20 run**;
+`resolved=true` **15 dari 20**; `resolved=true & file_match=false` **tetap 1** (13658),
+kini **1 dari 15 run `resolved=true`**. **Peringatan recall-rendah lama tetap berlaku
+sepenuhnya** — dua hijau-dengan-catatan batch ini (13710, 13028) dua-duanya `file_match=true`
+dan **tidak tersentuh** metrik ini, persis seperti 12915/12286. Metrik ini menghitung
+kemunculan sinyal, bukan frekuensi lulus-palsu.
+
+### Kenapa sabotase §3d tidak dieksekusi di batch ini (dan apa yang direkomendasikan)
+
+Tiga subagent merekomendasikan sabotase (13710, 13028, 14672) untuk membuktikan repro
+under-diskriminatif secara empiris. **Tidak dieksekusi**, dengan alasan yang dinyatakan jujur
+supaya bisa dinilai ulang:
+
+1. Untuk 13710 divergensinya **struktural dan tak-ambigu** (dead-code `else` terbaca langsung
+   dari `fix.diff`), dan kelonggaran repro-nya **sudah terbukti oleh hasil `resolved=true`
+   itu sendiri** — repro meloloskan patch model yang divergen-dari-gold. Menjalankan probe
+   hanya menambah satu titik ke kelas **K4∧K5 yang sudah jenuh** (16/33), bukan menemukan hal
+   baru.
+2. Untuk 13028 divergensinya laten/kontrived (butuh objek non-ekspresi-non-model yang praktis
+   tak ada di Django nyata); nilai probe rendah relatif ongkos + risiko jebakan §3d
+   (interpreter testbed, bytecode basi).
+3. Untuk 14672 patchnya **SETARA gold**, jadi sabotase di sana bukan tentang kebenaran patch
+   melainkan tentang P2P-kosong — sudah dinyatakan cukup lewat pembacaan `swebench_spec.json`.
+
+**Rekomendasi yang dicatat untuk diangkat bila kelak ada yang menjalankan sabotase
+sistematis:** (a) 13710 — pasang `verbose_name_plural = verbose_name` (tanpa "s"); prediksi
+frozen repro tetap PASS, F2P resmi FAIL. (b) 13028 — pasang `check_filterable: return`;
+prediksi repro PASS DAN F2P PASS (repro dan test resmi sama-sama tak menegaskan ekspresi
+tak-filterable harus tetap ditolak — ini kontrol positif yang hilang). Keduanya menyasar
+**kelemahan repro**, bukan menuduh patch salah.
