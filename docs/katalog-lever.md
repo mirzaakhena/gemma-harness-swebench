@@ -198,6 +198,101 @@ yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan a
   Konsekuensi tabel frekuensi butir 2 (kontrol positif sebagai isi konkret pertama LV-01),
   dan menambah satu bentuk kontrol yang murah dan tidak membocorkan gold sama sekali:
   **assert atas efek samping yang seharusnya menyertai perbaikan**, bukan hanya atas gejalanya.
+- **Bukti penguat (case kesembilan — dan yang PERTAMA memisahkan dua sumbu kelemahan repro
+  secara empiris) — django-13590**, `r-dev--django__django-13590--r1/files/repro.py` +
+  `f-dev--django__django-13590--r1` (temuan bot-01, 2026-07-20). Run ini **MERAH**
+  (`resolved=false`), jadi ia masuk sini bukan sebagai lulus-palsu melainkan sebagai
+  **alat ukur atas alat ukur**: repro-nya disabotase enam kali dan hasilnya membelah rapi
+  jadi dua kelompok yang selama ini kita perlakukan sebagai satu.
+  - **Kerusakan LINGKUNGAN ditolak, 3 dari 4.** `filter()` dirusak di jalur repro →
+    `REPRO_STATUS: UNKNOWN`; `SyntaxError` disuntik ke `sql/query.py` → UNKNOWN; Django
+    dibuat tak bisa di-import → UNKNOWN. (Yang lolos: `create()` dirusak **di luar** jalur
+    repro → PASS, dan itu memang benar — repro tidak memakai `create()`.) Sebabnya bisa
+    dibaca langsung di script, baris 75–78: seluruh badan repro dibungkus
+    `except Exception: traceback.print_exc(); print("REPRO_STATUS: UNKNOWN")`.
+  - **Kerusakan SEMANTIK tidak ditolak, 2 dari 2.** D1 (`return [...]` — selalu paksa ke
+    `list`, membuang pelestarian tipe yang justru jadi inti bug) → **PASS**. D2
+    (`return value` — sub-ekspresi tidak pernah diresolusi sama sekali) → **PASS**.
+    Sebabnya juga bisa dibaca langsung: baris 60 berbunyi
+    `MyModel.objects.filter(value__range=my_range).exists()` dan **hasil `.exists()` dibuang**;
+    vonis PASS-nya adalah "tidak ada `TypeError` yang lolos", persis kelas K5.
+  - **Yang membuat ini penting untuk LV-01, dan bukan sekadar bukti kedelapan-belas:**
+    13590 membuktikan bahwa **ketahanan terhadap kerusakan lingkungan tidak membeli
+    ketajaman semantik sedikit pun**. Repro ini punya penjaga fallback terbaik di korpus
+    dan tetap meloloskan dua patch yang merusak kontrak yang sedang diperbaiki. Sampai
+    sekarang LV-01 (predikat terlalu longgar) dan LV-10b (cabang error jatuh ke PASS)
+    sering dibela dengan bukti yang sama; case ini memisahkan keduanya dengan eksperimen,
+    bukan dengan argumen. **Konsekuensi konkret:** uji sabotase dinamis yang diusulkan
+    LV-10(b) (*"jalankan repro di container tanpa repo; kalau ia mencetak PASS, repro-nya
+    cacat"*) akan **meluluskan 13590 dengan nilai sempurna** — dan 13590 tetap buta. Uji
+    itu sah untuk sumbu-nya sendiri, tetapi **tidak boleh dijual sebagai uji kualitas
+    repro secara umum**; kalau dipasang sendirian ia menghasilkan rasa aman yang salah.
+  - **Bentuk kontrol yang akan menutup lubang ini, dan tetap gold-blind:** repro cukup
+    menyisipkan satu baris yang **memakai hasilnya** — mis. `assert list(qs) == [obj]`
+    setelah memasukkan satu baris yang memang masuk rentang, atau
+    `assert type(resolved) is Range`. Keduanya diturunkan dari *issue text* ("named tuples
+    used as arguments to `__range`"), bukan dari test resmi. D1 mati di assert kedua, D2
+    mati di assert pertama.
+- **Bukti penguat (case kesepuluh — yardstick terlemah yang pernah diuji di korpus, dan
+  satu-satunya yang gagal SELURUH empat kelas sabotase) — django-14238**,
+  `r-dev--django__django-14238--r1/files/repro.py` + `f-dev--django__django-14238--r1`
+  (temuan bot-01, 2026-07-20). Run FULL GREEN (`resolved=true`, F2P 2/2, P2P 39/39,
+  `file_match`+`line_overlap` true) dengan patch yang **setara gold**
+  (`any(issubclass(subclass, s) for s in self._subclasses)` vs `issubclass(subclass,
+  self._subclasses)`; setara karena `_subclasses` adalah tuple). Jadi sekali lagi: hijau
+  yang benar, didapat **tanpa** bantuan yardstick.
+  - Empat sabotase, empat PASS (rincian di `koreksi-hipotesis.md` KH-07):
+    `__subclasscheck__` diganti `return True` → PASS; gold benar tapi `QuerySet.create()`
+    disabotase → PASS; file repo ditinggalkan `SyntaxError` → PASS; **Django sama sekali
+    tidak bisa di-import → PASS**.
+  - **Mekanismenya bisa ditunjuk ke satu baris, dan ia bukan `else: PASS` semata.** Repro
+    menjalankan pekerjaan sesungguhnya di **subprocess anak**, dan anak itu sudah
+    mengklasifikasikan kegagalannya dengan benar — baris 57–58:
+    `except Exception as e: print(f"OTHER_ERROR: {type(e).__name__}: {e}")`. Lalu pemanggil
+    (baris 78–83) hanya bertanya dua hal: `expected_error in stdout` → FAIL,
+    `"SUCCESS" in stdout` → PASS, **`else: PASS`**. Token `OTHER_ERROR` **tidak pernah
+    ditanyakan**. Jadi informasi pembedanya **sudah diproduksi, lalu dibuang oleh
+    pemanggilnya sendiri**. Ini tanda tangan yang sama dengan 12286 (wrapper anak
+    `run_check.py`), tetapi kali ini anaknya sudah menamai kegagalannya dengan benar —
+    yang hilang murni satu cabang `elif` di pemanggil.
+  - **K1-ketat.** Ini anggota **keempat** kelas terburuk (setelah 11039, 11910, 12286), dan
+    **yang pertama yang keanggotaannya dibuktikan dengan eksekusi, bukan dengan pembacaan.**
+  - **Jejaknya terbaca di loop retry, dan itu bukti tambahan yang independen:** `events.jsonl`
+    mencatat **6 dari 7 attempt gagal dengan kelas yang identik** —
+    `repro run exited 0 without REPRO_STATUS: FAIL; last output line: REPRO_STATUS: PASS`.
+    Enam kali model diberi tahu hal yang sama persis, karena desain repro-nya memang tidak
+    mampu memproduksi sinyal lain. Bandingkan dengan 13590 di case yang sama sekali berbeda:
+    12 attempt gagalnya tersebar di **enam kelas berbeda** (`ImproperlyConfigured`,
+    `AppRegistryNotReady`, `ModuleNotFoundError` ×2 bentuk, `RuntimeError: populate() isn't
+    reentrant`, `AttributeError`, dan satu `REPRO_STATUS: UNKNOWN`). **Polaritas cabang
+    fallback karenanya bukan hanya soal kebenaran vonis akhir — ia menentukan berapa banyak
+    informasi yang diterima loop retry di setiap putaran.** Repro yang membulatkan semuanya
+    ke PASS membuat retry-nya buta, bukan cuma gate-nya.
+- **Bukti penguat (case kesebelas — sisi kontrol positif, dan yang pertama di mana kontrol
+  itu TERBUKTI menyala di dalam loop) — django-14382**,
+  `r-dev--django__django-14382--r2/files/repro.py` (temuan bot-01, 2026-07-20). Run FULL
+  GREEN (`resolved=true`, F2P 1/1, P2P 188/188). Repro ini adalah **anggota kelima** kelompok
+  "punya kontrol positif" (setelah 10914, 11422 r44, 13768 r4, 14017), dan kontrolnya
+  **load-bearing** dengan cara yang paling gamblang di korpus — baris 26–34:
+  ia menjalankan `startapp control_app control_dir` ke direktori yang **benar-benar sudah
+  dibuat**, dan kalau itu gagal ia mencetak `REPRO_STATUS: ERROR` lalu **`return`**, sehingga
+  cabang vonis bug tidak pernah tercapai.
+  - **Buktinya bukan pembacaan kode:** `events.jsonl` r2 mencatat satu attempt gagal dengan
+    `repro run exited 0 without REPRO_STATUS: FAIL; last output line: REPRO_STATUS: ERROR` —
+    yaitu kontrol itu **benar-benar menyala dan benar-benar menahan vonis**. Sampai sekarang
+    klaim "kontrol positif murah dan sudah ada di korpus" bertumpu pada empat script yang
+    kontrolnya tidak pernah terlihat gagal; ini yang pertama dengan rekaman eksekusinya.
+  - **Sisi PASS-nya juga positif**, dan itu terpisah dari kontrolnya: `elif success:` menuntut
+    `returncode == 0` yang teramati, bukan ketiadaan gejala. Jadi 14382 r2 **bukan K1**.
+  - **Batas kontrol ini, supaya tidak di-overclaim:** kontrol positif 14382 membuktikan
+    *`startapp` berfungsi di dunia ini*. Ia **tidak** membuktikan bahwa app yang dihasilkan
+    benar. Repro tetap **K5** — vonisnya substring `"'' is not a valid app directory"` atas
+    stderr plus exit code; ia tidak pernah memeriksa bahwa `bug_app/` benar-benar mendarat
+    di dalam `bug_dir/`. Patch model (`target.rstrip(os.sep)`, yaitu usulan reporter) memang
+    sedikit lebih sempit daripada gold (validasi setelah `abspath`): `"dir/."` dan
+    `"dir/sub/.."` hanya tertangani normalisasi penuh ala gold. **Repro ini tidak akan
+    membedakannya**, dan tidak ada test resmi yang membangunnya. Jadi kontrol positif
+    menyerang **sumbu K4**, bukan sumbu K5 — dua-duanya masih perlu.
 - **Diagnosa:** dua lapis.
   - *Akar-model* pada pilihan fix-nya sendiri (`{}` vs `globals()`; early-return khusus
     `Exists`) — pemahaman semantik, dan terbukti muncul konsisten & independen di LOCALIZE
@@ -1070,6 +1165,66 @@ n=1 vs n=1; jangan dijadikan aturan sebelum ada case ketiga.
   dari tujuh bentuk itu bisa dilihat `_STATUS_RE`.** Kesimpulan yang layak dinaikkan: ini bukan
   kekurangan yang harus "diajarkan" ke model — model sudah menuliskannya sendiri, berulang
   kali, di case-case yang tak berhubungan. Yang kurang adalah pembacanya.
+- **Bukti penguat untuk bagian (b) — TRIO 14238 / 13590 / 14382, dan ini yang PERTAMA
+  memberi bentuk tepat pada (b): masalahnya bukan "jatuh ke PASS", melainkan "dibulatkan
+  ke salah satu dari dua vonis"** (temuan bot-01, 2026-07-20). Sampai sekarang (b)
+  dirumuskan satu arah — *cabang error jatuh ke PASS*. Tiga run yang selesai berurutan
+  memberi ketiga polaritas dalam satu jendela, dan **kedua pembulatan sama-sama merusak,
+  hanya ke arah yang berlawanan**:
+  1. **`else: PASS` → lulus palsu.** `r-dev--django__django-14238--r1` baris 82–83.
+     Diverifikasi eksekusi: Django tak bisa di-import → `REPRO_STATUS: PASS`
+     (empat kelas sabotase, empat PASS; rincian di LV-01 bukti kesepuluh dan KH-07).
+  2. **`else: FAIL` → run yang dihancurkan di gerbang.** `r-dev--django__django-14382--r1`
+     baris 28–30 (`else: print("Unexpected output: ..."); print("REPRO_STATUS: FAIL")`).
+     Repro memakai `target_dir = "testapp_dir/"` tetapi **tidak pernah membuat direktorinya**,
+     jadi setelah gold diterapkan `startapp` gagal dengan
+     `CommandError: Destination directory '/testbed/testapp_dir' does not exist` — dan cabang
+     `else` menerjemahkan kegagalan setup itu menjadi **FAIL**, yaitu "bug masih ada".
+     `flip_run.json` r1 (terlampir di artefak) menunjukkannya persis: base FAIL, gold FAIL.
+     Verdict: `wrong-logic`, `pass_l1=false`. **Ini kejadian kedua kelas "repro
+     gold-unsatisfiable" setelah `11039` r1** — tetapi sebabnya BEDA dan pemisahannya penting:
+     di 11039 predikatnya sendiri yang tidak bisa dipuaskan gold (backend sintetis dengan
+     `features` sebagai class attribute); di 14382 predikatnya baik-baik saja dan yang salah
+     adalah **setup yang tidak lengkap plus fallback berpolaritas FAIL** yang menyembunyikannya.
+     Per aturan main #3 keduanya tetap satu kelas di tingkat gejala (*flip tidak flip →
+     `wrong-logic`*), jadi ini **bukti penguat, bukan entri baru**.
+  3. **Nilai ketiga → gerbang bisa membedakan.** `r-dev--django__django-13590--r1` baris
+     75–78 membungkus semuanya dengan `except Exception: print("REPRO_STATUS: UNKNOWN")`,
+     dan itu **bekerja**: tiga dari empat kerusakan lingkungan mendarat di UNKNOWN, bukan
+     di PASS dan bukan di FAIL.
+  **Rumusan (b) yang seharusnya, dan ia lebih sempit sekaligus lebih mengikat daripada yang
+  tertulis di atas:** yang wajib dituntut bukan *"jangan jatuh ke PASS"* melainkan
+  **"keluaran untuk 'aku tidak berhasil mengamati' harus berupa token KETIGA yang tidak
+  sama dengan PASS maupun FAIL"**. Menuntut `else: FAIL` sebagai perbaikan atas `else: PASS`
+  akan **memindahkan** kerusakan dari papan skor ke laju gugur, bukan menghapusnya — dan
+  14382 r1 adalah harganya, terbayar penuh.
+- **Bukti penguat — dan ini KOREKSI ke arah yang tidak nyaman untuk usulan (b) itu sendiri:
+  uji sabotase dinamis yang diusulkan (b) punya titik buta seukuran LV-01** (temuan bot-01,
+  2026-07-20, dari `django-13590`). Usulan (b) di bawah berbunyi: *"sepenuhnya secara dinamis
+  dengan menjalankan repro di container **tanpa** repo (sabotase sengaja): kalau ia mencetak
+  PASS di sana, repro-nya cacat menurut konstruksi."* Diuji langsung pada 13590:
+  - Django dibuat tak bisa di-import → **UNKNOWN**. Repro **lulus** uji (b). Sempurna.
+  - Patch D1 (`return [...]`, selalu paksa ke `list`) → **PASS**.
+  - Patch D2 (`return value`, sub-ekspresi tidak pernah diresolusi) → **PASS**.
+  Jadi repro yang **lulus penuh uji (b)** tetap meloloskan dua patch yang merusak kontrak
+  yang sedang diperbaiki. Uji sabotase-lingkungan mengukur **apakah alat ukurnya hidup**;
+  ia sama sekali tidak mengukur **apakah alat ukurnya menunjuk ke hal yang benar**. Kedua
+  hal itu terbukti **independen** di case ini. **Konsekuensi yang harus ikut dipasang
+  bersama (b):** jangan pernah melaporkan "lulus uji sabotase" sebagai sertifikat kualitas
+  repro; laporkan sebagai *"yardstick armed"*, dan sediakan sumbu kedua (LV-01: kontrol
+  positif + assert atas nilai) sebagai kriteria terpisah yang tidak boleh dibulatkan ke
+  dalamnya.
+- **Angka pendukung untuk (b), diperbarui 2026-07-20 (bot-01, sesi ketiga):** sweep ulang
+  seluruh `events.jsonl` di `artifacts/r-dev` (**126 run**) dengan regex yang sama seperti
+  sweep sebelumnya:
+  - `without REPRO_STATUS: FAIL; last output line: REPRO_STATUS: PASS` → **89 kejadian,
+    15 run, 9 case** (naik dari 83/14/8; **seluruh tambahannya dari `14238` r1**, 6 kejadian).
+  - `last output line: REPRO_STATUS: ERROR` → **9 kejadian, 4 run, 4 case** (naik dari 8/3/3;
+    tambahannya dari `14382` r2, dan itu adalah **kontrol positif yang menyala**, bukan cacat).
+  - `last output line: REPRO_STATUS: UNKNOWN` → **1 kejadian, 1 run, 1 case** — bentuk
+    kosakata "tidak tahu" yang **kedelapan**, dan sekali lagi **tak terlihat `_STATUS_RE`**.
+    Model kini sudah menciptakan token ketiga di **6 dari 27 case**. Argumen "yang kurang
+    adalah pembacanya, bukan modelnya" bertambah satu titik.
 - **Usulan lever (dua bagian, keduanya mekanis):**
   - (a) **Gerbang pre-flight FIX.** Sebelum pesan pertama ke model, driver menjalankan
     repro beku di container kerja yang masih pristine. Kalau keluarannya bukan
@@ -2255,6 +2410,187 @@ ada di disk** — `file_match` true vs false. Bukan oleh analisis baru, bukan ol
 
 ---
 
+## Autopsi trio 14382 / 14238 / 13590 — spektrum kualitas repro, diukur bukan dibaca
+## (bot-01, 2026-07-20, sesi ketiga)
+
+**Hasil kelas baru: NOL.** Ketiga run masuk ke LV-01 dan LV-10 sebagai bukti penguat.
+Nilai sesi ini seluruhnya ada di **pemisahan dua sumbu yang selama ini menyatu** dan di
+angka frekuensi. Kandidat yang ditolak ada di catatan penutup.
+
+### Fakta dasar ketiga run (diverifikasi dari artefak, bukan dari laporan)
+
+- **`django-14382` — HIJAU.** `resolved=true`, F2P 1/1
+  (`test_trailing_slash_in_target_app_directory_name`), P2P 188/188, `file_match` +
+  `line_overlap` true di L dan F. Repro qualified = r2 (r1 gugur, lihat di bawah).
+- **`django-14238` — HIJAU.** `resolved=true`, F2P 2/2, P2P 39/39, `file_match` +
+  `line_overlap` true. Patch setara gold. Jebakan `_subclasses` di problem statement
+  **tidak termakan** — model mendiagnosis `__subclasscheck__` dengan benar.
+- **`django-13590` — MERAH.** `resolved=false`. F2P 1/1 **lulus**
+  (`test_range_lookup_namedtuple`), tetapi **P2P regresi 1 dari 145**:
+  `test_range_lookup_allows_F_expressions_and_expressions_for_integers`,
+  `TypeError: tuple() takes at most 1 argument (2 given)` di `sql/query.py:1087`
+  (`p2p_passed_count: 144` + 1 gagal). `file_match=true`, `line_overlap=true` di F —
+  **lokasi tepat, logika kurang. Ini bukan lulus palsu**, dan penting bahwa ia dicatat
+  begitu: papan skor bekerja benar di sini. Yang menarik justru **repro-nya**, bukan
+  vonisnya. Catatan tambahan: `l-dev` menunjuk baris 1135–1145 sementara gold di ~1077,
+  jadi `l-dev` `line_overlap=false` — LOCALIZE meleset, FIX tetap mendarat benar.
+  Patch model (`files/fix.diff`, terbaca langsung) menambah cabang `isinstance(value, list)`
+  lalu memakai `type(value)(*(generator))` untuk sisanya: ia **melindungi `list` yang tidak
+  pernah terancam** dan **membiarkan `tuple` yang justru dirusak oleh `*`**. Gold membedakan
+  namedtuple lewat `hasattr(type_, '_make')`.
+
+### (1) Apa PERSISNYA yang membedakan repro yang menolak kerusakan dari yang menelannya
+
+Pertanyaannya diajukan sebagai: *cabang `else: PASS` vs `else: UNKNOWN`? keberadaan kontrol
+positif? keduanya independen?* Jawaban dari ketiga file `repro.py`, bukan dari teori:
+
+**Yang membedakan adalah POLARITAS CABANG FALLBACK, dan HANYA itu. Kontrol positif tidak
+ada hubungannya dengan sumbu ini.**
+
+Buktinya berbentuk pasangan terkontrol yang kebetulan tersedia lengkap:
+
+- **13590 vs 14238 — keduanya K4 (nol kontrol positif), hasilnya berlawanan.** 13590 tidak
+  punya satu pun kontrol positif, dan tetap menolak 3 dari 4 kerusakan lingkungan. 14238
+  juga tidak punya kontrol positif, dan menelan 4 dari 4. Satu-satunya perbedaan struktural
+  yang relevan ada di cabang terakhir:
+  - 13590 baris 75–78: `except Exception: traceback.print_exc(); print("REPRO_STATUS: UNKNOWN")`
+  - 14238 baris 82–83: `else: print("REPRO_STATUS: PASS")`
+  Karena kontrol positifnya **konstan (nol) di kedua sisi**, kontrol positif **tidak bisa**
+  menjadi penjelasnya. Ini pasangan yang cukup untuk memutuskan pertanyaan (1).
+- **14382 r2 — punya kontrol positif, TAPI fallback-nya juga sudah benar** (`else:
+  REPRO_STATUS: ERROR`, baris 50–52). Jadi ia **tidak memisahkan** kedua faktor, dan tidak
+  boleh dipakai sebagai bukti bahwa kontrol positif yang menolak kerusakan.
+
+**Mekanisme sebenarnya, dinyatakan setepat mungkin.** Yang menentukan bukan kata `else`
+melainkan **bagaimana kegagalan direpresentasikan saat sampai ke titik vonis**:
+
+- Di **13590** pekerjaan berjalan **in-process**. Kerusakan lingkungan tiba di titik vonis
+  sebagai **objek exception** — sebuah nilai yang secara tipe berbeda dari hasil normal, dan
+  karenanya **tidak bisa** disamakan dengan hasil normal. Bahasanya sendiri yang memisahkan.
+- Di **14238** pekerjaan berjalan di **subprocess**, dan hasilnya diperiksa dengan
+  **pencocokan substring atas stdout**. Lapisan itu **menghapus perbedaan tipe**: crash,
+  sukses, dan "tidak terjadi apa-apa" semuanya menjadi *string yang tidak cocok*. Setelah
+  informasi itu hilang, cabang mana pun yang tersisa akan salah — dan model memilih PASS.
+  **Buktinya bahwa ini soal pembuangan informasi, bukan kemalasan model:** anaknya
+  **sudah menamai kegagalannya dengan benar** di baris 57–58
+  (`except Exception as e: print(f"OTHER_ERROR: {type(e).__name__}: {e}")`); pemanggilnya
+  hanya tidak pernah menanyakan token itu.
+- Di **14382 r1** (yang gugur) lapisannya juga subprocess + substring, dan polaritas
+  fallback-nya kebetulan **FAIL** — sehingga kegagalan setup terbaca sebagai "bug masih ada"
+  dan repro menjadi gold-unsatisfiable.
+
+**Jadi rumusan yang tepat, dan ini yang harus dipakai untuk membentuk lever:**
+> Repro menolak kerusakan **kalau dan hanya kalau ada jalur di mana "gagal mengamati"
+> mencapai titik vonis sebagai nilai yang secara struktural berbeda dari hasil normal.**
+> `except Exception` in-process memberikannya gratis. Subprocess + substring
+> **menghancurkannya**, kecuali pemanggil ikut mencocokkan token kegagalan yang dicetak
+> anaknya.
+
+Yang kedua itu **mekanis, murah, dan bisa dicek statis** — dan ia menjelaskan 11910, 12286,
+11039, dan 14238 dengan satu kalimat yang sama.
+
+**Apakah keduanya independen? YA, dan itu terbukti dua arah:**
+- 13590 = fallback benar, kontrol positif nol → **kuat di sumbu lingkungan, buta di sumbu
+  semantik** (D1 dan D2 lolos).
+- 14382 r2 = kontrol positif ada dan menyala → **tidak membuatnya tajam di sumbu semantik**;
+  ia tetap K5 dan tetap tidak membedakan `rstrip` dari normalisasi penuh gold.
+Dua sumbu, dua lever, tidak saling menggantikan.
+
+### (2) Vonis: "menolak kerusakan lingkungan TAPI buta terhadap kerusakan semantik" LAYAK dicatat
+
+**LAYAK — sebagai pembedaan, bukan sebagai kelas baru.** Alasannya bukan bahwa ia menarik,
+melainkan bahwa **ia mengubah bentuk lever yang benar**, dan tanpa dicatat kita akan memasang
+lever yang salah dengan percaya diri:
+
+- Uji sabotase dinamis yang sudah tertulis di **LV-10(b)** (*jalankan repro tanpa repo; kalau
+  PASS, cacat*) akan **meluluskan 13590 dengan nilai sempurna**. 13590 tetap meloloskan D1
+  dan D2. Kalau (b) dipasang sendirian dan hasilnya dilaporkan sebagai "kualitas repro",
+  kita memproduksi **rasa aman yang salah** pada seluruh kelompok repro bertipe 13590.
+- Karena itu keduanya dicatat **terpisah**, bukan digabung:
+  - **LV-10(b) harus dirumuskan sebagai *"yardstick armed"*** — dan rumusannya diperketat
+    dari "jangan jatuh ke PASS" menjadi **"token ketiga wajib"**, karena 14382 r1
+    membuktikan `else: FAIL` merusak dengan cara yang berbeda tapi tidak lebih murah.
+  - **LV-01 harus dirumuskan sebagai *"yardstick aimed"*** — kontrol positif (K4) **plus**
+    assert atas nilai/struktur (K5), dan **keduanya diperlukan**: 14382 r2 punya K4 yang
+    benar dan tetap K5; 11179 punya K5 yang benar dan tetap K4.
+- Sudah dicatat sebagai baris tambahan di **LV-01** (bukti penguat kesembilan/kesepuluh/
+  kesebelas) dan **LV-10** (dua bukti penguat baru untuk bagian b). **Nol entri baru.**
+
+### (3) Fakta yang tidak nyaman: untuk 13590, suite resmi pun tidak membedakan D1 dari gold
+
+**Vonis: ini instansi KETIGA "batas metodologi", dan yang paling bersih dari ketiganya.**
+
+- **Instansi pertama** (12915/12286, LV-14): patch berbeda dari gold, tak ada alat ukur yang
+  membandingkan isinya.
+- **Instansi kedua** (13658, KH-06): daya beda F2P resmi ternyata cuma crash-vs-tidak-crash,
+  dibuktikan dengan sabotase `prog='ZZZ-NGAWUR'` yang tetap lulus.
+- **Instansi ketiga (ini):** D1 (`return [...]` — selalu paksa ke `list`, yaitu **membuang
+  pelestarian tipe yang merupakan seluruh isi bug ini**) lolos **repro DAN suite resmi**.
+  Bandingkan dengan D2, yang lolos repro tapi **ketahuan** suite resmi
+  (`OperationalError: no such column`) — jadi di case yang sama, pada titik kode yang sama,
+  L2 punya daya beda untuk satu sabotase dan nol untuk sabotase lainnya.
+
+**Kenapa ini instansi yang paling bersih.** Di 13658 masih bisa diperdebatkan bahwa test-nya
+memang tidak dimaksudkan menguji string. Di sini tidak ada ruang debat: judul issue-nya
+adalah *"named tuples used as arguments to `__range` to error"*, gold-nya secara eksplisit
+mendeteksi namedtuple lewat `hasattr(type_, '_make')` **supaya tipenya lestari**, dan D1
+membuang pelestarian tipe itu sepenuhnya sambil tetap hijau. **F2P `test_range_lookup_namedtuple`
+karenanya juga hanya menguji crash-vs-tidak-crash** — tanda tangan identik dengan KH-06,
+di case yang tidak berhubungan sama sekali. Ini kemunculan kedua tanda tangan itu, dan
+itulah yang membuatnya lebih dari anekdot.
+
+**Yang TIDAK boleh disimpulkan dari ini, dan pemisahannya wajib:**
+- **Bukan** "SWE-bench cacat". Yang terukur adalah: **daya beda F2P adalah variabel yang
+  belum pernah kita ukur**, dan dua kali diukur, dua kali hasilnya lebih rendah dari yang
+  diasumsikan. n=2. Itu bukan angka; itu alasan untuk mengukur lebih banyak.
+- **Bukan** alasan untuk melonggarkan pembacaan `resolved=false` di 13590. Regresi P2P-nya
+  nyata dan patch-nya memang salah. Batas metodologi di sini **tidak** menyelamatkan model.
+- **Bukan** kelas baru. Ia masuk sebagai instansi ketiga di bawah payung yang sudah ada.
+
+### Catatan penutup — kandidat yang DITOLAK dan syarat menaikkannya
+
+Aturan katalog #5 mewajibkan ini ditulis, lengkap dengan syarat kapan boleh naik.
+
+1. **"LV-15 — cabang fallback wajib token ketiga" (sebagai entri sendiri) — DITOLAK.**
+   Alasan: ini **persis** LV-10(b), hanya dengan rumusan yang lebih tepat. Menamainya ulang
+   akan memindahkan label, bukan menambah pengetahuan — pola kesalahan yang sudah dicatat
+   di `koreksi-hipotesis.md` ("terlalu cepat menamai kelas baru").
+   **Syarat naik:** kalau kelak (b) dipasang **dan** terbukti bahwa menuntut token ketiga
+   saja tidak cukup karena ada bentuk kegagalan yang bahkan tidak sampai ke cabang mana pun
+   (mis. proses dibunuh OOM/timeout), maka *deteksi kematian di luar cabang* layak jadi
+   entri sendiri. Sekarang **nol bukti** untuk itu di korpus.
+2. **"LV-16 — repro dilarang memakai subprocess + substring" — DITOLAK.**
+   Alasan: sudah tercakup **LV-12** (preferensikan repro in-process). Menambahnya sebagai
+   larangan baru akan membuat dua entri saling bertabrakan di titik yang sama, dan
+   larangannya juga terlalu lebar — 14382 r2 memakai subprocess dan **benar**.
+   **Syarat naik:** kalau sweep menunjukkan bahwa repro subprocess+substring punya laju
+   K1-ketat yang jauh di atas repro in-process **pada denominator yang cukup**
+   (usul: ≥ 10 case per kelompok). Sekarang: dari 4 anggota K1-ketat, **4-4-nya**
+   subprocess+substring (11039, 11910, 12286, 14238) dan tidak satu pun repro in-process
+   masuk K1-ketat — arahnya **sangat sugestif**, tetapi n=4 dan kelompoknya tidak seimbang,
+   jadi belum boleh diangkat. **Ini kandidat yang paling dekat naik dari sesi ini, dan
+   pengukurannya murah** — cukup klasifikasi in-process vs subprocess atas 27 file yang
+   sudah ada.
+3. **"Kelas baru: gold-unsatisfiable karena setup tidak lengkap" — DITOLAK sebagai entri.**
+   Alasan: 14382 r1 dan 11039 r1 memang dua kejadian, tetapi **sebabnya berbeda** (setup
+   tidak lengkap vs predikat yang salah konstruksi) dan **gejalanya sama persis dengan
+   seluruh 41 run `wrong-logic`** di korpus — yaitu label catch-all yang sudah dikeluhkan
+   di LV-10 Akibat #3. Menamai satu sub-sebab sebagai kelas sementara 41 run lain belum
+   dipilah adalah cara termahal untuk belajar. Dicatat sebagai bukti penguat di LV-10(b)
+   dengan polaritas fallback sebagai mekanisme pemersatunya.
+   **Syarat naik:** pilah lebih dulu seluruh **41 run `wrong-logic` / 10 case** berdasarkan
+   `flip_run.json` (gold masih FAIL vs gold ERROR vs gold tidak mencetak status). Kalau
+   sub-sebab "setup tidak lengkap" ternyata ≥ 5 case, ia layak jadi entri — dan levernya
+   kemungkinan besar adalah verdict terpisah, bukan lever repro.
+4. **"Daya beda F2P resmi rendah" sebagai entri lever — DITOLAK.**
+   Alasan: ini **batas metodologi**, bukan akar-harness kita; tidak ada lever di dalam
+   kendali kita yang menyerangnya, dan aturan #6 melarang lever yang menyerang akar yang
+   salah. **Syarat naik:** kalau kita memutuskan untuk **mengukur** daya beda F2P secara
+   sistematis (sabotase gold di titik gold untuk tiap case), maka *harness pengukurnya*
+   layak jadi entri — sebagai alat, bukan sebagai keluhan. Sekarang n=2 (13658, 13590).
+
+---
+
 ## Tabel frekuensi kelas kegagalan (per 2026-07-20)
 
 **Section ini BOLEH diperbarui** — beda dari entri lever yang append-only. Setiap pembaruan
@@ -2477,3 +2813,150 @@ cakupannya.
 (LV-14a) terpasang lebih dulu di seluruh korpus; tanpa itu, satu-satunya jalan adalah membaca
 setiap pasang diff dengan tangan, dan sampel yang ada (12915, 12286, 11039) terlalu kecil dan
 terlalu dipilih untuk menghasilkan angka.
+
+### Pembaruan bertanggal 2026-07-20 (bot-01, sesi ketiga) — setelah 14382, 14238, 13590
+
+**Denominator baru, diukur ulang dari nol** (skrip sweep atas seluruh `artifacts/`, bisa
+diulang):
+
+- **`artifacts/r-dev` = 126 run** (naik dari 120), **69 qualified** (naik dari 65),
+  **30 case** seluruhnya, di antaranya **27 case punya ≥1 repro qualified** (naik dari 24).
+  Tiga case yang zero-qualified: 11905, 12453, 14667.
+- **Kejujuran soal selisih:** ketiga case sesi ini menyumbang **4 run** (14382 r1+r2,
+  14238 r1, 13590 r1) dan **3 qualified**. Run-level naik **6** dan qualified naik **4**,
+  jadi **2 run / 1 qualified berasal dari luar sesi ini dan TIDAK saya audit.** Kenaikan
+  case-level (24 → 27) seluruhnya milik sesi ini dan terverifikasi satu per satu.
+- **Sampel Tabel A = 27 case** (satu repro qualified per case, run qualified terakhir).
+  Ketiga case baru **menambah denominator**, karena tak satu pun pernah masuk hitungan.
+- **`artifacts/f-dev` = 16 run** (naik dari 13), **15 punya `swebench_eval.json` DAN
+  `gold_eval.json`**. Yang tetap tidak punya: `f-dev--django__django-11910--r1`.
+- **Peringatan bias yang lama tetap berlaku dan justru menguat:** `django-11422` menyumbang
+  **44 dari 126 run**. Angka per-run masih condong ke satu case; K1–K5 tetap per-case.
+
+**Klasifikasi ketiga repro baru** (dibaca manual, metode sama dengan 24 file sebelumnya):
+
+- **`14382` r2** — **K1 TIDAK** (sisi PASS menuntut pengamatan positif `elif success:`,
+  bukan ketiadaan gejala). **K1-ketat TIDAK.** **K2 TIDAK.** **K3 TIDAK.**
+  **K4 TIDAK — punya kontrol positif, dan load-bearing**: baris 26–34 menjalankan
+  `startapp control_app control_dir` lebih dulu dan `return` dengan `REPRO_STATUS: ERROR`
+  kalau gagal, sehingga cabang vonis tidak pernah tercapai. Ini **anggota kelima** kelompok
+  "punya kontrol", dan **satu-satunya yang kontrolnya terbukti menyala di dalam loop**
+  (`events.jsonl` r2 mencatat satu attempt berakhir `REPRO_STATUS: ERROR`).
+  **K5 YA** — vonisnya substring `"'' is not a valid app directory"` atas stderr + exit code;
+  tidak pernah memeriksa bahwa `bug_app/` mendarat di dalam `bug_dir/`.
+- **`14238` r1** — **K1 YA** (`else: print("REPRO_STATUS: PASS")`, baris 82–83).
+  **K1-ketat YA** — dan ini **anggota keempat** kelas terburuk, **yang pertama dibuktikan
+  dengan eksekusi**: Django dibuat tak bisa di-import → PASS (4 dari 4 sabotase → PASS).
+  **K2 TIDAK.** **K3 TIDAK.** **K4 YA** (nol kontrol). **K5 YA** (substring atas stdout anak).
+- **`13590` r1** — **K1 YA** (sisi PASS = "`TypeError` tidak teramati"). **K1-ketat TIDAK**
+  — `except Exception` di baris 75–78 membelokkan kegagalan katastrofik ke
+  `REPRO_STATUS: UNKNOWN`, persis pola "7 dari 10" yang sudah dicatat di KH-05.
+  **K2 YA**, dan **aturan yang saya pakai wajib disebut supaya bisa diaudit:** UNKNOWN
+  **bukan** token yang bisa dilihat `_STATUS_RE`, jadi cabang itu efektif "tidak mencetak
+  status" bagi harness. Preseden untuk pembacaan ini adalah **12915 r2**, yang **seluruh**
+  cabangnya mencetak `REPRO_STATUS` (baris 74/76/78, yang terakhir `ERROR`) dan **tetap
+  terdaftar di K2** pada sampel 23. Konsisten dengan preseden itu, 13590 dihitung YA.
+  **Catatan penting yang harus menyertainya:** seperti 3 dari 8 anggota K2 sebelumnya, ini
+  adalah **perilaku yang BENAR** — subset "K2 karena repro berlaku jujur" naik dari
+  **3 dari 8** menjadi **4 dari 9**. **K3 TIDAK.** **K4 YA** (nol kontrol).
+  **K5 YA** — vonisnya "tidak ada `TypeError` yang lolos", dan baris 60 bahkan **membuang
+  hasil `.exists()`**.
+
+**Hitungan K1–K5 yang diperbarui (denominator 27 case):**
+
+- **K1: 12 dari 27** (44%). Naik dua: +14238, +13590.
+- **K1-ketat: 4 dari 27** (15%). Naik satu: **+14238**. Daftar kini
+  **11039, 11910, 12286, 14238**. Ini **penambahan pertama ke kelas ini sejak dibuat**, dan
+  yang pertama yang keanggotaannya **dibuktikan dengan sabotase, bukan dengan pembacaan**.
+  Proporsinya tetap minoritas (15% vs 13% sebelumnya) — **KH-05 tidak terbantah**, hanya
+  bertambah satu titik.
+- **K2: 9 dari 27**. Naik satu (+13590), dengan aturan penghitungan di atas.
+- **K3: 4 dari 27** (11422, 11910, 12286, 13660). **Daftar dan angka absolutnya tidak
+  berubah** — diverifikasi ulang dengan grep atas 69 repro qualified. Kelas ini tetap
+  **tidak menyebar**.
+- **K4: 22 dari 27** (81%). Naik dua (+14238, +13590). **Tetap kriteria dengan prevalensi
+  tertinggi.** Yang **punya** kontrol kini **5**: 10914, 11422 r44, 13768 r4, 14017,
+  **14382 r2**.
+- **K5: 15 dari 27** (56%). Naik tiga — **ketiga case baru K5 semuanya**.
+- **Irisan K4 ∧ K5: 12 dari 27** (44%). Naik dua (14238, 13590; 14382 K5 tapi bukan K4).
+
+**Pembacaan yang berubah, dan ini yang paling layak dibawa keluar dari sesi ini.** Sampel
+sebelumnya memisahkan *kualitas predikat* (K1/K5) dari *bukti alat ukur menyala* (K4) lewat
+11179. Sesi ini memisahkan sumbu **ketiga** yang selama ini tersembunyi di dalam K1:
+**ketahanan terhadap kerusakan lingkungan**. 13590 dan 14238 **sama-sama K1, sama-sama K4,
+sama-sama K5** — dan hasil sabotasenya berlawanan total (3 dari 4 ditolak vs 4 dari 4
+ditelan). Yang membedakan hanya **polaritas cabang fallback**. Artinya: **K1 sebagaimana
+didefinisikan tidak memprediksi ketahanan**, dan siapa pun yang memakai K1 sebagai proksi
+kualitas akan salah pada pasangan ini. Rinciannya di autopsi trio 14382/14238/13590 di atas.
+
+**Tabel B — baris yang bisa saya hitung ulang dengan metode yang SAMA** (regex atas
+`detail.why` di seluruh 126 `events.jsonl`):
+
+- **Repro mencetak PASS di dunia base sehingga gate menolak DONE: 89 kejadian, 15 run,
+  9 case** (naik dari 83/14/8). **Seluruh tambahannya dari `14238` r1** — 6 kejadian, yaitu
+  6 dari 7 attempt gagalnya, semuanya kelas identik. Tetap **bukan cacat**: ini gate bekerja.
+- **`unexpected keyword argument`: 33 kejadian, 21 run, 8 case.** **Tidak berubah** — nol
+  kejadian di keempat run baru. Tetap kelas bernama terbesar di korpus.
+- **`REPRO_STATUS: ERROR` di aliran retry: 9 kejadian, 4 run, 4 case** (naik dari 8/3/3).
+  Tambahannya dari **`14382` r2**, dan itu **kontrol positif yang menyala**, bukan cacat —
+  jadi baris ini kini mencampur dua hal yang berlawanan maknanya dan **tidak boleh dibaca
+  sebagai laju kegagalan**.
+- **`REPRO_STATUS: UNKNOWN` di aliran retry: 1 kejadian, 1 run, 1 case** (`13590` r1).
+  **Baris baru.** Ini bentuk kosakata "tidak tahu" yang **kedelapan**, dan sekali lagi
+  **tak terlihat `_STATUS_RE`**. Model menciptakan token ketiga di **6 dari 27 case**.
+- **Dua baris yang SENGAJA tidak saya perbarui, dan alasannya:** "Penolakan judge menahan
+  DONE" dan "`App` gagal pada perintah one-shot". Regex saya tidak mereproduksi angka basis
+  yang tertulis (saya dapat 176/44/18 dan 2/2/2 vs 20/20/11 dan 27/15/5) — jadi matcher-nya
+  **berbeda**, dan menimpa angka lama dengan angka saya akan merusak deret waktu. Yang bisa
+  saya nyatakan adalah **delta dari keempat run baru saja**: judge menahan DONE **+3
+  kejadian, +2 run, +1 case** (14382 r1 `done-deferred`, 14382 r2 `done-rejected`; nol di
+  14238 dan 13590); `ready_token is required` **+1 kejadian, +1 run, +1 case** (14382 r1).
+  Siapa pun yang memperbarui dua baris ini nanti wajib menemukan matcher aslinya dulu.
+
+**Tabel C (LV-09) yang diperbarui** — `grep -c "No module named 'pipe_runtime'"` atas tiap
+`console.log` di seluruh **16 run `f-dev`**:
+
+- **Kelompok terpapar: TIDAK BERUBAH** — 5 run, 3 case (11910 r1 = 588, 13660 r1 = 38,
+  13660 r3 = 6, 12286 r1 = 7, 13660 r2 = 3), **1 dari 5 `resolved=true`**.
+- **Kelompok bersih: 11 run, 11 case** (naik dari 8/8) — 10914, 11039, 11099, 11179,
+  **13590**, 12915, 13230, 13658, 14017, **14238**, **14382** — nol kejadian di semuanya.
+  **9 dari 11 `resolved=true`** (yang `false`: 14017 dan 13590).
+- **Confounder yang wajib ikut dibaca, dan ia BERTAMBAH satu:** rasio 1/5 vs 9/11 tetap
+  **tidak boleh dibaca kausal**. Selain 3-dari-5 kelompok terpapar yang adalah 13660 dengan
+  sebab kegagalan sendiri (`exec(cmd, {})`), kini kelompok bersih juga punya **dua** anggota
+  `resolved=false` dengan sebab yang sama sekali tidak berhubungan dengan `pipe_runtime`
+  (14017: fix sempit khusus `Exists`; 13590: `type(value)(*gen)` merusak `tuple`). Klaim
+  yang sah tetap sama seperti di KH-09: LV-09 hanya menggigit repro yang punya dependency
+  runtime, dan besarannya terukur dalam **turn**, bukan dalam laju resolved.
+
+**Tabel D (OFF-GOLD) yang diperbarui** — metode identik: sweep seluruh `artifacts/f-dev/*/`
+yang punya `swebench_eval.json` **DAN** `gold_eval.json`.
+
+- **Denominator: 16 run `f-dev`, 15 punya kedua file.** Yang tidak punya tetap
+  `f-dev--django__django-11910--r1` (`pass_l1=false`, tidak pernah sampai eval).
+- **`resolved=true`: 10 dari 15** (naik dari 8 dari 12) — 10914, 11039, 11099, 11179, 12286,
+  12915, 13230, 13658, **14238**, **14382**.
+- **`resolved=true` DAN `file_match=false`: 1 dari 15** — tetap **`13658` r1**, satu-satunya.
+  Atas denominator yang lebih tajam: **1 dari 10 run `resolved=true`** (sebelumnya 1 dari 8).
+  **Ketiga run baru tidak menambah hit** — 14382 dan 14238 dua-duanya `file_match=true`.
+  Presisi tetap 1 dari 1 (**n=1**), recall struktural tetap rendah, dan **peringatan lama
+  tetap berlaku sepenuhnya**: metrik ini menghitung **kemunculan sinyal**, bukan frekuensi
+  lulus-palsu.
+- **`resolved=true` DAN `line_overlap=false`: 0 dari 15.** Tidak berubah. Peringatan `null`
+  vs `false` di 13658 tetap berlaku dan tetap wajib dipatuhi detektor mana pun.
+- **`resolved=false`: 5 run, 3 case** (naik dari 4 run, 2 case) — 13660 r1/r2/r3, 14017,
+  **13590** — dan **kelima-limanya `file_match=true` + `line_overlap=true`**, yaitu
+  **mendarat tepat di situs gold dan tetap gagal**. **13590 memperkuat baris ini dengan
+  cara yang paling tajam sejauh ini:** `l-dev` menunjuk **salah** (baris 1135–1145, gold di
+  ~1077, `line_overlap=false`) dan FIX tetap mendarat **tepat** di situs gold — lalu gagal
+  karena logikanya, bukan karena lokasinya. **Kesimpulan lama diperkuat, bukan digeser:
+  `file_match`/`line_overlap` tidak berkorelasi dengan hasil L2 ke arah mana pun. JANGAN
+  dibaca sebagai prediktor**, dan sekarang juga: jangan baca `l-dev` `line_overlap` sebagai
+  prediktor keberhasilan FIX.
+
+**Yang TIDAK bisa diukur dan tetap sengaja dibiarkan kosong** — sama seperti sebelumnya
+(apakah repro longgar *menyebabkan* patch tidak setara gold), **plus satu yang baru dan
+lebih penting:** **daya beda F2P resmi**. 13590 menambah instansi kedua di mana sabotase
+yang jelas merusak tetap lolos test resmi (D1; yang pertama 13658/KH-06). **n=2, dan itu
+bukan angka.** Mengukurnya butuh harness sabotase-per-case yang belum ada; sampai itu ada,
+jangan mengutip "batas metodologi" sebagai frekuensi.
