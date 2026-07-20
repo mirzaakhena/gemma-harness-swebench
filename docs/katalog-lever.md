@@ -3480,3 +3480,157 @@ menambah titik ke kelas jenuh:
 - Jebakan §3d ditangani di keempat probe: interpreter `/opt/miniconda3/envs/testbed/bin/python`,
   `__pycache__` dihapus, `PYTHONDONTWRITEBYTECODE=1`; semua container `probe*` dihentikan+dihapus,
   `git checkout` dijalankan. Nol hasil "terlalu dramatis" (tak ada artefak probe, KH-07).
+
+---
+
+## Catatan penutup autopsi batch bot-04 (2026-07-21) — estafet 22-case, bagian 8 (8 django, bot TERAKHIR)
+
+**Korpus:** 8 case django dijalankan RLFV penuh lewat `scripts/run_rlfv_batch.py`
+(`django__django-10924, 11001, 11049, 11133, 11815, 11848, 11999, 12125`), state
+`artifacts/batch-bot04.json`. Model `google/gemma-4-31B-it`. Autopsi tiap case oleh satu subagent
+read-only (izin eksplisit membantah pemanggil, SOP §6a); integrasi (tulisan ini) serial oleh bot-04.
+**Estafet 22-case (7+7+8) SELESAI di batch ini** — bot-04 bot terakhir, tak ada handoff lanjutan.
+
+**11999 dilengkapi bot-04 (bukan lever):** batch runner `qualified_rerun` memungut L qualified
+**era-lama** (`l-dev--…--r1/r2/r3`, 2026-07-19, `pass_l1=true` TANPA `candidates.md`) → FIX terblokir
+(`localize-tanpa-candidates.md`, gotcha SOP §1c). bot-04 menjalankan **LOCALIZE fresh r4** (qualified +
+`candidates.md`) memakai repro qualified r6, lalu FIX r1 — driver standar SOP §1b, bukan penerapan
+lever, tanpa rename/hapus run dir.
+
+**Sabotase §3d: NOL dieksekusi di batch ini** (kontras bot-03). Alasan per-case dinyatakan di bawah;
+ringkasnya kedelapan vonis tuntas dari artefak statis + F2P/P2P resmi, jadi sabotase hanya akan
+mengkonfirmasi ulang fakta yang sudah pasti (aturan §3d: jalankan HANYA bila mengubah kesimpulan).
+Semua subagent mencatat prediksi sabotase eksplisit bila kelak dijalankan.
+
+### Papan skor akhir: resolved=5/8 (dari 8 dijalankan); 6 mencapai FIX, 2 berhenti di REPRODUCE
+
+- **Hijau ASLI (patch SEMANTICALLY setara/ekuivalen gold) — 5:**
+  - **11049** — **byte-identik gold** (`DurationField` error-string, problem memuat string verbatim).
+  - **11001** — setara; operatif = `re.DOTALL` (gold `^`+`re.MULTILINE` **inert** karena `search().group(1)`
+    dari pos-0 greedy identik). Repro longgar (except→PASS, K1/K1-ketat/K4/K5) — hijau via kekuatan F2P
+    resmi (`assertSequenceEqual`), BUKAN repro.
+  - **11133** — setara; cabang `isinstance(value,memoryview): return bytes(value)` ≡ gold widen
+    `(bytes,memoryview)`. Repro TERKUAT batch (assert byte-equality, polarity aman) tapi K4 tetap.
+  - **11815** — setara (enum serialize by-name; `%r` vs `'%s'` output identik utk nama identifier).
+    **r1 gagal ber-label `syntax-fail` PADAHAL `ModuleNotFoundError: repro_app`** (repro in-process
+    andalkan modul shell-created; r2 subprocess self-provisioning qualified). Data-point KH-12 lagi.
+  - **11848** — setara in-century (bukti aritmetik: `current_year-2000==current_year%100`, boundary
+    `>50` identik gold, diverifikasi 7 subtest resmi). **Satu divergensi LEBIH SEMPIT (century hardcode
+    `+2000` vs `current_century` dinamis) TAK TERJANGKAU** sampai jam sistem ≥2100 → batas-metodologi,
+    LV-14 signature paling remote di korpus.
+- **Merah di FIX, akar-MODEL over-broad (patch superset) — 1:**
+  - **11999** — `resolved=false`, `file_match=true`, `line_overlap=true`. **F2P `test_overriding_FIELD_display`
+    PASS (bug ASLI diperbaiki); 9 P2P regresi** semua `NameError: name 'cls' is not defined`. Gold **1 hunk**
+    (`contribute_to_class` guard `if not hasattr(cls,…)`); model **4 hunk** — hunk-1 benar (`cls` in scope),
+    hunk 2/3/4 (`get_choices`/`Field.formfield`/`BooleanField.formfield`) menyalin guard ke scope TANPA
+    `cls` → NameError. +2 stray empty file (repro-app dir bocor ke diff). Kelas sama **12907 (over-broad
+    collateral)**, gejala beda (NameError vs ImportError collection).
+- **Merah di REPRODUCE — 2, akar BERBEDA (kedua akar-MODEL, harness bekerja BENAR):**
+  - **10924** — repro **won't flip**: base FAIL + patched(gold) FAIL. r1 wrong-predicate (`field.clean(instance)`
+    bukan `formfield()`, TypeError arity tak-terkait); r2/r3 predikat benar (`scandir(callable)` TypeError)
+    TAPI callable resolve ke dir yang TAK PERNAH ada (`/…/example_dir`, model tak `os.makedirs`) → gold applied
+    → FileNotFoundError → FAIL. verdict `wrong-logic`; harness ukur benar, gap = kompetensi model. Keluarga 15789.
+  - **12125** — **vacuous repro**: PASS-at-base → anti-vacuous gate menolak (BENAR). Model mereproduksi contoh
+    *inner-class-as-field* yang `Field.deconstruct()` sudah perbaiki via `__qualname__`, bukan contoh
+    *type-as-value/enum* yang gold `TypeSerializer.serialize` (`__name__`→`__qualname__`) targetkan. Gold
+    satisfiable; skenario model bug-free. Budget 40/40 habis, tak pernah pivot KONSTRUKSI (66 [exec], 0
+    `<|tool_call|>` — **BUKAN** token-loop 15851).
+- **Lulus-palsu tipe file-salah (à la 13658): 0.** Kelima resolved `file_match=true` DAN `line_overlap=true`.
+  (Recall detektor rendah — §3b tetap dijalankan; kelima hijau lolos justru lewat §3b analisis semantik.)
+
+### Bukti penguat yang ditambahkan ke entri lever (per case)
+
+- **LV-01 (yardstick/kontrol-positif longgar) — 6 instans baru, K4 di KEENAM repro qualified.** Sumbu paling
+  menonjol batch ini. Kelima hijau lolos **karena kekuatan test RESMI, bukan repro** (fix-space sempit +
+  model kebetulan menulis fix ≥ tuntutan repro) — sub-pola 11099/13230 "HIJAU tak membuktikan yardstick".
+  **11999 = bukti KAUSAL LOAD-BEARING terkuat**: over-broad fix **membalik FIX gate (`flip`) JUSTRU karena**
+  repro tak punya kontrol positif yang menyentuh `get_choices`/`formfield`; satu kontrol positif (panggil
+  `.get_choices()` pada normal choices field) akan raise NameError → ubah false-flip jadi correct-reject.
+  Ini instans pertama di korpus di mana **absennya K4 terbukti kausal atas false-flip yang kemudian
+  DITANGKAP P2P resmi** — memisahkan "gap gate internal" dari "validitas vonis" dengan bersih.
+- **LV-14 (isi patch-vs-gold tak dibandingkan) — REINFORCED ARAH SUPERSET + koreksi detektor.** 11999: gold
+  **1 region**, model **4 hunk** (+2 stray) → over-broad +3, **75% hunk = collateral**. **Koreksi penting ke
+  detektor 14365:** detektor murah "mismatch jumlah region hunk + `line_overlap=true` = subset" hanya
+  menangkap arah `patch < gold`. 11999 menunjukkan arah `patch > gold` juga berujung `resolved=false` dengan
+  `line_overlap=true` — **`line_overlap=true` menyesatkan sbg success-proxy di KEDUA arah** (14365 mask hunk
+  HILANG, 11999 mask hunk EKSTRA). **Detektor harus menghitung hunk region gold-vs-patch DUA ARAH** (subset
+  DAN superset di file yang sama), bukan hanya subset.
+- **LV-09 (`pipe_runtime` tak dikirim ke FIX) — NEGATIVE bersih di KEDELAPAN case.** `grep -c "No module
+  named 'pipe_runtime'"` di semua `console.log` fase FIX = **0**; nol repro qualified mengimpor `pipe_runtime`
+  (K3 = 0/6). Django murni; K3 tetap tidak menyebar (kini 4/44). (Incidental 10924 r2 repro.py:4 punya
+  `from pipe_runtime import App` unused, tapi tak pernah sampai FIX → moot.)
+
+### Reinforcement temuan observability (B) — verdict bucket catch-all, 3 data-point baru
+
+Batch ini menambah **tiga** data-point ke temuan (B) (verdict REPRODUCE menyatukan sebab berbeda), semua
+menegaskan aturan **JANGAN percaya label verdict sbg diagnosa**:
+- **11815 r1** — `syntax-fail` = `ModuleNotFoundError: repro_app` (repro in-process andalkan modul
+  shell-created yg fresh-world tak bawa), **bukan** SyntaxError. Persis pola 15851/KH-12.
+- **10924** — verdict `wrong-logic` type-nya benar, TAPI `reason` yang di-append harness
+  (`"...likely gold-unsatisfiable predicate"`) **menyesatkan**: r2/r3 predikat SATISFIABLE (cukup `os.makedirs`);
+  siapa pun yang percaya `reason` akan salah simpul "gold/case rusak".
+- **12125** — verdict None/`pass_l1=false` tak informatif; hanya `events.jsonl` exit `detail.failures`
+  ("anti-vacuous PASS-at-base") ungkap akar. **Sub-signature long-runtime BARU:** 20-menit = **budget-exhaust
+  productive churn** (66 [exec], reply varied) — INVERSE 15851 (degenerate zero-exec byte-identik). Wall-clock
+  sama, mekanisme lawan → **long-runtime saja TAK diagnostik**; wajib cek `[exec]` count + reply variance.
+
+### Kandidat-ditolak (dicatat + syarat naik)
+
+- **"positive-branch precondition not established"** (dari 10924 r2/r3: repro predikat benar tapi callable
+  menunjuk dir yg tak di-`makedirs` → gold takkan flip). DISTINCT dari gold-unsatisfiable KH-03 (di sana
+  struktural; di sini satisfiable dg 1 baris). **DITOLAK sbg lever** (akar-model, n=1). Syarat naik: ≥3 case
+  DISTINCT + fix mekanis (gate pre-create declared dirs / DONE pre-check diff base-vs-head error-class deteksi
+  "same exception both worlds").
+- **"guard-copied-to-wrong-scope"** (dari 11999 NameError). DITOLAK (gejala model-spesifik, P2P resmi tangkap).
+  Syarat naik: collateral lolos P2P resmi juga (silent false-pass) ATAU pola berulang ≥3 case distinct.
+- **"L qualified era-lama tanpa candidates.md × `qualified_rerun`"** (observability resume). Selector "last
+  qualified L by `pass_l1`" under-specified utk kontrak input FIX (butuh `candidates.md`). **FAILS SAFE**
+  (memblokir FIX, bukan memberi input buruk diam-diam) → severity LOW, DITOLAK sbg lever. Syarat naik: bila
+  selector kelak menghasilkan FIX SELESAI atas candidate-set degraded (silent bad verdict). Isi konkret bila
+  dinaikkan: predikat `qualified` menegaskan kontrak file FIX (`candidates.md` hadir), bukan hanya `pass_l1`.
+
+### Pembaruan Tabel frekuensi (bot-04, 2026-07-21) — 6 case baru ber-repro-qualified
+
+**Denominator.** Sampel Tabel A naik **38 → 44 case** (+6: 11001, 11049, 11133, 11815, 11848, 11999 — masing
+punya repro qualified; 11815 di r2, 11999 di r6). **10924 & 12125 TIDAK menambah** (REPRODUCE tak qualified).
+`r-dev` delta: +6 qualified + 8 non-qualified (10924 r1-r3 `wrong-logic`, 12125 r1-r3 anti-vacuous, +11815 r1,
++11999 r1-r5 era-lama tak dihitung ulang). Sampel `f-dev` **+6 run** (kelima hijau + 11999).
+
+**Klasifikasi 6 repro baru** (manual, metode sama; per subagent read-only ber-izin-membantah):
+
+- **11001** — K1 Y, **K1-ketat Y** (`except→PASS`), K2 T, K3 T, **K4 Y**, **K5 Y**.
+- **11049** — K1 T, K1-ketat T, K2 T, K3 T, **K4 Y**, **K5 Y**.
+- **11133** — K1 T, K1-ketat T, **K2 Y** (no try/except, inert), K3 T, **K4 Y**, K5 T.
+- **11815** — K1 Y, **K1-ketat Y** (`else→PASS` eksplisit), K2 T, K3 T, **K4 Y**, **K5 Y** (repro r2).
+- **11848** — K1 T, K1-ketat T, **K2 Y** (laten, dinetralkan driver-guard), K3 T, **K4 Y**, K5 T.
+- **11999** — K1 T, K1-ketat T, **K2 Y**, K3 T, **K4 Y**, K5 T.
+
+**Hitungan K1–K5 diperbarui (denominator 44 case, satu repro qualified per case):**
+
+- **K1: 21 dari 44** (48%). Naik dua: +11001, +11815.
+- **K1-ketat: 8 dari 44** (18%). Naik dua: +11001, +11815. Daftar kini 11039, 11910, 12286, 14238, 14580,
+  15814, **11001, 11815**. Proporsi tetap minoritas — **KH-05 tetap tidak terbantah**.
+- **K2: 15 dari 44**. Naik tiga: +11133, +11848, +11999 (ketiga polaritas aman; K2-nya laten/inert).
+- **K3: 4 dari 44**. Tidak berubah (nol dari enam repro baru mengimpor `pipe_runtime`). Kelas tak menyebar,
+  konsisten lintas-repo & di seluruh django batch ini.
+- **K4: 38 dari 44** (86%). Naik enam (**keenam repro baru K4**). **Tetap kriteria prevalensi tertinggi**,
+  makin dominan. Yang punya kontrol positif tetap 6 (10914, 11422 r44, 13768 r4, 14017, 14382 r2, 14580) —
+  nol dari batch ini.
+- **K5: 27 dari 44** (61%). Naik tiga (+11001, 11049, 11815; 11133/11848/11999 assert kuat → K5 T).
+- **Irisan K4 ∧ K5: 23 dari 44** (52%). Naik tiga (11001, 11049, 11815). **Tetap profil kelemahan yardstick
+  yang sebenarnya**, > separuh korpus.
+
+**Tabel D (OFF-GOLD) — sweep 6 `f-dev` baru** (semua punya `swebench_eval.json` DAN `gold_eval.json`):
+`resolved=true` **5 dari 6** (kelima hijau; 11999 false); **`resolved=true` DAN `file_match=false`: 0** — hit
+korpus tetap **hanya 13658**. Denominator `f-dev` ber-kedua-file naik ke **31 run**; `resolved=true` **23 dari
+31**; `resolved=true & file_match=false` **tetap 1** (13658), kini **1 dari 23**. **Sel baru: 11999 =
+`resolved=false` + `file_match=true` + `line_overlap=TRUE`** — melengkapi 12907 (`resolved=false` +
+`file_match=true` + `line_overlap=FALSE`): dua arah kegagalan patch-vs-gold di file yang benar, satu superset
+(11999, overlap true) satu rewrite (12907, overlap false). Peringatan recall-rendah tetap penuh — kelima hijau
+`file_match=true`+`line_overlap=true` dan **tidak tersentuh** metrik ini.
+
+**Pembacaan yang searah, tidak membalik apa pun.** Enam repro django menegaskan **K4 (kontrol positif absen)
+sumbu dominan (38/44, 86%)**, dan 11999 memberi **bukti kausal load-bearing pertama** bahwa absennya K4
+membalik gate internal (bukan hanya "berpotensi"). Urutan pemasangan tak berubah: kontrol positif (K4) tetap
+kandidat isi konkret pertama LV-01. Tambahan konkret dari batch ini utk LV-14: **hitung mismatch region hunk
+DUA ARAH** (subset ∧ superset), karena `line_overlap=true` menyesatkan di keduanya.

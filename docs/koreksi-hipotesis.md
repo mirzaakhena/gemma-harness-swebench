@@ -249,6 +249,33 @@ operasional:
   Sebelum menyimpulkan "baris salah" dari `line_overlap=false`, verifikasi kehadiran baris fix
   secara semantik di `fix.diff`.
 
+## KH-14 — "`line_overlap=true` (+ `file_match=true`) membuktikan patch benar"
+
+- **Yang dinyatakan (bot-04, read-awal utk django-11999):** karena `resolved=false` DENGAN
+  `file_match=true` DAN `line_overlap=true`, kasus ini "file+baris benar tapi patch salah", dan
+  bisa dikelompokkan bersama 14365 (`line_overlap=true` tapi subset) di bawah satu payung
+  "line_overlap menyesatkan".
+- **Derajat: DIPERSEMPIT** (dan arahnya BERLAWANAN dari yang kukira).
+- **Yang benar:** `line_overlap=true` di sini **literal benar** (model memang mengedit region baris
+  gold — hunk-1 `contribute_to_class` ≡ gold, `cls` in scope), TAPI **buta terhadap 3 hunk EKSTRA
+  berbahaya** di file yang sama (`get_choices`/`Field.formfield`/`BooleanField.formfield`, guard
+  disalin ke scope tanpa `cls` → `NameError: name 'cls' is not defined`). `resolved=false` **100%
+  regresi P2P (9 gagal), 0% target-fail** — F2P `test_overriding_FIELD_display` justru **PASS**.
+  Patch = **SUPERSET over-broad**, bukan subset. Detektor `line_overlap` menjawab "apakah baris gold
+  tertutup?", **tak pernah** "apakah patch juga merusak di LUAR baris gold?".
+- **Cermin 14365, arah kebalikan:** 14365 = subset/hunk HILANG → F2P **gagal**, `line_overlap=true`
+  menutupi hunk yang absen. 11999 = superset/hunk EKSTRA → F2P **lulus**, P2P regresi,
+  `line_overlap=true` menutupi hunk yang berlebih. Menggabungkan keduanya hanya via
+  "`line_overlap=true` tapi `resolved=false`" **menyembunyikan dua mode kegagalan berbeda yang butuh
+  dua detektor berbeda**. Konsekuensi konkret utk LV-14: hitung mismatch jumlah region hunk gold-vs-patch
+  **DUA ARAH** (patch < gold DAN patch > gold di file yang sama), bukan hanya subset.
+- **Bukti pembantah:** `swebench_test_output.log` (F2P `test_overriding_FIELD_display` PASS; 9 P2P
+  `NameError: name 'cls' is not defined` dari `get_choices`/`formfield`); `fix.diff` (4 hunk vs
+  `gold.patch` 1 hunk); hunk-1 identik-semantik gold (itu sebab `line_overlap=true` + F2P PASS).
+- **Pelajaran:** `line_overlap=true`+`file_match=true` membuktikan **lokasi gold tersentuh**, BUKAN
+  patch benar. Sebelum membaca hijau dari keduanya, cek jumlah/scope hunk di luar gold (superset) DAN
+  di dalam gold (subset). Instans kedua bias "percaya sinyal lokasi sbg sinyal kebenaran" (bersama KH-13).
+
 ---
 
 ## Pola kesalahan kami (per 2026-07-20)
