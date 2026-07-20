@@ -219,9 +219,21 @@ lalu ukur:
 - **Sabotase C** — framework sama sekali tidak bisa di-import → tetap PASS?
 - **Sabotase D** — fix yang mematikan gejala tapi merusak semantik (rancang sesuai bug case)
 
-**Jebakan yang sudah memakan korban:** pakai interpreter testbed
-(`/opt/miniconda3/envs/testbed/bin/python`), **bukan `python` sistem**. Sekali salah
-interpreter, baseline ikut mencetak PASS dan seluruh hasil probe jadi menyesatkan.
+**Dua jebakan yang sudah memakan korban — keduanya menghasilkan angka palsu yang
+terlihat seperti temuan besar:**
+
+1. **Interpreter salah.** Pakai `/opt/miniconda3/envs/testbed/bin/python`, **bukan
+   `python` sistem**. Sekali salah, baseline ikut mencetak PASS dan seluruh hasil probe
+   jadi menyesatkan.
+2. **Bytecode basi.** Python 3.6 memvalidasi `.pyc` lewat mtime berresolusi **detik**.
+   Kalau kamu mengedit file yang sama berulang dalam detik yang sama, interpreter memakai
+   bytecode lama dan hasil probemu palsu. `inspect.getsource` **tidak** menolongmu — ia
+   membaca file dari disk, bukan bytecode yang benar-benar dimuat, jadi ia akan
+   meyakinkanmu bahwa editmu sudah aktif padahal belum. Sebelum tiap putaran: hapus
+   `__pycache__` dan set `PYTHONDONTWRITEBYTECODE=1`.
+
+Aturan turunannya: **kalau hasil probe terlihat terlalu dramatis, curigai probenya dulu,
+bukan sistemnya.** Dua kali sesi ini hasil "mengejutkan" ternyata artefak probe.
 
 **Wajib bersih-bersih:** hentikan dan hapus container probe, `git checkout` semua
 perubahan. Jangan pernah menyentuh container atau artefak run resmi.
