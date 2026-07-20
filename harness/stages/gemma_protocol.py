@@ -42,7 +42,7 @@ def parse_actions(text: str) -> list[Action]:
         elif info.startswith("file:"):
             actions.append(Action(kind="file", arg=info[len("file:"):].strip(),
                                   body=body))
-        elif info in ("repro.md", "localize.md", "candidates.md"):
+        elif info in ("repro.md", "localize.md", "candidates.md", "fix.md"):
             actions.append(Action(kind=info, arg=None, body=body))
     return actions
 
@@ -212,7 +212,8 @@ def repeated_error_note(prev_why: str | None, why: str) -> str | None:
             "again.")
 
 
-def retry_reason(output: str, exit_code: int, max_len: int = 200) -> str:
+def retry_reason(output: str, exit_code: int, max_len: int = 200,
+                 expected: str = "FAIL") -> str:
     """Ringkasan satu baris (English) untuk detail.why event retry —
     permintaan Mirza 2026-07-18: tiap retry membawa alasan aktualnya,
     bukan label generik yang sama."""
@@ -221,7 +222,7 @@ def retry_reason(output: str, exit_code: int, max_len: int = 200) -> str:
         if line.strip():
             last = line.strip()
             break
-    why = f"repro run exited {exit_code} without REPRO_STATUS: FAIL"
+    why = f"repro run exited {exit_code} without REPRO_STATUS: {expected}"
     if last:
         why += f"; last output line: {last}"
     else:
@@ -355,4 +356,18 @@ def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool,
     if not ran_any_bash:
         return ("Not done yet: do some exploration first — open the relevant "
                 "code with bash actions, then submit your map.")
+    return None
+
+
+def done_rejection_fix(has_fix_md: bool, observed_pass: bool) -> str | None:
+    """Aturan bukti-dulu stage FIX (spec 2026-07-20 §4). None = DONE boleh
+    lanjut ke pre-check pair dunia segar. Standar tunggal "PASS tersaksikan"
+    = exact_status(output) == "PASS" — dihitung pemanggil (driver)."""
+    if not observed_pass:
+        return ("Not done yet: run `python /testbed/.pipe/repro.py` and get "
+                "`REPRO_STATUS: PASS` in its output first, then declare "
+                "DONE.")
+    if not has_fix_md:
+        return ("Not done yet: submit the ```fix.md block first, then "
+                "declare DONE.")
     return None

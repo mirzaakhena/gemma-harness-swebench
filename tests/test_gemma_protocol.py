@@ -485,3 +485,53 @@ def test_fresh_pair_meta_structured():
     assert meta["status2"] is None
     assert meta["exit1"] == 0 and meta["exit2"] == 1
     assert "extra" in meta["run2_tail"]
+
+
+# --- FIX stage: aksi fix.md + bukti-dulu PASS (spec 2026-07-20 §4) ---------
+
+def test_parse_actions_fix_md_block():
+    from harness.stages.gemma_protocol import parse_actions
+    acts = parse_actions("```fix.md\nWHAT CHANGED: x\nWHY: y\n```")
+    assert len(acts) == 1 and acts[0].kind == "fix.md"
+    assert acts[0].body == "WHAT CHANGED: x\nWHY: y"
+
+
+def test_fix_done_rejected_without_witnessed_pass():
+    from harness.stages.gemma_protocol import done_rejection_fix
+    reason = done_rejection_fix(has_fix_md=True, observed_pass=False)
+    assert reason is not None and "REPRO_STATUS: PASS" in reason
+
+
+def test_fix_done_rejected_without_fix_md():
+    from harness.stages.gemma_protocol import done_rejection_fix
+    reason = done_rejection_fix(has_fix_md=False, observed_pass=True)
+    assert reason is not None and "fix.md" in reason
+
+
+def test_fix_done_accepted_with_pass_and_md():
+    from harness.stages.gemma_protocol import done_rejection_fix
+    assert done_rejection_fix(has_fix_md=True, observed_pass=True) is None
+
+
+def test_retry_reason_expected_pass_wording():
+    from harness.stages.gemma_protocol import retry_reason
+    why = retry_reason("Traceback...\nboom\n", 1, expected="PASS")
+    assert "without REPRO_STATUS: PASS" in why
+    assert "boom" in why
+
+
+def test_retry_reason_default_still_fail():
+    from harness.stages.gemma_protocol import retry_reason
+    assert "without REPRO_STATUS: FAIL" in retry_reason("x\n", 1)
+
+
+def test_fix_rejection_messages_are_english():
+    from harness.stages.gemma_protocol import done_rejection_fix
+    msgs = [
+        done_rejection_fix(has_fix_md=False, observed_pass=True),
+        done_rejection_fix(has_fix_md=True, observed_pass=False),
+    ]
+    for m in msgs:
+        assert m is not None
+        for word in ("Belum", "kamu", "dulu", "serahkan", "jalankan"):
+            assert word not in m, f"pesan ke model masih ber-Indonesia: {m!r}"
