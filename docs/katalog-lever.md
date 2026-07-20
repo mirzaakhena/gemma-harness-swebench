@@ -54,6 +54,41 @@ yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan a
   F2P 0/2 gagal dan 1 regresi P2P (`test_case_in_filter_if_boolean_output_field`).
   **Tanda tangan sama:** repro menguji *gejala permukaan* (tidak crash / tidak NameError),
   bukan *kontrak yang dilanggar*; fix sempit yang mematikan gejala lolos gate.
+- **Bukti penguat (sisi sebaliknya — HIJAU pun tidak membuktikan apa-apa) — django-11099**,
+  run `r-dev--django__django-11099--r1` + `f-dev--django__django-11099--r1`
+  (temuan bot-01, 2026-07-20). Ini satu-satunya run full green di korpus
+  (`swebench_eval.json` resolved=true, F2P 3/3, P2P 19/19), tapi buktinya lemah:
+  gold hanya mengganti anchor BELAKANG (`^...$` → `^...\Z`) di `ASCIIUsernameValidator`
+  dan `UnicodeUsernameValidator`; Gemma mengganti KEDUA anchor (`\A...\Z`); sementara
+  `files/repro.py` hanya menguji empat kasus trailing-`\n`/tanpa-`\n` dan **tidak pernah
+  menyentuh anchor depan sama sekali**. Artinya fix minimal (`$`→`\Z` saja) lolos repro,
+  fix Gemma yang lebih ketat juga lolos repro, dan repro tidak bisa membedakan keduanya.
+  Hijau di sini didapat karena **ruang fix-nya kebetulan sempit** (satu regex, satu file),
+  bukan karena yardstick-nya menggigit. Konsekuensi untuk pembacaan papan skor: repro
+  longgar bukan cuma meloloskan fix salah (13660, 14017) — ia juga membuat hasil BENAR
+  tidak bisa dipakai sebagai bukti bahwa gate bekerja. Jangan hitung 11099 sebagai
+  validasi yardstick.
+- **Bukti penguat (case ketiga, full green — predikat proksi di boundary internal) —
+  django-13230**, run `r-dev--django__django-13230--r1/files/repro.py` +
+  `f-dev--django__django-13230--r1` (temuan bot-01, 2026-07-20). Run ini FULL GREEN
+  (`resolved=true`, F2P 1/1 `test_rss2_feed`, P2P 23/23) dan patch modelnya setara semantik
+  dengan gold (baris `comments=self._get_dynamic_attr('item_comments', item),` identik, hanya
+  beda posisi sisip antar keyword argument). Tetapi repro-nya **tidak pernah memeriksa keluaran
+  yang dilihat user**: ia me-monkeypatch `SyndicationFeed.add_item`, menangkap `kwargs`, lalu
+  meng-assert `kwargs['comments'] == "http://comments/1/"`. Test resmi `test_rss2_feed`
+  memeriksa **XML** hasil akhir; repro berhenti satu lapis di dalamnya. Konsekuensinya, fix yang
+  meneruskan `comments` ke `add_item` tetapi merusak emisi elemen `<comments>` di XML akan
+  **lolos repro dan gagal test resmi**. Kelemahan tambahan di script yang sama: `item_comments`
+  hanya diuji sebagai *method*, tidak pernah sebagai atribut statis (padahal kontrak
+  `_get_dynamic_attr` mendukung keduanya); tidak ada kontrol positif yang ikut menentukan
+  kelulusan; dan `except TypeError:` di sekeliling `view(request)` cukup lebar untuk menelan
+  `TypeError` asli dari dalam pipeline feed, lalu diam-diam jatuh ke jalur fallback.
+  **Tanda tangan sama dengan 11099:** hijau di sini diperoleh karena ruang fix-nya kebetulan
+  sempit (satu baris, satu call site yang sudah ditunjuk), bukan karena yardstick-nya menggigit.
+  Catatan penting soal sebab: bentuk monkeypatch itu **bukan pilihan awal model** — checkpoint
+  `files/repro-first-fail.py` memeriksa `feed_gen.items[0]['comments']` langsung dari objek
+  feed generator, tanpa monkeypatch dan tanpa `except` lebar, dan itu sudah exec-pair hijau.
+  Bentuk yang lebih longgar lahir setelah penolakan judge (lihat bukti penguat di LV-05).
 - **Diagnosa:** dua lapis.
   - *Akar-model* pada pilihan fix-nya sendiri (`{}` vs `globals()`; early-return khusus
     `Exists`) — pemahaman semantik, dan terbukti muncul konsisten & independen di LOCALIZE
@@ -78,6 +113,19 @@ yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan a
   `Arsip Harness/pipeline_journey.md` dan `Pipeline v2 — Stage Isolation Plan.md`.
 - **Gejala:** edit FIX yang menghasilkan file tidak valid / rusak diterima driver dan baru
   ketahuan jauh di hilir.
+- **Bukti penguat (case pertama dengan angka keras) — django-11910 attempt 2**, run
+  `f-dev--django__django-11910--r1`, artefak `files/attempts/attempt-2.diff`
+  (temuan bot-01, 2026-07-20). Gemma menulis `related.py` lewat script Python
+  cari-dan-sisip yang bugnya jelas (`i += 5` di dalam `while` yang mencocokkan
+  `def deconstruct(self):`), hasilnya blok yang sama disisipkan **23×** berturut-turut
+  dengan indentasi invalid (`return name, path, args, kwargs` di kolom 8 diikuti
+  `if ...` di kolom 12) sehingga `related.py` **tidak bisa di-parse lagi**. Driver
+  menerima tulisan itu tanpa protes (`docker_write_file` di `run_fix_gemma.py` tidak
+  memvalidasi apa pun), dan attempt 2 kemudian menghabiskan **seluruh 40 turn** tanpa
+  pernah menjalankan repro sekali pun. `py_compile` di titik tulis akan memotong ini
+  di turn pertama, bukan di turn ke-40. Catatan: di run ini kerusakan syntax bukan
+  penyebab tunggal kegagalan (lihat LV-09); tapi ia adalah kelas yang persis ditutup
+  lever ini, dan ini bukti langsung pertamanya dengan artefak.
 - **Diagnosa:** akar-harness murni (validasi yang absen di titik tulis).
 - **Usulan lever:** driver FIX menjalankan `py_compile` atas file hasil tulis; gagal compile
   → revert per-file + feedback ke model.
@@ -93,6 +141,16 @@ yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan a
 - **Asal-usul:** dicatat sebelumnya (backlog FIX).
 - **Gejala:** file untracked lolos pagar edit — pagar dan ekstraksi diff bekerja atas
   himpunan file yang berbeda, sehingga ada celah.
+- **Bukti penguat — django-11910 attempt 1**, run `f-dev--django__django-11910--r1`,
+  artefak `files/attempts/attempt-1.diff` (temuan bot-01, 2026-07-20). Diff attempt 1
+  isinya **HANYA tiga file untracked hasil coba-coba model** — `manual_repro_app/__init__.py`,
+  `manual_repro_app/migrations/__init__.py`, `manual_repro_app/models.py` — dan **nol
+  perubahan** pada file kandidat `django/db/migrations/autodetector.py`. Jadi sampah
+  scratch model masuk ke ekstraksi diff, sementara satu-satunya file yang boleh diedit
+  justru kosong. Di run ini pre-check masih menangkapnya (1× `off-candidate-files`,
+  lalu 29× `empty-diff` dari total 57 penolakan DONE), jadi celahnya tidak sampai
+  meloloskan fix palsu — tapi bentuk kebocorannya persis seperti yang dijelaskan entri
+  ini, dan pre-check yang menyelamatkan bekerja di himpunan yang lain lagi.
 - **Diagnosa:** akar-harness murni (dua sumber kebenaran untuk satu himpunan; klasik
   "standar ganda", pelanggaran prinsip #6 di katalog cerita).
 - **Usulan lever:** satukan himpunan file jadi satu sumber kebenaran yang dipakai pagar edit
@@ -159,6 +217,38 @@ bukan tentang bug-nya, melainkan tentang mekanika harness.** Kelas-kelasnya di b
 
   Model mendiagnosis ketidakcocokan abstraksi dengan tepat, lalu **dipaksa harness
   meninggalkan analisis yang benar itu.**
+- **Bukti penguat (case kedua, independen, kategori aturan BERBEDA) — django-13230**, run
+  `r-dev--django__django-13230--r1` (temuan bot-01, 2026-07-20). Bukti:
+  `console.log` baris 962 (`[driver] checkpoint saved: files/repro-first-fail.py`),
+  baris 1026 (temuan `[judge]`), baris 1030 (`[driver] DONE deferred: judge review found
+  issues`), baris 1651 (`DONE at turn 20 (last attempt 7)`); `events.jsonl` event retry
+  ke-5 (`done-deferred: independent review found issues`).
+  Pola persis sama: di turn 13 model sudah punya repro yang **BEKERJA** dan sudah
+  disaksikan driver — exec-pair 2 run segar, dua-duanya `Item comments: None` +
+  `REPRO_STATUS: FAIL`, exit 0 — dan driver menyimpannya sebagai checkpoint known-good.
+  Judge lalu menahan DONE. Bedanya dengan 13660: **aturan yang dikutip bukan kategori
+  mekanika**, melainkan *"Follow the user's action path"* — kategori correctness. Judge
+  beralasan script *"calls `get_feed` directly, which does not exercise the `add_item`
+  method where the missing argument is located"*.
+- **Klaim judge itu terbukti salah secara faktual**, dan buktinya ada di gold patch case ini:
+  header hunk `cases/gold/django__django-13230/gold.patch` berbunyi
+  `@@ -212,6 +212,7 @@ def get_feed(self, obj, request):` — yaitu `feed.add_item(...)`
+  memang dipanggil **dari dalam `get_feed`**. Memanggil `get_feed` adalah cara paling
+  langsung untuk melatih call site yang rusak; judge menyatakan sebaliknya tanpa membuka kode.
+- **Ongkos yang bisa dihitung:** 7 dari 20 turn (35% run) habis SETELAH penolakan ini —
+  t15 mencoba `MyFeed.as_view()` → `AttributeError: type object 'MyFeed' has no attribute
+  'as_view'` (kelas `Feed` syndication memang bukan CBV standar); t17 mencoba
+  `from django.utils.feedgenerator import FeedGenerator` → `ImportError: cannot import name
+  'FeedGenerator'`; t18–t19 membaca ulang `feedgenerator.py` untuk menemukan nama sebenarnya
+  (`SyndicationFeed`). **2 dari 7 retry event di run ini adalah anak langsung penolakan judge.**
+  Repro final malah memasang `except TypeError:` yang di dalamnya memanggil
+  `view.get_feed(None, request)` — persis yang dilarang judge — jadi objeksinya tidak hanya
+  salah, tetapi juga tidak efektif. Dan hasil akhirnya **lebih longgar** dari checkpoint yang
+  ditolak (lihat bukti penguat di LV-01).
+- **Implikasi untuk desain lever (b) — penting, ini memperluas cakupan entri ini:** filter
+  yang diusulkan di (b) menyaring temuan judge berkategori `mechanics`. Di 13230 kategorinya
+  `correctness`, jadi **(b) sebagaimana ditulis tidak akan menyelamatkan run ini.** Yang
+  ternyata dibutuhkan adalah kewajiban bukti, bukan kategori aturan — lihat LV-13.
 - **Diagnosa — akar-harness, hampir murni.** Dua cacat terpisah:
   1. **Pemicu aturan terlalu luas.** Teks di `harness/stages/reproduce_prompt.md`
      (`rule:app-runtime`) berbunyi *"When your scenario runs an application as a child
@@ -316,3 +406,262 @@ Kesimpulan yang paling layak dibawa ke keputusan berikutnya:
    karena aturan pemakaiannya dipicu terlalu luas. Lever yang benar untuk satu bentuk dunia
    bisa jadi beban di bentuk dunia lain — argumen kuat agar pemicu tiap aturan diberi
    ruang lingkup sesempit buktinya, bukan seluas kalimatnya.
+
+---
+
+## Entri baru — komparasi kontras django-11910 (meledak) vs django-11099 (mulus)
+## (bot-01, 2026-07-20)
+
+**Korpus:**
+`artifacts/f-dev/f-dev--django__django-11910--r1` (gagal, verdict `no-flip`),
+repro beku dari `artifacts/r-dev/r-dev--django__django-11910--r3`;
+dibandingkan dengan `artifacts/r-dev|l-dev|f-dev--django__django-11099--r1`
+(full green, `resolved=true`, F2P 3/3, P2P 19/19).
+
+**Angka mentah komparasi:**
+
+- 11910 FIX: `console.log` **17.927 baris**, `events.jsonl` 707 baris, 2 attempt ×
+  **40 turn = 80 turn**, `winner_attempt=null`, `fix.diff` tidak pernah ditulis,
+  **57 penolakan DONE**, `pass_l1=false`.
+- 11099 seluruh pipeline: REPRODUCE **5 turn** (console 177 baris, **0 event retry**),
+  LOCALIZE **2 turn**, FIX **4 turn / 1 attempt / result=win** (console 394 baris).
+  Total ± **11 turn** untuk tiga fase, tanpa satu pun rerun.
+- Rasio kasar: 80 turn tanpa hasil vs 11 turn hijau — sekitar **7×**, dan itu pun
+  membandingkan tiga fase 11099 dengan satu fase 11910.
+
+**Beda struktural yang paling menonjol — bentuk repro:**
+
+- 11099 `files/repro.py`: **murni in-process.** `from django.contrib.auth.validators
+  import ASCIIUsernameValidator, UnicodeUsernameValidator`, panggil validator atas 4
+  string, tangkap `ValidationError`, cetak status. Nol subprocess, nol tmpdir, nol
+  `pipe_runtime`, nol file I/O, nol proses anak. Satu-satunya state eksternal adalah
+  isi modul yang sedang diperbaiki — yaitu persis variabel yang ingin diukur.
+- 11910 `files/repro.py`: **orkestrasi environment penuh.** `tempfile.TemporaryDirectory`
+  + `os.chdir` + bikin app Django sintetis (`repro_app/`, `migrations/`, `models.py`,
+  `manage.py` yang ditulis sebagai string) + **dua kali** `makemigrations` lewat
+  `pipe_runtime.App` (yang kedua dibungkus `/bin/sh -c "echo 'y' | ..."` untuk menjawab
+  prompt interaktif rename) + baca kembali file migrasi ke-2 dari disk + cocokkan
+  substring `to_field='field_wrong'`. Rantai ketergantungan: cwd, tmpdir, sqlite,
+  `pipe_runtime`, semantik `App.start()/stop()`, timing prompt interaktif, urutan
+  `sorted()` nama file migrasi.
+
+Bentuk kedua punya belasan titik gagal yang **tidak satu pun berhubungan dengan bug
+Django-nya**. Ketika satu titik itu putus, repro tidak berteriak — ia diam-diam
+mencetak PASS (lihat LV-10).
+
+**Catatan kejujuran soal hipotesis "in-process lebih deterministik":** bukti di korpus
+ini **mendukung arah itu tapi belum cukup untuk membuktikannya**, dan ada confounder
+besar. Kegagalan 11910 sebagian besar bisa dijelaskan oleh satu cacat tunggal yang
+sangat spesifik (LV-09: dependency repro tidak ikut dikirim ke container FIX) —
+bukan oleh "orkestrasi itu sendiri". Kalau LV-09 ditutup, belum tentu 11910 tetap
+meledak. Yang **bisa** diklaim dengan bukti: repro berorkestrasi punya permukaan
+kegagalan yang jauh lebih lebar, dan cacat LV-09 hanya bisa menggigit repro yang
+punya dependency runtime — repro in-process 11099 kebal terhadapnya secara struktural.
+n=1 vs n=1; jangan dijadikan aturan sebelum ada case ketiga.
+
+## LV-09 — Container kerja FIX tidak menerima dependency yang dibutuhkan repro beku
+
+- **Asal-usul:** django-11910. Bukti utama:
+  `artifacts/f-dev/f-dev--django__django-11910--r1/console.log` (588 kejadian
+  `ModuleNotFoundError: No module named 'pipe_runtime'` — 56 di attempt 1, **532 di
+  attempt 2**), dibandingkan dengan
+  `artifacts/r-dev/r-dev--django__django-11910--r3/gate_runs.json`.
+  Kode: `harness/stages/run_fix_gemma.py` baris 231–232 vs
+  `harness/stages/run_reproduce_gemma.py` baris 286 dan
+  `harness/stages/repro_sandbox_runner.py` baris 35–36.
+- **Gejala:** repro beku 11910 diawali `from pipe_runtime import App`. Di **dunia gate**
+  (fase REPRODUCE) modul itu ada, dan `gate_runs.json` r3 menunjukkan dua run segar yang
+  dua-duanya bersih: 2 migrasi terbentuk, prompt rename terjawab, `REPRO_STATUS: FAIL`,
+  exit 0 — flip base FAIL → gold PASS lolos. Di **dunia kerja FIX**, baris pertama repro
+  langsung mati dengan `ModuleNotFoundError`. Attempt 2 tidak pernah berhasil menjalankan
+  repro **sekali pun** sepanjang 40 turn; error yang sama berulang 532×. Attempt 1 lolos
+  dari loop itu hanya karena model **menulis `pipe_runtime.py` tiruannya sendiri**
+  (`[driver] wrote /testbed/.pipe/pipe_runtime.py (950 chars)`, console baris 2555;
+  percobaan pertamanya bahkan menyertakan literal `EOF` di badan file →
+  `NameError: name 'EOF' is not defined`).
+- **Akar mekanis, sudah terverifikasi di kode:** `run_reproduce_gemma.py` mengirim DUA
+  file ke container (`repro.py` + `pipe_runtime.py`), dan `repro_sandbox_runner.py`
+  menyalin `pipe_runtime.py` ke sandbox gate. `run_fix_gemma.py` hanya menulis **satu**
+  file: `docker_write_file(container, "/testbed/.pipe/repro.py", inputs.repro_py)`.
+  Tidak ada `pipe_runtime.py`. Kontrak yang dibekukan adalah *script*-nya saja, bukan
+  *lingkungan* tempat script itu terbukti bekerja.
+- **Diagnosa — akar-harness murni, dan ini bukan non-determinisme.** Penting untuk tidak
+  salah label: hipotesis kerja sebelumnya adalah "script yang sama berperilaku beda
+  antara dunia gate dan dunia FIX, jadi tidak deterministik lintas dunia". Bukti
+  menunjukkan sebab yang jauh lebih membosankan dan jauh lebih bisa diperbaiki: **dunia
+  FIX kekurangan satu file**. Kedua dunia sepenuhnya deterministik; yang berbeda adalah
+  isinya. Turunannya: perilaku "acak" yang teramati di attempt 1 (`found 0`, lalu
+  `found 1`, sesekali `FAIL`) adalah efek dari `pipe_runtime` **tiruan buatan model**
+  yang semantik `start()`/`stop()`-nya berbeda dari yang asli — bukan flakiness Django.
+- **Ironi lintas-lever:** `rule:app-runtime` di prompt REPRODUCE (lihat LV-05) secara
+  aktif **mendorong** model memakai `pipe_runtime`, bahkan menolak repro `subprocess`
+  yang sudah terbukti. Setiap repro yang tunduk pada aturan itu lalu menjadi
+  **tidak-bisa-dijalankan di fase FIX**. Dua lever yang masing-masing masuk akal
+  bertabrakan di sambungan antar-fase.
+- **Usulan lever (mekanis, murah, satu titik):** apa pun yang dikirim harness ke
+  container REPRODUCE sebagai penopang repro **wajib dikirim juga ke tiap container
+  kerja FIX**, dari satu daftar sumber-kebenaran tunggal (bukan dua pemanggilan
+  `docker_write_file` terpisah yang kebetulan beda isi). Bentuk konkret: satu fungsi
+  `provision_pipe_dir(container)` dipakai oleh REPRODUCE, sandbox gate, dan FIX.
+  Ini persis pola "satukan himpunan jadi satu sumber kebenaran" yang sudah ada di LV-03,
+  tapi atas objek yang berbeda (isi `/testbed/.pipe`, bukan himpunan file yang boleh
+  diedit) — karena itu dicatat sebagai lever tersendiri, bukan bukti penguat LV-03.
+- **Status:** BELUM DITERAPKAN.
+- **Prioritas:** **UTAMA.** Ini penjelasan tunggal terbesar untuk 80 turn yang hangus.
+  Perbaikannya beberapa baris, tidak menyentuh penalaran model sama sekali, dan
+  menutup kelas untuk **semua** case yang repro-nya memakai `App` — yaitu kelas yang
+  justru dibesarkan oleh `rule:app-runtime`.
+
+## LV-10 — Repro beku wajib divalidasi ulang mencetak FAIL di container kerja pristine
+
+- **Asal-usul:** django-11910, `f-dev--django__django-11910--r1/console.log`
+  (baris 2367–2368, 2541–2542, 2665–2666, 3119–3120, dst.) dan repro beku
+  `r-dev--django__django-11910--r3/files/repro.py` baris 72–74 + 86–91.
+- **Gejala (angka):** pada repo yang **belum difix sama sekali**, repro mencetak:
+  `Expected at least 2 migrations, found 0` diikuti `REPRO_STATUS: PASS`. Sepanjang run,
+  `REPRO_STATUS: PASS` muncul **30×** dan `REPRO_STATUS: FAIL` hanya **5×** — dan
+  mayoritas PASS itu berasal dari cabang "environment-ku tidak jalan", bukan dari
+  "bug-nya hilang". Model menyadarinya sendiri dan menulis di console:
+  *"So 'found 1' is a false positive."* — lalu tetap tidak punya cara keluar, karena
+  satu-satunya sinyal vonis yang tersedia baginya sudah rusak.
+- **Mekanisme kerusakan:** repro punya cabang `if len(migration_files) < 2: ... return
+  False`, dan pemanggilnya menerjemahkan `False` menjadi `REPRO_STATUS: PASS`. Jadi
+  **kegagalan environment tidak bisa dibedakan dari perbaikan yang benar**. Kombinasinya
+  dengan LV-09 mematikan: dependency hilang → environment gagal → repro bilang PASS →
+  model diberi tahu bahwa ia sudah menang padahal belum menyentuh kode. Yang menahan
+  false-flip di sini hanya kebetulan: pre-check `empty-diff` menolak DONE 29× karena
+  file kandidat memang kosong. Kalau model kebetulan sudah menulis apa pun ke file
+  kandidat, run ini akan lolos gate flip dengan fix sembarang.
+- **Diagnosa — akar-harness murni, dua cacat terpisah yang keduanya bisa dilever:**
+  1. **Tidak ada pre-flight.** `run_fix_gemma.py` menulis `repro.py` ke container lalu
+     langsung menyerahkan giliran ke model. Tidak pernah dicek bahwa yardstick-nya
+     masih hidup di dunia ini. Padahal invarian yang dibutuhkan sepele dan bisa diuji
+     dalam satu detik: di container pristine (belum ada edit), repro **harus** mencetak
+     `REPRO_STATUS: FAIL`.
+  2. **Cabang error jatuh ke PASS.** Kontrak repro hanya mengenal dua keluaran, jadi
+     setiap kondisi "aku tidak bisa mengamati apa-apa" terpaksa dibulatkan ke salah
+     satunya — dan model membulatkannya ke arah yang paling berbahaya. Ini bukan
+     kesalahan model semata: **kontraknya memang tidak menyediakan kata untuk
+     "tidak tahu"**.
+- **Usulan lever (dua bagian, keduanya mekanis):**
+  - (a) **Gerbang pre-flight FIX.** Sebelum pesan pertama ke model, driver menjalankan
+    repro beku di container kerja yang masih pristine. Kalau keluarannya bukan
+    `REPRO_STATUS: FAIL` (termasuk kalau PASS, kalau exit non-nol, atau kalau tidak
+    ada baris `REPRO_STATUS` sama sekali), **abort attempt itu** dengan verdict khusus
+    — usul nama `repro-not-armed` — dan jangan bakar satu turn pun. Verdict terpisah
+    penting supaya kegagalan infrastruktur tidak tersamar sebagai `no-flip`, yang di
+    papan skor terbaca seolah model gagal memperbaiki bug. Di 11910 seluruh 80 turn
+    akan dipotong di detik pertama, dengan diagnosis yang benar.
+  - (b) **Tambah keluaran ketiga di kontrak repro:** `REPRO_STATUS: ERROR` (atau
+    `INCONCLUSIVE`) untuk setiap jalur di mana script tidak berhasil mengamati sistem.
+    Gate REPRODUCE menolak repro yang cabang error/short-circuit-nya jatuh ke PASS —
+    ini bisa dicek sebagian secara statis (mis. `return False`/`else` yang dicapai dari
+    blok `except` atau dari guard "prasyarat tidak terpenuhi"), dan sepenuhnya secara
+    dinamis dengan menjalankan repro di container **tanpa** repo (sabotase sengaja):
+    kalau ia mencetak PASS di sana, repro-nya cacat menurut konstruksi.
+  Bagian (a) adalah yang mengikat dan bisa dipasang hari ini. Bagian (b) menutup akarnya
+  tapi butuh perubahan kontrak, jadi biayanya lebih tinggi.
+- **Hubungan dengan lever lain:** (a) juga menangkap LV-09 tanpa tahu apa-apa soal
+  `pipe_runtime` — ia adalah **detektor generik** untuk seluruh kelas "yardstick mati di
+  dunia kerja", sementara LV-09 adalah perbaikan penyebab spesifik yang sudah diketahui.
+  Keduanya layak: LV-09 mencegah, LV-10 menjaring sisanya. Kalau hanya boleh satu,
+  pasang **LV-10(a)** — cakupannya lebih luas dan biayanya sebanding.
+- **Status:** BELUM DITERAPKAN.
+- **Prioritas:** **UTAMA** untuk bagian (a); sedang untuk bagian (b).
+
+## LV-11 — Repro beku harus benar-benar beku (read-only) selama fase FIX
+
+- **Asal-usul:** django-11910, `f-dev--django__django-11910--r1/console.log`
+  baris 2555 (`[driver] wrote /testbed/.pipe/pipe_runtime.py`), baris 3184 dan 3322
+  (`sed -i "s/print(f\"Expected at least 2 migrations...` atas
+  `/testbed/.pipe/repro.py`).
+- **Gejala:** premis fase FIX adalah *"repro.py dibekukan dan jadi SATU-SATUNYA
+  yardstick"*. Kenyataannya model bisa, dan memang, **mengubah yardstick-nya sendiri**:
+  ia menjalankan `sed -i` atas `/testbed/.pipe/repro.py` (2×) dan menulis modul
+  penopangnya sendiri ke `/testbed/.pipe/`. Driver tidak punya pagar apa pun di
+  `/testbed/.pipe`: `docker_write_file` menerima path apa saja dari aksi `file`, dan
+  aksi `bash` dieksekusi mentah.
+- **Diagnosa — akar-harness murni.** "Beku" di sini adalah **konvensi, bukan mekanisme**
+  — persis pola yang berulang kali gagal di proyek ini (lihat LV-08: checkpoint yang
+  ada tapi pasif; LV-04: aturan yang hanya dituliskan). Perlu dicatat adil: di run ini
+  motif model **bukan** kecurangan, melainkan usaha memperbaiki yardstick yang memang
+  rusak karena LV-09. Tetap saja, begitu yardstick bisa diedit oleh pihak yang sedang
+  diuji, verdict flip kehilangan arti.
+- **Usulan lever:** setelah provisioning, `chmod 0444` seluruh isi `/testbed/.pipe` dan
+  jalankan proses model sebagai user non-root; driver menolak aksi `file` yang path-nya
+  di bawah `/testbed/.pipe`; dan sebagai jaring terakhir, driver menyimpan hash isi
+  `/testbed/.pipe/repro.py` saat provisioning lalu **memverifikasi ulang hash itu tepat
+  sebelum menerima DONE** — hash berubah = attempt gugur. Bagian hash paling murah dan
+  paling sulit dielakkan.
+- **Status:** BELUM DITERAPKAN.
+- **Prioritas:** tinggi. Bukan karena sudah terbukti merusak vonis (di 11910 tidak
+  sampai, karena `empty-diff` menahan DONE), tapi karena ia **melubangi integritas
+  gate** — sekali sebuah run lolos flip dengan repro yang sudah diedit sendiri, seluruh
+  papan skor kehilangan makna dan kita tidak akan tahu dari artefak mana pun. Biayanya
+  beberapa baris.
+- **Ketergantungan:** pasang **bersama** LV-09 dan LV-10, jangan sendirian. Menutup akses
+  edit tanpa memperbaiki dependency yang hilang berarti model terkurung dengan yardstick
+  yang mati dan tanpa jalan keluar — hasilnya tetap 40 turn hangus, hanya lebih senyap.
+
+## LV-12 — Preferensikan repro in-process; orkestrasi environment hanya bila perlu
+
+- **Asal-usul:** komparasi django-11910 vs django-11099 (rincian angka di blok komparasi
+  di atas). Bukti: `r-dev--django__django-11099--r1/files/repro.py` (in-process murni,
+  5 turn, 0 retry) vs `r-dev--django__django-11910--r3/files/repro.py` (tmpdir + app
+  sintetis + 2× `makemigrations` + prompt interaktif + baca file hasil).
+- **Gejala:** repro berorkestrasi menyeret belasan titik gagal yang tidak ada
+  hubungannya dengan bug yang diuji (cwd, tmpdir, sqlite, `pipe_runtime`, timing prompt
+  rename, urutan `sorted()` nama migrasi). Di 11910 satu titik saja yang putus
+  (`pipe_runtime` absen) sudah cukup untuk membuat yardstick diam-diam bohong. Repro
+  in-process 11099 kebal terhadap kelas itu secara struktural: satu-satunya state yang
+  disentuhnya adalah modul yang sedang diperbaiki.
+- **Diagnosa — campuran, dan bukti belum tuntas.**
+  - *Akar-harness:* kontrak REPRODUCE tidak menyatakan preferensi bentuk apa pun, dan
+    `rule:app-runtime` bahkan mendorong ke arah sebaliknya (LV-05).
+  - *Confounder yang harus diakui:* kegagalan 11910 **sudah cukup dijelaskan** oleh
+    LV-09 sendiri. Kita **tidak punya bukti** bahwa orkestrasi per se yang merusak;
+    yang terbukti hanyalah bahwa orkestrasi memperlebar permukaan kegagalan sehingga
+    cacat harness punya tempat menggigit. n=1 vs n=1.
+  - Perlu juga jujur: sebagian case memang **tidak bisa** diuji in-process. 11910 adalah
+    bug pada *hasil generate migrasi* — sulit dibuktikan tanpa menjalankan autodetector
+    atas sepasang model state. Lever ini karenanya tidak boleh berbentuk larangan.
+- **Usulan lever:** jadikan preferensi bentuk sebagai **urutan yang diperiksa gate, bukan
+  larangan**. Konkretnya: gate REPRODUCE mencatat "kelas repro" (in-process / subprocess
+  / orkestrasi penuh) sebagai metadata di `verdict.json`, sehingga kelas ini bisa
+  dikorelasikan dengan hasil L2 lintas case. Baru **setelah** ada 5–10 case, putuskan
+  apakah layak menekan bentuknya. Menambah kalimat "tulislah repro in-process" ke prompt
+  sekarang adalah persis jenis lever yang katalog ini sudah tiga kali buktikan tidak
+  menggigit (LV-04, dan L#1–L#3 di LOCALIZE).
+- **Status:** BELUM DITERAPKAN — dan **sengaja belum diusulkan sebagai perubahan
+  perilaku**, baru sebagai instrumentasi.
+- **Prioritas:** rendah untuk lever-nya, **sedang untuk instrumentasinya**. Alasan: ini
+  satu-satunya item di batch ini yang buktinya belum cukup. Mengubah bentuk repro
+  berdasarkan n=1 adalah cara termahal untuk belajar (aturan main #6). Mencatat kelasnya
+  murah dan membuat keputusan berikutnya berbasis data.
+
+---
+
+## Catatan penutup komparasi 11910 vs 11099 (bot-01, 2026-07-20)
+
+1. **Kegagalan 11910 hampir seluruhnya akar-harness, bukan akar-model.** Localization-nya
+   benar (kandidat attempt 1 `autodetector.py` **adalah** file gold), dan analisis awal
+   model atas `to_field_rename_key` di baris 928–929 tepat sasaran. Yang membunuh run
+   ini adalah yardstick yang tidak bisa dijalankan di dunia tempat ia dipakai (LV-09)
+   dan tidak pernah diperiksa apakah masih hidup (LV-10). Dari 80 turn, mayoritas mutlak
+   habis untuk melawan `ModuleNotFoundError` — 588 kejadian.
+2. **Komponen akar-model tetap ada dan tidak boleh disapu bersih:** script sisip-blok
+   attempt 2 yang merusak `related.py` 23× adalah kecerobohan asli (LV-02), dan cabang
+   `< 2 migrations → PASS` di repro adalah pilihan desain predikat yang buruk oleh model
+   (walau kontrak yang tidak menyediakan "ERROR" ikut bersalah — LV-10b).
+3. **Hijau 11099 tidak boleh dibaca sebagai validasi gate.** Repro-nya tidak menguji
+   anchor depan sama sekali; fix minimal maupun fix Gemma yang lebih ketat sama-sama
+   lolos. Ruang fix yang sempit (satu regex, satu file) yang menyelamatkan, bukan
+   yardstick-nya. Dicatat sebagai bukti penguat di LV-01.
+4. **Pola yang mulai berulang di seluruh katalog ini:** mekanisme yang ADA tapi PASIF —
+   checkpoint yang tak pernah dipakai (LV-08), aturan "beku" tanpa pagar (LV-11),
+   kontrak repro tanpa keluaran "tidak tahu" (LV-10b), dua sumber kebenaran untuk satu
+   himpunan (LV-03, LV-09). Semua akar-harness, semua murah, dan semuanya berbentuk
+   sama: **jadikan invarian yang sudah kita percayai itu diperiksa oleh mesin.**
+5. **Urutan pasang yang disarankan:** LV-10(a) dulu (detektor generik, langsung memberi
+   diagnosis benar untuk seluruh kelas), lalu LV-09 (perbaikan penyebab), lalu LV-11
+   (pagar integritas), lalu LV-02. LV-12 cukup diinstrumentasi dan ditunggu datanya.
