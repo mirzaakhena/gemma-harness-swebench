@@ -373,6 +373,15 @@ bukan tentang bug-nya, melainkan tentang mekanika harness.** Kelas-kelasnya di b
   memakainya lagi**. Setelah penolakan judge (LV-05), model mengembara 4–7 turn menjauh dari
   script yang sudah terbukti; r3 tidak pernah kembali dan berakhir `wrong-logic`.
   Checkpoint berfungsi sebagai artefak forensik, bukan sebagai jaring pengaman.
+- **Bukti penguat (case kedua, independen) — django-13230**, run
+  `r-dev--django__django-13230--r1` (temuan bot-01, 2026-07-20). `console.log` baris 962
+  menyimpan `files/repro-first-fail.py`; setelah penolakan judge di baris 1030, model menulis
+  ulang `repro.py` **3×** (baris 1162, 1341, 1570) dan berkelana **7 turn** (t14–t20) tanpa
+  sekali pun kembali ke script yang sudah terbukti. Checkpoint tidak pernah disodorkan lagi.
+  Perbedaan dengan 13660: di sini run-nya akhirnya lolos (verdict `pass`), jadi kerugiannya
+  bukan kegagalan vonis melainkan **7 turn hangus plus yardstick akhir yang lebih longgar
+  daripada checkpoint yang dibuang** (LV-01). Ambang N=4 yang diusulkan entri ini akan
+  memicu tepat di t17–t18, saat model masih menebak-nebak nama simbol `feedgenerator`.
 - **Diagnosa:** akar-harness (mekanisme ada tapi pasif). Berbeda dari `next-step nudge`
   (`4541654`) yang menangani loop degeneratif — di sini modelnya justru produktif, hanya
   saja produktif ke arah yang salah.
@@ -485,6 +494,25 @@ n=1 vs n=1; jangan dijadikan aturan sebelum ada case ketiga.
   file: `docker_write_file(container, "/testbed/.pipe/repro.py", inputs.repro_py)`.
   Tidak ada `pipe_runtime.py`. Kontrak yang dibekukan adalah *script*-nya saja, bukan
   *lingkungan* tempat script itu terbukti bekerja.
+- **Bukti penguat (sisi kontrol — case yang BERSIH dari `pipe_runtime` dan mulus) —
+  django-13230**, run `r-dev--django__django-13230--r1` + `f-dev--django__django-13230--r1`
+  (temuan bot-01, 2026-07-20). Angka keras:
+  - `r-dev/.../files/repro.py`: **0 kemunculan** string `pipe_runtime`. Repro-nya in-process
+    murni (`settings.configure` + `django.setup()` + `call_command('migrate')` + panggilan
+    langsung ke objek Feed). Driver tetap mengirim `pipe_runtime.py` ke container REPRODUCE
+    (`console.log` baris 2: `[driver] pipe_runtime.py shipped to container and files/`), tapi
+    repro tidak memakainya.
+  - `f-dev/.../console.log`: **0 kemunculan** `No module named 'pipe_runtime'`, **0**
+    `ModuleNotFoundError` apa pun, **0** kemunculan string `pipe_runtime`.
+  - Hasil fase FIX: **3 turn, 1 attempt, `win`**, 1 penolakan DONE (dan itu pun sekadar
+    `done-rejected: Not done yet: run python /testbed/.pipe/repro.py ... first`), berujung
+    `resolved=true`.
+  Bandingkan dengan 11910: 588 `ModuleNotFoundError`, 80 turn, `winner_attempt=null`.
+  **Korelasi lintas tiga case kini konsisten:** repro yang mengimpor `pipe_runtime` → fase FIX
+  meledak (11910); repro tanpa `pipe_runtime` → fase FIX selesai dalam 3–4 turn (13230, 11099).
+  Ini bukti korelasional, bukan eksperimen terkontrol — tapi arahnya searah dengan akar mekanis
+  yang sudah **diverifikasi di kode** (`run_fix_gemma.py` baris 231–232), sehingga fungsinya
+  menguatkan, bukan menggantikan, bukti kode itu.
 - **Diagnosa — akar-harness murni, dan ini bukan non-determinisme.** Penting untuk tidak
   salah label: hipotesis kerja sebelumnya adalah "script yang sama berperilaku beda
   antara dunia gate dan dunia FIX, jadi tidak deterministik lintas dunia". Bukti
@@ -615,6 +643,22 @@ n=1 vs n=1; jangan dijadikan aturan sebelum ada case ketiga.
   (`pipe_runtime` absen) sudah cukup untuk membuat yardstick diam-diam bohong. Repro
   in-process 11099 kebal terhadap kelas itu secara struktural: satu-satunya state yang
   disentuhnya adalah modul yang sedang diperbaiki.
+- **Bukti penguat (case ketiga — kelas ANTARA, dan ia menuntut taksonomi yang lebih halus) —
+  django-13230**, `r-dev--django__django-13230--r1/files/repro.py` (temuan bot-01,
+  2026-07-20). Repro ini **in-process** (nol subprocess, nol `pipe_runtime`, nol tmpdir, nol
+  file I/O) tetapi **tidak sesederhana 11099**: ia harus mem-bootstrap framework yang sedang
+  diuji — `settings.configure(...)` dengan `DATABASES`/`ALLOWED_HOSTS`/`INSTALLED_APPS`/
+  `SITE_ID`, `django.setup()`, `call_command('migrate', run_syncdb=True)`, lalu
+  `Site.objects.create(...)`. Ongkosnya nyata dan terukur: **2 dari 7 retry** di fase REPRODUCE
+  murni boilerplate bootstrap (`events.jsonl` retry ke-2 `DisallowedHost: Invalid HTTP_HOST
+  header: 'testserver'` → t6 menambah `ALLOWED_HOSTS`; retry ke-3 `ImproperlyConfigured:
+  settings.DATABASES is improperly configured` → t7 menambah sqlite in-memory).
+  **Yang penting untuk lever ini:** biaya bootstrap itu dibayar **sekali di fase REPRODUCE**
+  dan **nol di fase FIX** (3 turn, mulus) — berbeda total dari orkestrasi 11910 yang biayanya
+  terbayar berulang setiap kali repro dijalankan di dunia lain. Jadi metadata "kelas repro"
+  yang diusulkan entri ini sebaiknya **tiga nilai, bukan dua**: (i) in-process murni,
+  (ii) in-process + bootstrap framework, (iii) orkestrasi proses/environment. Perbedaan
+  yang menggigit ada di batas (ii)/(iii), bukan (i)/(ii).
 - **Diagnosa — campuran, dan bukti belum tuntas.**
   - *Akar-harness:* kontrak REPRODUCE tidak menyatakan preferensi bentuk apa pun, dan
     `rule:app-runtime` bahkan mendorong ke arah sebaliknya (LV-05).
@@ -665,3 +709,183 @@ n=1 vs n=1; jangan dijadikan aturan sebelum ada case ketiga.
 5. **Urutan pasang yang disarankan:** LV-10(a) dulu (detektor generik, langsung memberi
    diagnosis benar untuk seluruh kelas), lalu LV-09 (perbaikan penyebab), lalu LV-11
    (pagar integritas), lalu LV-02. LV-12 cukup diinstrumentasi dan ditunggu datanya.
+
+---
+
+## Entri baru — autopsi django-13230: full green yang mahal di REPRODUCE
+## (bot-01, 2026-07-20)
+
+**Korpus:** `artifacts/r-dev/r-dev--django__django-13230--r1`,
+`artifacts/l-dev/l-dev--django__django-13230--r1`,
+`artifacts/f-dev/f-dev--django__django-13230--r1`.
+Gold: `cases/gold/django__django-13230/gold.patch`.
+
+**Hasil (terverifikasi ulang dari artefak, bukan dari laporan):** FULL GREEN.
+`f-dev/.../swebench_eval.json` → `resolved=true`, `patch_successfully_applied=true`,
+F2P 1/1 (`test_rss2_feed (syndication_tests.tests.SyndicationFeedTest)`), P2P 23/23,
+`f2p_failed=[]`, `p2p_failed=[]`, `rerun=1`. Ketiga fase `pass_l1=true`.
+Patch model setara semantik dengan gold: baris yang disisipkan identik
+(`comments=self._get_dynamic_attr('item_comments', item),`), hanya beda posisi sisip
+(model menaruhnya sesudah `item_copyright`, gold sesudah `author_link`).
+
+**Angka biaya per fase:**
+
+- REPRODUCE: **20 turn model, 7 attempt internal**, 7 event `retry`, 1 ronde self-check
+  yang diinjeksi driver (tidak tercatat sebagai retry), `console.log` 1.655 baris.
+- LOCALIZE: **2 turn**, 0 retry, `console.log` 327 baris. `qualified=true`.
+- FIX: **3 turn, 1 attempt**, 1 penolakan DONE, `result=win`, `console.log` 602 baris.
+
+**Perbandingan yang memicu autopsi ini:** django-11099 juga full green tapi REPRODUCE-nya
+hanya **5 turn / 1 attempt / 0 retry**. Jadi: 20 vs 5. Pertanyaannya, ke mana 15 turn itu pergi?
+
+**Pembagian ongkos 20 turn (dari `console.log`, per turn, dibaca satu per satu):**
+
+- **t1–t5 (5 turn) — orientasi + signature `get_feed`.** Model membaca `views.py` dan
+  `feedgenerator.py`, lalu salah urutan argumen (`get_feed(self, obj, request)` vs
+  `(self, request, obj)`) → retry ke-1. Ini kerja normal, akar-model, wajar.
+- **t6–t7 (2 turn) — boilerplate bootstrap Django.** `DisallowedHost` → tambah
+  `ALLOWED_HOSTS`; `ImproperlyConfigured: settings.DATABASES` → tambah sqlite in-memory.
+  Retry ke-2 dan ke-3. Ini satu-satunya bagian yang **murah ditutup harness**, dan buktinya
+  masih tipis (lihat Catatan penutup #3).
+- **t8–t12 (5 turn) — semantik `_get_dynamic_attr` / signature `items()`.** Retry ke-4
+  (`TypeError: items() missing 1 required positional argument: 'request'`), lalu 4 turn
+  membaca ulang sumber sampai paham bahwa `_get_dynamic_attr` memanggil `attr()` tanpa
+  argumen. **Akar-model murni**, dan ini kerja intelektual yang sah: case ini memang punya
+  permukaan API yang lebih kaya daripada 11099 (yang cuma mengimpor dua validator dan
+  memanggilnya atas empat string).
+- **t13 — repro BEKERJA.** exec-pair 2 run segar, dua-duanya `REPRO_STATUS: FAIL`, exit 0.
+  Driver menyimpan checkpoint known-good.
+- **t14–t20 (7 turn, 35% run) — detour yang dipaksa judge.** Rinciannya di LV-05 (bukti
+  penguat 13230) dan LV-13. Menghasilkan retry ke-6 (`as_view` tidak ada) dan ke-7
+  (`ImportError: FeedGenerator`).
+
+**Kelas kegagalan REPRODUCE (7 retry, dikelompokkan dari `detail.why` di `events.jsonl`):**
+
+- Kelas **"salah paham API kode yang sedang diuji"** — **3×**: `get_feed()` kurang argumen
+  `request`; `items()` kurang argumen `request`; `MyFeed` tidak punya `as_view`.
+  Akar-model. Tidak ada lever mekanis yang jelas — sumbernya terbaca di sandbox dan model
+  memang akhirnya membacanya.
+- Kelas **"boilerplate bootstrap framework"** — **2×**: `DisallowedHost`,
+  `settings.DATABASES improperly configured`. Akar-harness lemah (kandidat lever, bukti tipis).
+- Kelas **"nama simbol dihalusinasi"** — **1×**: `ImportError: cannot import name
+  'FeedGenerator'` (yang benar `SyndicationFeed`). Akar-model, tapi **dipicu** oleh detour judge.
+- Kelas **"judge menolak repro yang sudah terbukti"** — **1×**. Akar-harness. Ini yang
+  paling mahal per kejadiannya: 1 event retry, 7 turn.
+
+**Kesimpulan biaya, jujur:** dari 15 turn selisih terhadap 11099, kira-kira **10 turn adalah
+kerja model yang sah** (case ini secara intrinsik lebih berat: butuh bootstrap Django penuh
+dan pemahaman `_get_dynamic_attr`), **7 turn adalah mekanisme yang SUDAH tercatat** (LV-05),
+dan **2 turn boilerplate** adalah satu-satunya sisa yang belum tercatat. Tidak ada mekanisme
+kegagalan besar yang baru ditemukan di sini — dan itu sendiri temuan: katalog yang ada sudah
+menjelaskan bagian harness dari kemahalan run ini. **Tidak ada satu pun retry yang sebabnya
+"salah paham bug-nya"** — persis seperti di 13660.
+
+## LV-13 — Klaim faktual tentang kode wajib diverifikasi mesin ke kode (citation check)
+
+- **Asal-usul:** django-13230, dua titik independen dalam satu run.
+  - (A) **Judge di fase REPRODUCE.** `r-dev--django__django-13230--r1/console.log`
+    baris 1026 + 1030; `events.jsonl` retry ke-5.
+  - (B) **Slot `evidence`/`lines` di fase LOCALIZE.**
+    `l-dev--django__django-13230--r1/files/localize.md` dan `files/candidates.md`;
+    `gold_eval.json` (`pointed_lines: [145, 165]`, `line_overlap: false`,
+    `file_match: true`, `criterion: shortlist-v2`, `qualified: true`).
+- **Gejala (A) — klaim judge yang salah, diterima driver sebagai penahan DONE:**
+  judge menulis bahwa script *"calls `get_feed` directly, which does not exercise the
+  `add_item` method where the missing argument is located"*. Gold patch case ini membantahnya
+  langsung — header hunk-nya `@@ -212,6 +212,7 @@ def get_feed(self, obj, request):`, jadi
+  `feed.add_item(...)` memang berada **di dalam** `get_feed`. Driver tidak pernah meminta judge
+  menunjukkan bukti, dan tidak punya cara untuk menolak klaim yang salah. Ongkos: 7 turn,
+  2 retry, dan repro final yang lebih longgar daripada checkpoint yang dibuang (LV-01).
+- **Gejala (B) — `evidence` LOCALIZE mengarang lokasi dan nama simbol, tetap qualified:**
+  `localize.md` menyatakan *"In `django/contrib/syndication/views.py`, the `add_item` method
+  (lines 145-165) builds `item_dict` using `self.item_title`, ..."*. Di file itu **tidak ada
+  method bernama `add_item`** — `add_item` adalah method `SyndicationFeed` di
+  `django/utils/feedgenerator.py`, dan call site yang rusak ada di `get_feed` sekitar baris
+  212. Jadi model menyebut nama method yang salah di file yang benar, dan rentang baris yang
+  meleset ~50 baris. Menariknya **kesimpulannya tetap benar** (views.py gagal meneruskan
+  `comments`; `feedgenerator.add_item` sudah menerimanya), dan FIX menyelesaikannya dalam
+  3 turn. Harness merekam ketidakcocokan itu (`line_overlap: false`) tetapi **tidak ada satu
+  konsumen pun** untuk sinyal itu: `shortlist-v2` meluluskan atas dasar file saja.
+- **Diagnosa — akar-harness murni, satu mekanisme di dua tempat.** Di kedua titik, harness
+  menerima **prosa tentang kode** sebagai masukan yang menentukan (menahan DONE; mengisi slot
+  yang diteruskan ke fase berikutnya) **tanpa pernah mencocokkannya dengan kode**. Padahal
+  pencocokannya sepele dan deterministik: nama simbol yang dikutip bisa di-grep di file yang
+  dikutip; rentang baris yang dikutip bisa dicek memuat simbol itu. Ini pola yang sudah
+  berulang di katalog ini — invarian yang kita percayai tapi tidak diperiksa mesin
+  (LV-03, LV-08, LV-09, LV-10, LV-11).
+  Komponen akar-model ada tapi sekunder dan tidak seragam: di (A) yang salah adalah **judge**
+  (model yang sama, peran berbeda), di (B) yang salah adalah **model LOCALIZE**. Yang seragam
+  justru sisi harness-nya.
+- **Usulan lever (mekanis, dua bagian, keduanya di titik vonis):**
+  - (a) **Judge blocking wajib bersitasi.** Temuan judge hanya boleh menahan DONE kalau ia
+    menyertakan sitasi yang bisa diverifikasi mesin — minimal `file:symbol` atau
+    `file:baris` — dan driver **memverifikasi sitasi itu di container** (grep simbol di file
+    yang dikutip) sebelum meneruskannya. Sitasi yang tidak terverifikasi → temuan didegradasi
+    jadi catatan non-blocking. Ini melengkapi LV-05(b): LV-05(b) menyaring berdasarkan
+    *kategori aturan* dan karena itu tidak akan menangkap 13230 (aturannya berkategori
+    correctness); LV-13(a) menyaring berdasarkan *ada-tidaknya bukti*, dan menangkap keduanya.
+    Kalau harus memilih satu, **(a) lebih luas**.
+  - (b) **Verifikasi sitasi LOCALIZE.** Gate LOCALIZE memeriksa bahwa nama simbol yang disebut
+    di slot `evidence` benar-benar ada di file yang ditunjuk, dan bahwa rentang `lines` memuat
+    simbol itu. Ketidakcocokan **tidak perlu menggugurkan** kandidat — cukup dicatat di
+    `verdict.json` sebagai flag `citation_mismatch` dan (opsional) dikirim balik ke model
+    sebagai satu ronde koreksi. Alasan tidak menggugurkan ada di Catatan penutup #2.
+- **Status:** BELUM DITERAPKAN.
+- **Prioritas:** **tinggi untuk (a)**, sedang untuk (b). Alasan (a): ia menutup jalur yang
+  di dua case berturut-turut (13660 lewat LV-05, 13230 lewat entri ini) terbukti jadi
+  penyebab churn terbesar di fase REPRODUCE, dan ia mengikat di titik vonis tanpa menyentuh
+  penalaran model. Alasan (b) lebih rendah: di 13230 sitasi yang salah **tidak merugikan
+  hasil sama sekali**, jadi nilainya saat ini instrumentasi, bukan perbaikan.
+- **Catatan kejujuran:** ini n=1 untuk masing-masing titik (A) dan (B). Yang membuatnya
+  layak dicatat sekarang bukan frekuensinya, melainkan (i) klaim (A) bisa dibuktikan salah
+  secara definitif dari gold patch — bukan soal selera, dan (ii) mekanismenya identik di dua
+  peran yang berbeda dalam satu run, yang membuat generalisasinya lebih kuat daripada
+  hitungan kejadiannya.
+
+---
+
+## Catatan penutup autopsi 13230 (bot-01, 2026-07-20)
+
+1. **Full green TIDAK berarti pipeline-nya sehat.** Run ini `resolved=true` dengan patch
+   setara gold, tapi 35% turn REPRODUCE-nya habis melawan objeksi judge yang salah, dan
+   yardstick yang akhirnya dibekukan lebih longgar daripada yang sudah terbukti di turn 13.
+   Papan skor tidak merekam satu pun dari itu. Ini alasan ketiga (setelah 11099 dan 14017)
+   untuk tidak membaca kolom hijau sebagai validasi gate.
+2. **`line_overlap: false` di LOCALIZE — dinilai, dan vonisnya: BUKAN cacat kriteria.**
+   Pertanyaannya "apakah `shortlist-v2` terlalu longgar?" Jawaban dari bukti case ini:
+   **tidak.** Fase FIX menerima **file** kandidat, bukan rentang baris — container FIX
+   dibuka dengan `candidate django/contrib/syndication/views.py` dan model bebas membaca
+   seluruh file. Rentang 145–165 yang meleset ~50 baris tidak pernah dipakai sebagai
+   pembatas apa pun, dan FIX menemukan call site yang benar di 3 turn. Memperketat kriteria
+   jadi wajib-`line_overlap` akan **menggugurkan run yang berhasil** — persis jenis lever
+   yang menyerang akar yang salah (aturan main #6). Yang sahih dari observasi ini bukan
+   pengetatan kriteria, melainkan bahwa `line_overlap` adalah **detektor konfabulasi gratis
+   yang tidak ada konsumennya** — dan itulah yang dicatat sebagai LV-13(b), sebagai
+   instrumentasi, bukan sebagai gate.
+3. **Kandidat lever yang SENGAJA TIDAK dijadikan entri: helper bootstrap framework.**
+   2 dari 7 retry (dan 2 turn) habis untuk `ALLOWED_HOSTS` dan `DATABASES` — boilerplate yang
+   tidak ada hubungannya dengan bug. Bentuk mekanisnya jelas dan mengikuti pola yang sudah
+   sukses di proyek ini (kirim modul penopang ke container, seperti `pipe_runtime.py`):
+   sediakan `repro_support.django_setup(**overrides)` yang sudah benar sejak awal. **Tetapi
+   buktinya terlalu tipis untuk sebuah entri: 2 kejadian, 1 case, 2 turn** — dan ongkosnya
+   hanya dibayar sekali di REPRODUCE, nol di FIX. Dicatat di sini supaya tidak hilang;
+   naikkan jadi entri kalau case Django berikutnya menunjukkan kelas yang sama. Peringatan
+   yang menyertainya: modul penopang apa pun yang ditambahkan **wajib** ikut aturan LV-09
+   (dikirim juga ke container FIX dari satu sumber kebenaran), kalau tidak ia akan
+   melahirkan ulang persis kelas kegagalan 11910.
+4. **Repro monkeypatch vs repro yang memeriksa keluaran akhir — dinilai, dan vonisnya:
+   masih LV-01, bukan mekanisme baru.** Repro 13230 berhenti di boundary internal
+   (`SyndicationFeed.add_item`) alih-alih memeriksa XML yang diperiksa `test_rss2_feed`.
+   Tanda tangannya sama dengan 13660/14017/11099: predikat proksi yang lebih sempit daripada
+   kontrak yang dilanggar, sehingga hijau tidak informatif. Dicatat sebagai bukti penguat
+   ketiga di LV-01, bukan entri sendiri (aturan main #4). Yang **baru** dan layak dicatat
+   adalah **sebabnya**: bentuk longgar itu bukan pilihan awal model — checkpoint di turn 13
+   memeriksa `feed_gen.items[0]['comments']` tanpa monkeypatch dan tanpa `except TypeError`
+   lebar. Longgarnya yardstick di sini adalah **produk sampingan dari objeksi judge**
+   (LV-05/LV-13) yang mendorong model ke jalur dispatch view. Artinya LV-01 dan LV-05 tidak
+   berdiri sendiri-sendiri: kualitas yardstick ikut ditentukan oleh siapa yang boleh
+   membatalkan bukti di fase REPRODUCE.
+5. **LV-09 kini punya tiga titik korelasi yang searah**, dan case ini adalah kontrolnya:
+   repro bersih dari `pipe_runtime` → 0 `ModuleNotFoundError` di FIX → 3 turn menang.
+   Bukan pengganti bukti kode (`run_fix_gemma.py:231–232`), tapi ia menutup kemungkinan
+   bahwa 11910 gagal karena sebab lain yang kebetulan bersamaan.
