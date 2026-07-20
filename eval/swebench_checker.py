@@ -51,6 +51,19 @@ def build_eval_script(spec: dict) -> str:
     directives = get_test_directives({"repo": spec["repo"],
                                       "test_patch": spec["test_patch"]})
     nl = "\n"
+    if tp_files:
+        # `--` selalu dipasang supaya pathspec tak pernah disalahartikan
+        # sbg revision oleh git checkout (final-review hardening).
+        checkout_line = (f"git checkout {spec['base_commit']} -- "
+                         f"{' '.join(tp_files)} || "
+                         f"{{ echo '{RESET_FAILED}'; exit 3; }}")
+    else:
+        # test_patch yang HANYA menambah file baru (`--- /dev/null`) bikin
+        # tp_files kosong — TIDAK BOLEH jatuh ke `git checkout <base>` tanpa
+        # pathspec (reset SELURUH tree, silent-misgrade). Populasi ini di
+        # luar bentuk yang diharapkan; degradasi ke RESET_FAILED supaya
+        # grading tetap dapat sinyal "tak bisa dievaluasi" yang jujur.
+        checkout_line = f"echo '{RESET_FAILED}'; exit 3"
     return dedent(f"""\
         #!/bin/bash
         set -uo pipefail -x
@@ -64,7 +77,7 @@ def build_eval_script(spec: dict) -> str:
         {specs.get("install", "")}
         git apply --check /patch-in/fix.diff || {{ echo FIX_APPLY_FAILED; exit 2; }}
         git apply /patch-in/fix.diff
-        git checkout {spec["base_commit"]} {" ".join(tp_files)} || {{ echo '{RESET_FAILED}'; exit 3; }}
+        {checkout_line}
         git apply /patch-in/test_patch.diff || {{ echo '{APPLY_PATCH_FAIL}'; exit 4; }}
         set +x
         echo '{START_TEST_OUTPUT}'

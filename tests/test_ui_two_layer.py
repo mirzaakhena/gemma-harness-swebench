@@ -95,3 +95,68 @@ def test_page_run_verify_waiting_note(tmp_path):
     html_out = server.page_run(tmp_path, "f-dev",
                                "f-dev--django__django-1--r1", 200)
     assert "menunggu VERIFY" in html_out
+
+
+# --- Fix A: ikon baris tabel index sinkron dgn status 2-lapisan -------------
+
+def test_page_index_row_icon_reflects_verify_fail(tmp_path):
+    """verify-fail (flip + pass_l1 true tapi swebench resolved=false) harus
+    tampil ❌ di ikon baris, bukan ✅ dari verdict.json mentah — teks verdict
+    tetap 'flip' (keputusan Mirza: teks = vonis L1 produk apa adanya)."""
+    _mk_run(tmp_path, verdict="flip", pass_l1=True, swebench={
+        "resolved": False, "patch_successfully_applied": True,
+        "f2p_failed": [], "p2p_failed": []})
+    out = server.page_index(tmp_path, tab="f-dev")
+    assert ">flip<" in out
+    assert "<td>❌ </td>" in out
+    assert "<td>✅ </td>" not in out
+
+
+def test_page_index_row_icon_wait_shows_hourglass(tmp_path):
+    """product-pass tanpa swebench_eval.json (WAIT) -> ikon ⏳, bukan ✅."""
+    _mk_run(tmp_path, verdict="flip", pass_l1=True, swebench=None)
+    out = server.page_index(tmp_path, tab="f-dev")
+    assert "<td>⏳ </td>" in out
+    assert "<td>✅ </td>" not in out
+
+
+def test_page_index_row_icon_unaffected_for_non_f_campaigns(tmp_path):
+    """r-dev/l-dev: ikon baris TETAP dari verdict.json mentah (byte-identical
+    dgn perilaku lama) — TIDAK boleh di-override oleh case_status, walau
+    case_status utk run ini sebenarnya FAIL (pass_l1 false)."""
+    run_dir = tmp_path / "r-dev" / "r-dev--case-a--r1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "verdict.json").write_text(json.dumps(
+        {"phases": {"reproduce": {"verdict": "pass"}}, "wall": None,
+         "pass_l1": False}), encoding="utf-8")
+    assert server.case_status("r-dev", run_dir)["status"] == "FAIL"
+    out = server.page_index(tmp_path, tab="r-dev")
+    assert "<td>✅ </td>" in out
+
+
+# --- Fix C: page_run wording produk-FAIL vs product-pass menunggu VERIFY ---
+
+def test_page_run_no_flip_run_does_not_say_product_pass_waiting(tmp_path):
+    _mk_run(tmp_path, verdict="no-flip", pass_l1=False, swebench=None)
+    html_out = server.page_run(tmp_path, "f-dev",
+                               "f-dev--django__django-1--r1", 200)
+    assert "product-pass, menunggu VERIFY" not in html_out
+    assert "product FAIL" in html_out
+
+
+# --- Fix D: product_pass dari phases.fix.verdict, bukan vtext render -------
+
+def test_multi_phase_verdict_fix_flip_classified_pass(tmp_path):
+    """verdict.json masa depan bisa punya >1 fase (vtext jadi 'fix=flip
+    other=...' majemuk) — deteksi product_pass HARUS baca phases.fix.verdict
+    langsung, bukan vtext render, supaya tetap PASS bukan ANOMALY."""
+    run_dir = tmp_path / "f-dev" / "f-dev--django__django-2--r1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "verdict.json").write_text(json.dumps({
+        "phases": {"fix": {"verdict": "flip"},
+                  "other": {"verdict": "pass"}},
+        "wall": None, "pass_l1": True}), encoding="utf-8")
+    (run_dir / "swebench_eval.json").write_text(
+        json.dumps({"resolved": True}), encoding="utf-8")
+    st = server.case_status("f-dev", run_dir)
+    assert st["status"] == "PASS"

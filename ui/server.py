@@ -339,7 +339,8 @@ def _fix_verify_status(vtext: str, vj: dict, run_dir: Path) -> dict | None:
     resolved=true = ANOMALY (kontradiksi sinyal, flag menonjol)."""
     sw = read_swebench_eval(run_dir)
     resolved = sw.get("resolved") if sw else None
-    product_pass = vtext == "flip" and vj.get("pass_l1") is True
+    fix_verdict = ((vj.get("phases") or {}).get("fix") or {}).get("verdict")
+    product_pass = fix_verdict == "flip" and vj.get("pass_l1") is True
     if product_pass and resolved is True:
         return {"status": "PASS", "category": "pass (L1+L2)", "reasons": []}
     if product_pass and resolved is False:
@@ -420,6 +421,14 @@ def case_status(campaign: str, run_dir: Path) -> dict:
     return {"status": "FAIL", "category": vtext, "reasons": reasons}
 
 
+def status_icon(status: str) -> str:
+    """Ikon utk status case_status 2-lapisan — dipakai baris tabel index
+    kampanye f-* (sinkron dgn panel ringkasan, permintaan Mirza 2026-07-20)
+    dan dipakai ulang di caption render_stage_summary."""
+    return {"PASS": "✅ ", "FAIL": "❌ ", "WAIT": "⏳ ",
+            "ANOMALY": "⚠️ "}.get(status, "")
+
+
 def stage_summary(campaign_dir: Path, campaign: str,
                   runs: list[dict]) -> dict:
     """Ringkasan stage per definisi "pernah qualified": case PASS bila
@@ -474,9 +483,11 @@ def render_stage_summary(s: dict) -> str:
             f"PASS {s['pass']} ({_pct(s['pass'], n)}) &middot; "
             f"FAIL {s['fail']} ({_pct(s['fail'], n)})")
     if s.get("wait"):
-        head += f" &middot; ⏳ WAIT {s['wait']} ({_pct(s['wait'], n)})"
+        head += (f" &middot; {status_icon('WAIT')}WAIT {s['wait']} "
+                 f"({_pct(s['wait'], n)})")
     if s.get("anomaly"):
-        head += f" &middot; ⚠️ ANOMALY {s['anomaly']} ({_pct(s['anomaly'], n)})"
+        head += (f" &middot; {status_icon('ANOMALY')}ANOMALY {s['anomaly']} "
+                 f"({_pct(s['anomaly'], n)})")
     if s["unknown"]:
         head += f" &middot; ? {s['unknown']} ({_pct(s['unknown'], n)})"
     segs = []
@@ -488,7 +499,13 @@ def render_stage_summary(s: dict) -> str:
                         f"style='width:{_pct(cnt, n)}'></span>")
     parts = ["<div class='summary'><p>", head, "</p>",
              "<p class='dim'>PASS = pernah qualified (&ge;1 run); "
-             "FAIL = tak pernah qualified, alasan dari run terbaru</p>",
+             "FAIL = tak pernah qualified, alasan dari run terbaru"
+             + ("; ⏳ WAIT = product-pass, menunggu VERIFY"
+                if s.get("wait") else "")
+             + ("; ⚠️ ANOMALY = product FAIL tapi SWE-bench resolved "
+                "(kontradiksi sinyal, autopsi manual)"
+                if s.get("anomaly") else "")
+             + "</p>",
              "<div class='sbar'>", "".join(segs), "</div>"]
 
     problems = [i for i in s["items"] if i["status"] in ("FAIL", "ANOMALY", "?")]
@@ -503,7 +520,8 @@ def render_stage_summary(s: dict) -> str:
                         f"{html.escape(i.get('started', '?'))}</td>"
                         f"<td>{html.escape(i['category'])}</td>"
                         f"<td>{html.escape(reasons)}</td></tr>")
-        parts.append(f"<details><summary>rincian FAIL ({len(problems)})"
+        parts.append(f"<details><summary>rincian FAIL/ANOMALY "
+                     f"({len(problems)})"
                      "</summary><table><tr><th>case</th><th>run</th>"
                      "<th>mulai</th><th>kategori</th><th>alasan</th></tr>"
                      + "".join(rows) + "</table></details>")
@@ -701,6 +719,12 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
                 vtext, icon = index_row_verdict(phases, vj.get("wall"))
                 vtext, icon = merge_gold_verdict(vtext, icon, active,
                                                  root / active / rid)
+                if active.startswith("f-"):
+                    # ikon baris disinkronkan ke status 2-lapisan (spec §6)
+                    # — teks verdict TETAP vonis L1 produk apa adanya
+                    # (permintaan Mirza: viewer verify-fail jangan lagi ✅).
+                    two_status = case_status(active, root / active / rid)
+                    icon = status_icon(two_status["status"])
             except (ValueError, OSError, AttributeError):
                 vtext = "(verdict.json rusak)"
         href = ("/run?c=" + urllib.parse.quote(active)
@@ -765,14 +789,21 @@ def page_run(root: Path, campaign: str, run_id: str, n: int) -> str:
 
     if campaign.startswith("f-"):
         sw = read_swebench_eval(run_dir)
+        two_status = case_status(campaign, run_dir).get("status")
         parts.append("<h2>VERIFY (SWE-bench)</h2>")
-        if case_status(campaign, run_dir).get("status") == "ANOMALY":
+        if two_status == "ANOMALY":
             parts.append("<p>⚠️ ANOMALY: product FAIL tapi "
                          "SWE-bench resolved — autopsi manual</p>")
         if sw is None:
-            parts.append("<p class='dim'>product-pass, menunggu VERIFY — "
-                         "swebench_eval.json belum ada (jalankan "
-                         "python -m eval.swebench_checker)</p>")
+            if two_status == "WAIT":
+                parts.append(
+                    "<p class='dim'>product-pass, menunggu VERIFY — "
+                    "swebench_eval.json belum ada (jalankan "
+                    "python -m eval.swebench_checker)</p>")
+            else:
+                parts.append(
+                    "<p class='dim'>product FAIL — VERIFY tidak "
+                    "dijalankan</p>")
         else:
             ok = "✅" if sw.get("resolved") else "❌"
             parts.append(

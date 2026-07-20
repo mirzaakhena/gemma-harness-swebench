@@ -47,10 +47,30 @@ def test_build_eval_script_shape():
     assert "conda activate testbed" in script
     assert "git apply /patch-in/fix.diff" in script
     assert "git apply /patch-in/test_patch.diff" in script
-    assert f"git checkout {SPEC['base_commit']} tests/foo/tests.py" in script
+    assert f"git checkout {SPEC['base_commit']} -- tests/foo/tests.py" in script
     assert START_TEST_OUTPUT in script and END_TEST_OUTPUT in script
     assert "runtests.py" in script          # test_cmd django dari peta resmi
     assert "foo" in script.split(START_TEST_OUTPUT)[1]  # direktif test
+
+
+def test_build_eval_script_empty_test_patch_files_no_bare_checkout():
+    """test_patch yang HANYA menambah file baru (`--- /dev/null`) bikin
+    `tp_files = re.findall(r"--- a/(.*)", ...)` == [] — `git checkout
+    {base_commit} {tp_files}` tanpa pathspec jadi checkout SELURUH tree
+    (silent-misgrade class, temuan review final). Harus TIDAK PERNAH
+    mengeluarkan `git checkout <base>` tanpa `--`/pathspec; wajib degradasi
+    ke guard RESET_FAILED (case ini di luar populasi wajar: test_patch yang
+    tak bisa di-reset)."""
+    from swebench.harness.constants import RESET_FAILED
+    spec = dict(SPEC)
+    spec["test_patch"] = (
+        "diff --git a/tests/foo/new_test.py b/tests/foo/new_test.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n+++ b/tests/foo/new_test.py\n"
+        "@@ -0,0 +1,2 @@\n+pass\n+pass\n")
+    script = build_eval_script(spec)
+    assert f"git checkout {spec['base_commit']}" not in script
+    assert RESET_FAILED in script
 
 
 def test_build_eval_script_guards_checkout_and_test_patch_apply():

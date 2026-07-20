@@ -8,6 +8,11 @@ import types
 
 
 def ensure_resource_shim() -> None:
+    # Shim ini HANYA relevan di Windows (modul stdlib `resource` tak ada di
+    # sana). Di Linux/macOS (mis. CI masa depan) `resource` sudah ada di
+    # stdlib — jangan pernah clobber modul asli itu dgn shim palsu.
+    if sys.platform != "win32":
+        return
     if "resource" in sys.modules:
         return
     m = types.ModuleType("resource")
