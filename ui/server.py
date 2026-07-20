@@ -134,6 +134,35 @@ def run_started_ts(run_dir: Path):
         return None
 
 
+def run_started_str(run_dir: Path) -> str:
+    """Tanggal-jam mulai run, format ringkas "YYYY-MM-DD HH:mm" tanpa offset
+    (permintaan Mirza 2026-07-20: tanggal pengujian tampil di dashboard).
+
+    Sumber utama: field `started` verdict.json (ISO +07:00). Run hidup /
+    legacy tanpa verdict -> fallback ts event pertama events.jsonl.
+    Tak ada / cacat -> "?" (fail-soft, jangan crash)."""
+    from datetime import datetime
+    run_dir = Path(run_dir)
+    raw = None
+    try:
+        vj = json.loads((run_dir / "verdict.json").read_text(encoding="utf-8"))
+        raw = vj.get("started") if isinstance(vj, dict) else None
+    except (OSError, ValueError):
+        raw = None
+    if raw is None:
+        try:
+            first = (run_dir / "events.jsonl").read_text(
+                encoding="utf-8", errors="replace").splitlines()[0]
+            ev = json.loads(first)
+            raw = ev.get("ts") if isinstance(ev, dict) else None
+        except (OSError, ValueError, IndexError):
+            raw = None
+    try:
+        return datetime.fromisoformat(raw).strftime("%Y-%m-%d %H:%M")
+    except (TypeError, ValueError):
+        return "?"
+
+
 def sort_runs_desc(runs: list[dict], campaign_dir: Path) -> list[dict]:
     """Urut desc berdasar started datetime (event pertama) — permintaan
     Mirza 2026-07-19: run terbaru case mana pun tampil di halaman pertama
@@ -347,7 +376,9 @@ def stage_summary(campaign_dir: Path, campaign: str,
                     break
         _, rerun = split_run_id(chosen)
         items.append({"case": case_id, "run_id": chosen,
-                      "rerun": rerun or chosen, **st})
+                      "rerun": rerun or chosen,
+                      "started": run_started_str(
+                          Path(campaign_dir) / chosen), **st})
     return {"total": len(items),
             "pass": sum(1 for i in items if i["status"] == "PASS"),
             "fail": sum(1 for i in items if i["status"] == "FAIL"),
@@ -389,11 +420,23 @@ def render_stage_summary(s: dict) -> str:
                       or "(detail tidak terekam)"
             rows.append(f"<tr><td>{html.escape(i['case'])}</td>"
                         f"<td class='dim'>{html.escape(i['rerun'])}</td>"
+                        f"<td class='dim'>"
+                        f"{html.escape(i.get('started', '?'))}</td>"
                         f"<td>{html.escape(i['category'])}</td>"
                         f"<td>{html.escape(reasons)}</td></tr>")
         parts.append(f"<details><summary>rincian FAIL ({len(problems)})"
                      "</summary><table><tr><th>case</th><th>run</th>"
-                     "<th>kategori</th><th>alasan</th></tr>"
+                     "<th>mulai</th><th>kategori</th><th>alasan</th></tr>"
+                     + "".join(rows) + "</table></details>")
+    passes = [i for i in s["items"] if i["status"] == "PASS"]
+    if passes:
+        rows = [f"<tr><td>{html.escape(i['case'])}</td>"
+                f"<td class='dim'>{html.escape(i['rerun'])}</td>"
+                f"<td class='dim'>{html.escape(i.get('started', '?'))}</td>"
+                "</tr>" for i in passes]
+        parts.append(f"<details><summary>daftar PASS ({len(passes)})"
+                     "</summary><table><tr><th>case</th>"
+                     "<th>run qualified</th><th>mulai</th></tr>"
                      + "".join(rows) + "</table></details>")
     parts.append("</div>")
     return "".join(parts)
@@ -582,10 +625,12 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
             f"<td><a href='{href}'>{html.escape(rerun or rid)}</a></td>"
             f"<td>{icon}</td>"
             f"<td>{html.escape(vtext)}</td>"
+            f"<td class='dim'>"
+            f"{html.escape(run_started_str(root / active / rid))}</td>"
             f"<td class='dim'>{html.escape(dur)}</td>"
             f"<td class='dim'>{turns if turns is not None else '-'}</td></tr>")
     parts.append("<table><tr><th>case</th><th>run</th><th></th><th>verdict</th>"
-                 "<th>durasi</th><th>turns</th></tr>"
+                 "<th>mulai</th><th>durasi</th><th>turns</th></tr>"
                  + "".join(rows) + "</table>")
 
     if total_pages > 1:

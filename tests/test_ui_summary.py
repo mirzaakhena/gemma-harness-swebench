@@ -16,6 +16,7 @@ from ui.server import (
     latest_runs_by_case,
     page_index,
     render_stage_summary,
+    run_started_str,
     stage_summary,
 )
 
@@ -24,11 +25,11 @@ def _runs(*ids):
     return [{"run_id": i, "verdict": None, "wall": None} for i in ids]
 
 
-def _write_verdict(run_dir, phases, wall=None, pass_l1=None):
+def _write_verdict(run_dir, phases, wall=None, pass_l1=None, started=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "verdict.json").write_text(json.dumps({
         "phases": {k: {"verdict": v} for k, v in phases.items()},
-        "wall": wall, "pass_l1": pass_l1,
+        "wall": wall, "pass_l1": pass_l1, "started": started,
         "finished": "2026-07-20T00:00:01+07:00"}), encoding="utf-8")
 
 
@@ -191,11 +192,45 @@ def test_events_fail_detail_missing_file(tmp_path):
     assert events_fail_detail(tmp_path) == ([], None)
 
 
+# --- run_started_str (permintaan Mirza 2026-07-20: tanggal pengujian) --------
+
+def test_run_started_str_formats_compact_without_offset(tmp_path):
+    _write_verdict(tmp_path, {"reproduce": "pass"}, pass_l1=True,
+                   started="2026-07-19T21:42:54+07:00")
+    assert run_started_str(tmp_path) == "2026-07-19 21:42"
+
+
+def test_run_started_str_null_started_without_events_is_question(tmp_path):
+    # run legacy: started null, tanpa events.jsonl -> "?" (fail-soft)
+    _write_verdict(tmp_path, {"reproduce": "pass"}, pass_l1=True)
+    assert run_started_str(tmp_path) == "?"
+
+
+def test_run_started_str_broken_iso_is_question(tmp_path):
+    _write_verdict(tmp_path, {"reproduce": "pass"}, pass_l1=True,
+                   started="kemarin sore")
+    assert run_started_str(tmp_path) == "?"
+
+
+def test_run_started_str_live_run_falls_back_to_first_event_ts(tmp_path):
+    # run hidup: verdict.json belum ada -> pakai ts event pertama
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "events.jsonl").write_text(
+        json.dumps({"ts": "2026-07-20T08:05:00+07:00", "event": "start"})
+        + "\n", encoding="utf-8")
+    assert run_started_str(tmp_path) == "2026-07-20 08:05"
+
+
+def test_run_started_str_missing_dir_is_question(tmp_path):
+    assert run_started_str(tmp_path / "nope") == "?"
+
+
 # --- stage_summary + render --------------------------------------------------
 
-def _mk_run(root, camp, case, rerun, phases, wall=None, pass_l1=None):
+def _mk_run(root, camp, case, rerun, phases, wall=None, pass_l1=None,
+            started=None):
     run = root / camp / f"{camp}--{case}--r{rerun}"
-    _write_verdict(run, phases, wall=wall, pass_l1=pass_l1)
+    _write_verdict(run, phases, wall=wall, pass_l1=pass_l1, started=started)
     return run
 
 
@@ -259,6 +294,44 @@ def test_stage_summary_unknown_counted_separately(tmp_path):
     assert (s["total"], s["pass"], s["fail"], s["unknown"]) == (1, 0, 0, 1)
 
 
+def test_stage_summary_item_started_refers_to_chosen_run(tmp_path):
+    # PASS merujuk run qualified (r1) -> tanggal ikut run ITU, bukan terbaru
+    camp = tmp_path / "r-dev"
+    _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "pass"},
+            pass_l1=True, started="2026-07-18T10:00:00+07:00")
+    _mk_run(tmp_path, "r-dev", "case-a", 2, {"reproduce": "wrong-logic"},
+            wall="reproduce", pass_l1=False,
+            started="2026-07-19T11:30:00+07:00")
+    s = stage_summary(camp, "r-dev",
+                      _runs("r-dev--case-a--r1", "r-dev--case-a--r2"))
+    item = s["items"][0]
+    assert item["status"] == "PASS"
+    assert item["started"] == "2026-07-18 10:00"
+
+
+def test_stage_summary_item_started_fail_uses_latest_run_date(tmp_path):
+    camp = tmp_path / "r-dev"
+    _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "syntax-fail"},
+            wall="reproduce", pass_l1=False,
+            started="2026-07-18T10:00:00+07:00")
+    _mk_run(tmp_path, "r-dev", "case-a", 2, {"reproduce": "wrong-logic"},
+            wall="reproduce", pass_l1=False,
+            started="2026-07-19T11:30:00+07:00")
+    s = stage_summary(camp, "r-dev",
+                      _runs("r-dev--case-a--r1", "r-dev--case-a--r2"))
+    item = s["items"][0]
+    assert item["status"] == "FAIL"
+    assert item["started"] == "2026-07-19 11:30"
+
+
+def test_stage_summary_item_started_missing_is_question(tmp_path):
+    camp = tmp_path / "r-dev"
+    _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "syntax-fail"},
+            wall="reproduce", pass_l1=False)  # started null, tanpa events
+    s = stage_summary(camp, "r-dev", _runs("r-dev--case-a--r1"))
+    assert s["items"][0]["started"] == "?"
+
+
 def test_render_stage_summary_text_bar_and_details():
     s = {"total": 4, "pass": 3, "fail": 1, "unknown": 0,
          "items": [
@@ -287,6 +360,42 @@ def test_render_stage_summary_labels_ever_qualified_definition():
          ]}
     out = render_stage_summary(s)
     assert "pernah qualified" in out  # definisi terbaca di panel
+
+
+def test_render_stage_summary_fail_details_show_started():
+    s = {"total": 1, "pass": 0, "fail": 1, "unknown": 0,
+         "items": [{"case": "case-b", "rerun": "r2", "status": "FAIL",
+                    "category": "wrong-logic", "reasons": [],
+                    "started": "2026-07-19 11:30"}]}
+    out = render_stage_summary(s)
+    assert "<th>mulai</th>" in out
+    assert "2026-07-19 11:30" in out
+
+
+def test_render_stage_summary_pass_list_with_started():
+    s = {"total": 2, "pass": 1, "fail": 1, "unknown": 0,
+         "items": [
+             {"case": "case-a", "rerun": "r1", "status": "PASS",
+              "category": "pass", "reasons": [],
+              "started": "2026-07-18 10:00"},
+             {"case": "case-b", "rerun": "r2", "status": "FAIL",
+              "category": "fail", "reasons": [],
+              "started": "2026-07-19 11:30"},
+         ]}
+    out = render_stage_summary(s)
+    assert "daftar PASS (1)" in out
+    # tanggal run qualified case-a tampil di daftar PASS
+    pass_block = out.split("daftar PASS")[1]
+    assert "case-a" in pass_block and "2026-07-18 10:00" in pass_block
+
+
+def test_render_stage_summary_no_pass_no_pass_list():
+    s = {"total": 1, "pass": 0, "fail": 1, "unknown": 0,
+         "items": [{"case": "case-b", "rerun": "r1", "status": "FAIL",
+                    "category": "fail", "reasons": [],
+                    "started": "?"}]}
+    out = render_stage_summary(s)
+    assert "daftar PASS" not in out
 
 
 def test_render_stage_summary_empty_returns_empty():
@@ -325,6 +434,14 @@ def test_page_index_summary_covers_all_pages_not_just_page_one(tmp_path):
                 {"reproduce": "pass"}, pass_l1=True)
     out = page_index(tmp_path, tab="r-dev", page=1)
     assert "20 cases" in out and "PASS 20 (100%)" in out
+
+
+def test_page_index_run_table_shows_started_column(tmp_path):
+    _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "pass"},
+            pass_l1=True, started="2026-07-19T21:42:54+07:00")
+    out = page_index(tmp_path, tab="r-dev")
+    assert "<th>mulai</th>" in out
+    assert "2026-07-19 21:42" in out
 
 
 def test_page_index_no_runs_no_panel(tmp_path):
