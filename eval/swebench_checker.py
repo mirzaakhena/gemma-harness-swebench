@@ -104,3 +104,70 @@ def summarize_report(raw: dict, spec: dict, case: str, rerun: int,
             "p2p_failed": list(p2p.get("failure", [])),
             "image": image, "spec": spec_path, "log": log_rel,
             "checked_at": checked_at}
+
+
+def run_checker(case: str, rerun: int, campaign: str, artifacts: str,
+                image: str, spec_path: str, timeout: int,
+                runner=None) -> tuple[int, dict]:
+    from datetime import datetime, timezone
+    from eval.swebench_runner import run_eval_in_container
+    runner = runner or run_eval_in_container
+    run_dir = (Path(artifacts) / campaign / f"{campaign}--{case}--r{rerun}")
+    diff_path = run_dir / "files" / "fix.diff"
+    if not diff_path.is_file():
+        return 1, {"error": "fix.diff not found", "run_dir": str(run_dir)}
+    try:
+        spec = load_spec(Path(spec_path))
+    except (FileNotFoundError, ValueError) as e:
+        return 1, {"error": str(e)}
+    fix_diff = diff_path.read_text(encoding="utf-8")
+    log_path = run_dir / "files" / "swebench_test_output.log"
+    try:
+        res = runner(image, build_eval_script(spec), fix_diff,
+                     spec["test_patch"], timeout)
+        log_path.write_text(res["log"], encoding="utf-8", newline="\n")
+        raw = grade_log(spec, fix_diff, log_path)
+        summary = summarize_report(
+            raw, spec, case=case, rerun=rerun, image=image,
+            spec_path=spec_path, log_rel="files/swebench_test_output.log",
+            checked_at=datetime.now(timezone.utc).isoformat())
+    except Exception as e:
+        # grade_log() builds a real TestSpec via make_test_spec(), which for
+        # django does a live requests.get for requirements.txt (a field
+        # grading never uses) — an infra hiccup shouldn't crash mid-run.
+        # Whatever log we managed to capture is still useful for debugging;
+        # swebench_eval.json is deliberately NOT written since it would be
+        # misleading (no real verdict was reached).
+        return 1, {"error": "swebench eval failed", "detail": str(e),
+                   "case": case, "rerun": rerun}
+    (run_dir / "swebench_eval.json").write_bytes(
+        (json.dumps(summary, ensure_ascii=False, indent=1) + "\n")
+        .encode("utf-8"))
+    return 0, summary
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    from eval.swebench_runner import default_image
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--case", required=True)
+    ap.add_argument("--rerun", type=int, required=True)
+    ap.add_argument("--campaign", default="f-dev")
+    ap.add_argument("--artifacts", default="../artifacts")
+    ap.add_argument("--image", default=None)
+    ap.add_argument("--spec", default=None)
+    ap.add_argument("--timeout", type=int, default=3600)
+    args = ap.parse_args(argv)
+    rc, out = run_checker(
+        case=args.case, rerun=args.rerun, campaign=args.campaign,
+        artifacts=args.artifacts,
+        image=args.image or default_image(args.case),
+        spec_path=args.spec or f"cases/gold/{args.case}/swebench_spec.json",
+        timeout=args.timeout)
+    print(json.dumps(out, ensure_ascii=False))
+    return rc
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

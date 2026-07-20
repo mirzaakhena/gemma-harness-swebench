@@ -6,6 +6,7 @@ sering di stderr — get_logs_eval punya fallback parse seluruh isi log.
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -18,17 +19,34 @@ def default_image(case_id: str) -> str:
     return DEFAULT_IMAGE_TPL.format(case_id=case_id)
 
 
+def _decode(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
 def run_eval_in_container(image: str, eval_script: str, fix_diff: str,
                           test_patch: str, timeout: int = 3600) -> dict:
     tmpdir = Path(tempfile.mkdtemp(prefix="swebench-l2-"))
-    for name, body in (("eval.sh", eval_script), ("fix.diff", fix_diff),
-                       ("test_patch.diff", test_patch)):
-        (tmpdir / name).write_text(
-            body if body.endswith("\n") else body + "\n",
-            encoding="utf-8", newline="\n")
-    p = subprocess.run(
-        ["docker", "run", "--rm", "-v", f"{tmpdir}:/patch-in:ro", image,
-         "bash", "/patch-in/eval.sh"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=timeout)
-    return {"log": (p.stdout or "") + (p.stderr or ""), "exit": p.returncode}
+    try:
+        for name, body in (("eval.sh", eval_script), ("fix.diff", fix_diff),
+                           ("test_patch.diff", test_patch)):
+            (tmpdir / name).write_text(
+                body if body.endswith("\n") else body + "\n",
+                encoding="utf-8", newline="\n")
+        try:
+            p = subprocess.run(
+                ["docker", "run", "--rm", "-v", f"{tmpdir}:/patch-in:ro",
+                 image, "bash", "/patch-in/eval.sh"],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            partial = _decode(e.output) + _decode(e.stderr)
+            return {"log": partial + f"\nswebench-l2 TIMEOUT after "
+                                     f"{timeout}s", "exit": 124}
+        return {"log": (p.stdout or "") + (p.stderr or ""),
+               "exit": p.returncode}
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)

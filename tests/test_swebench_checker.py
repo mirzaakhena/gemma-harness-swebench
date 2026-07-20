@@ -114,3 +114,95 @@ def test_summarize_report_schema(tmp_path):
     assert s["p2p_failed"] == ["test_b (foo.tests.FooTest)"]
     assert s["p2p_passed_count"] == 0
     assert s["image"] == "img:latest" and s["checked_at"]
+
+
+def _mk_run(tmp_path, campaign="f-dev", case="django__django-99999",
+            rerun=1, with_diff=True):
+    run_dir = tmp_path / "artifacts" / campaign / f"{campaign}--{case}--r{rerun}"
+    (run_dir / "files").mkdir(parents=True)
+    if with_diff:
+        (run_dir / "files" / "fix.diff").write_text(DIFF, encoding="utf-8")
+    (run_dir / "verdict.json").write_text("{\"sentinel\": 1}",
+                                          encoding="utf-8")
+    return run_dir
+
+
+def _spec_file(tmp_path):
+    import json as _json
+    p = tmp_path / "swebench_spec.json"
+    p.write_text(_json.dumps(SPEC), encoding="utf-8")
+    return p
+
+
+def test_run_checker_happy_path(tmp_path):
+    from eval.swebench_checker import run_checker
+    run_dir = _mk_run(tmp_path)
+    spec_path = _spec_file(tmp_path)
+
+    def fake_runner(image, script, fix_diff, test_patch, timeout):
+        assert "conda activate testbed" in script
+        return {"log": _log("test_a (foo.tests.FooTest) ... ok\n"
+                            "test_b (foo.tests.FooTest) ... ok"),
+                "exit": 0}
+
+    rc, out = run_checker(
+        case="django__django-99999", rerun=1, campaign="f-dev",
+        artifacts=str(tmp_path / "artifacts"), image="img:x",
+        spec_path=str(spec_path), timeout=60, runner=fake_runner)
+    assert rc == 0 and out["resolved"] is True
+    import json as _json
+    written = _json.loads((run_dir / "swebench_eval.json")
+                          .read_text(encoding="utf-8"))
+    assert written["resolved"] is True
+    assert written["image"] == "img:x"
+    assert (run_dir / "files" / "swebench_test_output.log").is_file()
+    # verdict.json TIDAK disentuh (boundary — aturan inti spec)
+    assert (run_dir / "verdict.json").read_text(encoding="utf-8") == (
+        "{\"sentinel\": 1}")
+
+
+def test_run_checker_missing_diff(tmp_path):
+    from eval.swebench_checker import run_checker
+    _mk_run(tmp_path, with_diff=False)
+    rc, out = run_checker(
+        case="django__django-99999", rerun=1, campaign="f-dev",
+        artifacts=str(tmp_path / "artifacts"), image="img:x",
+        spec_path=str(_spec_file(tmp_path)), timeout=60,
+        runner=lambda *a, **k: {"log": "", "exit": 0})
+    assert rc == 1 and "fix.diff" in out["error"]
+
+
+def test_run_checker_grade_failure_writes_log_not_eval_json(tmp_path,
+                                                             monkeypatch):
+    """grade_log() calls make_test_spec(), which for django does a live
+    requests.get for requirements.txt (a field grading never uses) — an
+    infra hiccup there would otherwise crash run_checker mid-run. It must
+    instead degrade to an error dict, still persist the raw log for
+    debugging, skip the (now misleading) swebench_eval.json, and leave
+    verdict.json/events.jsonl untouched (checker/model boundary)."""
+    import eval.swebench_checker as checker_mod
+    run_dir = _mk_run(tmp_path)
+    spec_path = _spec_file(tmp_path)
+
+    def fake_runner(image, script, fix_diff, test_patch, timeout):
+        return {"log": _log("test_a (foo.tests.FooTest) ... ok"), "exit": 0}
+
+    def fake_grade_log(spec, fix_diff_text, log_path):
+        raise RuntimeError("requirements.txt fetch failed")
+
+    monkeypatch.setattr(checker_mod, "grade_log", fake_grade_log)
+
+    rc, out = checker_mod.run_checker(
+        case="django__django-99999", rerun=1, campaign="f-dev",
+        artifacts=str(tmp_path / "artifacts"), image="img:x",
+        spec_path=str(spec_path), timeout=60, runner=fake_runner)
+
+    assert rc == 1
+    assert out["error"] == "swebench eval failed"
+    assert "requirements.txt fetch failed" in out["detail"]
+    assert out["case"] == "django__django-99999" and out["rerun"] == 1
+    assert (run_dir / "files" / "swebench_test_output.log").read_text(
+        encoding="utf-8") == _log("test_a (foo.tests.FooTest) ... ok")
+    assert not (run_dir / "swebench_eval.json").exists()
+    assert (run_dir / "verdict.json").read_text(encoding="utf-8") == (
+        "{\"sentinel\": 1}")
