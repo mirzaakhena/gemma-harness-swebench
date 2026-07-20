@@ -162,3 +162,237 @@ def emit_abort(em: Emitter, reason: str) -> None:
     em.event("fix", "abort", detail={"reason": reason})
     em.write_verdict(phases={}, wall="abort", pass_l1=None, pass_l2=None)
     em.run_end({"fix": "abort"}, "abort")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--case", required=True)
+    ap.add_argument("--rerun", type=int, required=True)
+    ap.add_argument("--image", required=True)
+    ap.add_argument("--input-localize-files", required=True,
+                    help="dir files/ run LOCALIZE qualified "
+                         "(berisi candidates.md)")
+    ap.add_argument("--input-repro-files", required=True,
+                    help="dir files/ run REPRODUCE qualified "
+                         "(repro.md + repro.py beku)")
+    ap.add_argument("--problem-file", required=True)
+    ap.add_argument("--campaign", default="f-dev")
+    ap.add_argument("--artifacts", default="../artifacts")
+    ap.add_argument("--endpoint", default="http://10.8.0.86:8000/v1")
+    ap.add_argument("--model", default="google/gemma-4-31B-it")
+    ap.add_argument("--max-turns", type=int, default=40)
+    args = ap.parse_args()
+
+    problem = Path(args.problem_file).read_text(encoding="utf-8")
+    localize_dir = Path(args.input_localize_files)
+    repro_dir = Path(args.input_repro_files)
+    inputs = load_fix_inputs(localize_dir, repro_dir)
+    contract = Path(__file__).with_name("fix_prompt.md").read_text(
+        encoding="utf-8")
+
+    em = Emitter(args.artifacts, args.campaign, args.case, args.rerun)
+    console = em.run_dir / "console.log"
+
+    def log(line: str) -> None:
+        with open(console, "a", encoding="utf-8", newline="\n") as f:
+            f.write(line.rstrip("\n") + "\n")
+
+    files_dir = em.run_dir / "files"
+    attempts_dir = files_dir / "attempts"
+    attempts_dir.mkdir(parents=True, exist_ok=True)
+    (files_dir / "input-candidates.md").write_text(
+        (localize_dir / "candidates.md").read_text(encoding="utf-8"),
+        encoding="utf-8", newline="\n")
+    (files_dir / "input-repro.md").write_text(
+        inputs.repro_md, encoding="utf-8", newline="\n")
+
+    em.run_start()
+    em.event("fix", "enter",
+             budget={"msg_used": 0, "msg_limit": args.max_turns},
+             detail={"model": args.model, "driver": "run_fix_gemma-v0",
+                     "input_localize": str(localize_dir),
+                     "input_repro": str(repro_dir),
+                     "candidates": [c["file"] for c in inputs.candidates]})
+
+    winner: int | None = None
+    attempts_meta: list[dict] = []
+    container = ""
+    try:
+        for k, cand in enumerate(inputs.candidates, start=1):
+            # Attempt = kandidat ke-k: container kerja BARU + sesi FRESH
+            # (spec §2 — pristine by construction, nol kontaminasi).
+            container = (f"gemma-work-{args.campaign}-{args.case}"
+                         f"-r{args.rerun}-a{k}")
+            subprocess.run(["docker", "rm", "-f", container],
+                           capture_output=True)
+            subprocess.run(["docker", "run", "-d", "--name", container,
+                            args.image, "sleep", "infinity"],
+                           check=True, capture_output=True)
+            docker_write_file(container, "/testbed/.pipe/repro.py",
+                              inputs.repro_py)
+            log(f"[driver] attempt {k}/{len(inputs.candidates)}: container "
+                f"{container} started; candidate {cand['file']}")
+
+            messages = [
+                {"role": "system", "content": contract + PROTOCOL_NOTE},
+                {"role": "user", "content": compose_fix_seed(
+                    problem, inputs.repro_md, inputs.repro_py, cand)},
+            ]
+            observed_pass = False
+            fix_md: str | None = None
+            turn = 0
+            for turn in range(1, args.max_turns + 1):
+                try:
+                    reply = chat(args.endpoint, args.model, messages)
+                except Exception as e:
+                    log(f"[driver] chat error: {e}; retrying once")
+                    reply = chat(args.endpoint, args.model, messages)
+                messages.append({"role": "assistant", "content": reply})
+                log(f"[gemma a{k} t{turn}] {reply}")
+
+                actions = parse_actions(reply)
+                feedback_parts: list[str] = []
+                for act in actions:
+                    if act.kind == "file":
+                        docker_write_file(container, act.arg, act.body + "\n")
+                        log(f"[driver] wrote {act.arg} "
+                            f"({len(act.body)} chars)")
+                        feedback_parts.append(f"OK: file {act.arg} written.")
+                    elif act.kind == "bash":
+                        out, code = docker_exec(container, act.body)
+                        log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n"
+                            f"[exit {code}]")
+                        feedback_parts.append(
+                            f"OUTPUT (exit {code}):\n{tail(out)}")
+                        if is_repro_run(act.body):
+                            # Bukti-dulu: PASS tersaksikan = exact_status
+                            # (standar token TUNGGAL baris-eksak, pola R).
+                            if exact_status(out) == "PASS":
+                                observed_pass = True
+                            else:
+                                em.event("fix", "retry", attempt=k,
+                                         budget={"msg_used": turn,
+                                                 "msg_limit": args.max_turns},
+                                         detail={"why": retry_reason(
+                                             out, code, expected="PASS")})
+                                note = token_format_note(out)
+                                if note is not None:
+                                    feedback_parts.append(note)
+                    elif act.kind == "fix.md":
+                        fix_md = act.body
+                        log("[driver] fix.md candidate received")
+                        feedback_parts.append("OK: fix.md received.")
+
+                if has_done(reply):
+                    reason = done_rejection_fix(
+                        has_fix_md=fix_md is not None,
+                        observed_pass=observed_pass)
+                    if reason is not None:
+                        em.event("fix", "retry", attempt=k,
+                                 budget={"msg_used": turn,
+                                         "msg_limit": args.max_turns},
+                                 detail={"why": f"done-rejected: {reason}",
+                                         "has_fix_md": fix_md is not None,
+                                         "observed_pass": observed_pass})
+                        log(f"[driver] DONE rejected: {reason}")
+                        feedback_parts.append(reason)
+                    else:
+                        # Pre-check DONE: vonis dunia segar dengan evaluator
+                        # yang SAMA dengan gate (standar tunggal, spec §4).
+                        diff_text = collect_work_diff(container)
+                        result = evaluate_patch_in_fresh_world(
+                            args.image, diff_text, cand["file"],
+                            args.input_repro_files)
+                        if result.ok:
+                            winner = k
+                            (files_dir / "fix.diff").write_text(
+                                _ensure_nl(diff_text),
+                                encoding="utf-8", newline="\n")
+                            (attempts_dir / f"attempt-{k}.diff").write_text(
+                                _ensure_nl(diff_text),
+                                encoding="utf-8", newline="\n")
+                            (files_dir / "fix.md").write_text(
+                                compose_fix_md(
+                                    fix_md, cand["file"], k,
+                                    "PASS,PASS (frozen repro, fresh "
+                                    "container pair)"),
+                                encoding="utf-8", newline="\n")
+                            log(f"[driver] DONE accepted at attempt {k} "
+                                f"turn {turn}: fresh pair PASS,PASS")
+                            break
+                        em.event("fix", "retry", attempt=k,
+                                 budget={"msg_used": turn,
+                                         "msg_limit": args.max_turns},
+                                 detail={"why": ("done-rejected: pre-check "
+                                                 f"{result.reason}"),
+                                         "touched": list(result.touched),
+                                         "pair": {
+                                             "status1": result.status1,
+                                             "status2": result.status2,
+                                             "exit1": result.exit1,
+                                             "exit2": result.exit2,
+                                             "run1_tail":
+                                                 result.run1_tail[:200],
+                                             "run2_tail":
+                                                 result.run2_tail[:200]}})
+                        log("[driver] DONE rejected: pre-check "
+                            f"{result.reason}")
+                        feedback_parts.append(
+                            fix_rejection_message(result, cand["file"]))
+
+                if not actions and not feedback_parts:
+                    feedback_parts.append(
+                        "No action block detected. Use ```bash / "
+                        "```file:/testbed/... / ```fix.md per the protocol, "
+                        "or close with DONE.")
+                messages.append({"role": "user",
+                                 "content": "\n\n".join(feedback_parts)})
+
+            if winner is None:
+                # Telemetri kandidat gagal: diff terakhir attempt (autopsi).
+                (attempts_dir / f"attempt-{k}.diff").write_text(
+                    _ensure_nl(collect_work_diff(container)),
+                    encoding="utf-8", newline="\n")
+            attempts_meta.append(
+                {"attempt": k, "candidate_file": cand["file"],
+                 "turns": turn,
+                 "result": "win" if winner == k else "exhausted"})
+            subprocess.run(["docker", "stop", container],
+                           capture_output=True)
+            log(f"[driver] attempt {k} finished: "
+                f"{'win' if winner == k else 'exhausted'} "
+                f"after {turn} turns")
+            if winner is not None:
+                break
+            em.event("fix", "retry", attempt=k,
+                     budget={"msg_used": turn, "msg_limit": args.max_turns},
+                     detail={"why": (f"candidate {k} exhausted without an "
+                                     "accepted DONE"),
+                             "candidate_file": cand["file"]})
+    except Exception as e:
+        import traceback
+        log(f"[driver] crash: {e!r}\n{traceback.format_exc()}")
+        emit_abort(em, f"driver crash: {e!r}")
+        if container:
+            subprocess.run(["docker", "stop", container],
+                           capture_output=True)
+        print(json.dumps({"winner_attempt": None, "aborted": True,
+                          "error": str(e)}))
+        return 1
+
+    fix_run = {"winner_attempt": winner,
+               "candidate_file": (inputs.candidates[winner - 1]["file"]
+                                  if winner is not None else None),
+               "candidates": [c["file"] for c in inputs.candidates],
+               "attempts": attempts_meta}
+    (files_dir / "fix_run.json").write_text(
+        json.dumps(fix_run, ensure_ascii=False, indent=1) + "\n",
+        encoding="utf-8", newline="\n")
+    log(f"[driver] run finished: winner_attempt={winner}; "
+        "verdict is written by the gate step")
+    print(json.dumps(fix_run, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    main()
