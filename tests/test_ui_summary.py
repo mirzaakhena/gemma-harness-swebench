@@ -1,10 +1,12 @@
 """Test panel infografik ringkasan per tahapan (permintaan Mirza 2026-07-20).
 
-Definisi status per case per stage (lihat ui/server.py case_status):
-status case = hasil run TERBARU (nomor rerun terbesar) case itu.
-PASS r-dev  = verdict pass + pass_l1 true (flip terkonfirmasi).
-PASS l-dev  = L1 pass DAN gold_eval qualified true (konsisten
-merge_gold_verdict). Selain itu FAIL; artefak tak terbaca -> "?" (fail-soft).
+Definisi status per case per stage = "pernah qualified" (keputusan Mirza
+2026-07-20): case PASS bila ADA >=1 run-nya yang qualified di kampanye itu.
+Qualified per run (lihat ui/server.py case_status):
+  r-dev = verdict pass + pass_l1 true (flip terkonfirmasi).
+  l-dev = L1 pass DAN gold_eval qualified true (konsisten merge_gold_verdict).
+Case FAIL hanya bila TAK PERNAH ada run qualified; kategori+alasan diambil
+dari run TERBARU case itu. Artefak tak terbaca -> "?" (fail-soft).
 """
 import json
 
@@ -197,9 +199,9 @@ def _mk_run(root, camp, case, rerun, phases, wall=None, pass_l1=None):
     return run
 
 
-def test_stage_summary_counts_latest_run_per_case(tmp_path):
+def test_stage_summary_counts_one_status_per_case(tmp_path):
     camp = tmp_path / "r-dev"
-    # case-a: r1 fail, r2 pass -> status ikut r2 (terbaru) = PASS
+    # case-a: r1 fail, r2 qualified -> pernah qualified = PASS
     _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "wrong-logic"},
             wall="reproduce", pass_l1=False)
     _mk_run(tmp_path, "r-dev", "case-a", 2, {"reproduce": "pass"},
@@ -211,6 +213,43 @@ def test_stage_summary_counts_latest_run_per_case(tmp_path):
     assert (s["total"], s["pass"], s["fail"], s["unknown"]) == (2, 1, 1, 0)
     assert [i["case"] for i in s["items"] if i["status"] == "FAIL"] == [
         "case-b"]
+
+
+def test_stage_summary_ever_qualified_early_pass_late_fail_is_pass(tmp_path):
+    # KUNCI keputusan Mirza 2026-07-20: r1 qualified + r3 gagal -> tetap PASS
+    camp = tmp_path / "r-dev"
+    _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "pass"},
+            pass_l1=True)
+    _mk_run(tmp_path, "r-dev", "case-a", 2, {"reproduce": "wrong-logic"},
+            wall="reproduce", pass_l1=False)
+    _mk_run(tmp_path, "r-dev", "case-a", 3, {"reproduce": "syntax-fail"},
+            wall="reproduce", pass_l1=False)
+    s = stage_summary(camp, "r-dev", _runs(
+        "r-dev--case-a--r1", "r-dev--case-a--r2", "r-dev--case-a--r3"))
+    assert (s["total"], s["pass"], s["fail"], s["unknown"]) == (1, 1, 0, 0)
+    item = s["items"][0]
+    assert item["status"] == "PASS"
+    assert item["rerun"] == "r1"  # run qualified yang dirujuk
+
+
+def test_stage_summary_never_qualified_reason_from_latest_run(tmp_path):
+    # 0 run qualified -> FAIL; kategori+alasan dari run TERBARU (r2)
+    camp = tmp_path / "r-dev"
+    run1 = _mk_run(tmp_path, "r-dev", "case-a", 1,
+                   {"reproduce": "syntax-fail"}, wall="reproduce",
+                   pass_l1=False)
+    _write_event(run1, "exit", {"failures": ["alasan lama r1"]})
+    run2 = _mk_run(tmp_path, "r-dev", "case-a", 2,
+                   {"reproduce": "wrong-logic"}, wall="reproduce",
+                   pass_l1=False)
+    _write_event(run2, "exit", {"failures": ["alasan terbaru r2"]})
+    s = stage_summary(camp, "r-dev", _runs(
+        "r-dev--case-a--r1", "r-dev--case-a--r2"))
+    item = s["items"][0]
+    assert item["status"] == "FAIL"
+    assert item["rerun"] == "r2" and item["category"] == "wrong-logic"
+    assert any("alasan terbaru r2" in r for r in item["reasons"])
+    assert not any("alasan lama r1" in r for r in item["reasons"])
 
 
 def test_stage_summary_unknown_counted_separately(tmp_path):
@@ -236,6 +275,18 @@ def test_render_stage_summary_text_bar_and_details():
     assert "<details>" in out and "case-b" in out
     assert "wrong-logic" in out and "predicate" in out
     assert "case-a" not in out.split("<details>")[1]  # PASS tak ikut rincian
+
+
+def test_render_stage_summary_labels_ever_qualified_definition():
+    s = {"total": 2, "pass": 1, "fail": 1, "unknown": 0,
+         "items": [
+             {"case": "case-a", "rerun": "r1", "status": "PASS",
+              "category": "pass", "reasons": []},
+             {"case": "case-b", "rerun": "r2", "status": "FAIL",
+              "category": "fail", "reasons": []},
+         ]}
+    out = render_stage_summary(s)
+    assert "pernah qualified" in out  # definisi terbaca di panel
 
 
 def test_render_stage_summary_empty_returns_empty():

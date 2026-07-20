@@ -200,12 +200,14 @@ def merge_gold_verdict(vtext: str, icon: str, campaign: str,
 
 
 # --- panel ringkasan per tahapan (permintaan Mirza 2026-07-20) --------------
-# Definisi status per case per stage: status case = hasil run TERBARU
-# (nomor rerun terbesar) case itu di kampanye tsb.
-#   PASS r-dev = verdict pass + pass_l1 true (flip terkonfirmasi).
-#   PASS l-*   = L1 pass DAN gold_eval qualified true — konsisten dengan
-#                status gabungan merge_gold_verdict di tabel.
-# Selain itu FAIL; verdict.json tak ada/rusak -> "?" (fail-soft).
+# Definisi status per case per stage = "PERNAH QUALIFIED" (keputusan Mirza
+# 2026-07-20): case PASS bila ADA >=1 run-nya yang qualified di kampanye tsb.
+# Qualified per run:
+#   r-dev = verdict pass + pass_l1 true (flip terkonfirmasi).
+#   l-*   = L1 pass DAN gold_eval qualified true — konsisten dengan
+#           status gabungan merge_gold_verdict di tabel.
+# Case FAIL hanya bila TAK PERNAH ada run qualified; kategori+alasan diambil
+# dari run TERBARU case itu. verdict.json tak ada/rusak -> "?" (fail-soft).
 
 def latest_runs_by_case(runs: list[dict]) -> dict[str, str]:
     """Map case_id -> run_id run TERBARU (nomor rerun terbesar)."""
@@ -274,7 +276,7 @@ def _wrong_file_reasons(run_dir: Path) -> list[str]:
 
 
 def case_status(campaign: str, run_dir: Path) -> dict:
-    """Status stage sebuah case dari run terbarunya (lihat definisi di atas).
+    """Status qualified SATU run sebuah case (lihat definisi di atas).
 
     Return {"status": "PASS"|"FAIL"|"?", "category": str, "reasons": [str]}.
     JUJUR: alasan hanya dari artefak terekam; tanpa detail -> kategori saja.
@@ -320,15 +322,32 @@ def case_status(campaign: str, run_dir: Path) -> dict:
 
 def stage_summary(campaign_dir: Path, campaign: str,
                   runs: list[dict]) -> dict:
-    """Ringkasan stage: status run terbaru tiap case + rincian FAIL."""
+    """Ringkasan stage per definisi "pernah qualified": case PASS bila
+    >=1 run-nya qualified (case_status PASS); selain itu status (FAIL/?)
+    plus kategori+alasan diambil dari run TERBARU case itu."""
+    by_case: dict[str, list[str]] = {}
+    for r in runs:
+        rid = r.get("run_id")
+        if isinstance(rid, str) and rid:
+            by_case.setdefault(split_run_id(rid)[0], []).append(rid)
     latest = latest_runs_by_case(runs)
     items = []
-    for case_id in sorted(latest):
-        rid = latest[case_id]
-        _, rerun = split_run_id(rid)
-        st = case_status(campaign, Path(campaign_dir) / rid)
-        items.append({"case": case_id, "run_id": rid,
-                      "rerun": rerun or rid, **st})
+    for case_id in sorted(by_case):
+        # mulai dari run terbaru (sumber kategori+alasan bila tak pernah
+        # qualified), lalu scan run lain: satu saja PASS -> case PASS
+        chosen = latest[case_id]
+        st = case_status(campaign, Path(campaign_dir) / chosen)
+        if st["status"] != "PASS":
+            for rid in sorted(by_case[case_id], key=run_sort_key):
+                if rid == chosen:
+                    continue
+                ever = case_status(campaign, Path(campaign_dir) / rid)
+                if ever["status"] == "PASS":
+                    chosen, st = rid, ever
+                    break
+        _, rerun = split_run_id(chosen)
+        items.append({"case": case_id, "run_id": chosen,
+                      "rerun": rerun or chosen, **st})
     return {"total": len(items),
             "pass": sum(1 for i in items if i["status"] == "PASS"),
             "fail": sum(1 for i in items if i["status"] == "FAIL"),
@@ -358,6 +377,8 @@ def render_stage_summary(s: dict) -> str:
             segs.append(f"<span class='{cls}' "
                         f"style='width:{_pct(cnt, n)}'></span>")
     parts = ["<div class='summary'><p>", head, "</p>",
+             "<p class='dim'>PASS = pernah qualified (&ge;1 run); "
+             "FAIL = tak pernah qualified, alasan dari run terbaru</p>",
              "<div class='sbar'>", "".join(segs), "</div>"]
 
     problems = [i for i in s["items"] if i["status"] in ("FAIL", "?")]
