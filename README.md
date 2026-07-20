@@ -165,37 +165,73 @@ python -m eval.fix_gold_eval --case <id> --rerun <N> --gold cases/gold/<id>/gold
 
 Status: **smoke run pertama TUNTAS** — `f-dev--django__django-13660--r1`
 menang di kandidat #1 (`shell.py`, 8 turn), gate `flip`, gold eval
-file_match+overlap TRUE (fix gold-equivalent: `exec(cmd)` →
-`exec(cmd, {})`). Riwayat per-run: vault `F-dev Log — fase FIX`.
+file_match+overlap TRUE (`exec(cmd)` → `exec(cmd, {})`, situs file/baris
+sama dengan gold). **KOREKSI (checker L2, 2026-07-20):** klaim
+"gold-equivalent" di atas SALAH — checker SWE-bench resmi memvonis
+`resolved=false` untuk run ini (2 regresi P2P: `test_command_option_globals`,
+`test_stdin_read_globals` — gold menulis `exec(cmd, globals())`, Gemma
+menulis `exec(cmd, {})`, dict kosong bukan `globals()`). L1 (flip) dan
+gold_eval (file/line match) sama-sama tak menangkap ini — hanya checker L2
+(FAIL_TO_PASS/PASS_TO_PASS resmi) yang menangkap. Detail: vault
+`F-dev Log — fase FIX` § "Checker L2 live". Riwayat per-run: vault
+`F-dev Log — fase FIX`.
 
 UI viewer (`python ui\server.py --root ..\artifacts --port 8766`): tabs
-per fase (REPRODUCE → LOCALIZE → FIX; stage pipeline selalu tampil walau
-belum ada run), sort desc berdasar STARTED datetime (run terbaru case mana
-pun di halaman 1 — nomor rerun per-case), paging, kolom ikon/durasi/turns,
-panel infografik PASS/FAIL per stage. Biasanya hidup sebagai proses
-detached.
+per fase (REPRODUCE → LOCALIZE → **FIX and VERIFY**; stage pipeline selalu
+tampil walau belum ada run), sort desc berdasar STARTED datetime (run
+terbaru case mana pun di halaman 1 — nomor rerun per-case), paging, kolom
+ikon/durasi/turns, panel infografik status per stage. Biasanya hidup
+sebagai proses detached. Tab kampanye `f-*` berlabel **"FIX and VERIFY"**
+karena VERIFY (checker L2) hidup sebagai lapisan kedua di dalam tab yang
+sama, bukan tab terpisah (lihat status 2-lapisan di bawah).
 
-**KNOWN ISSUE dashboard (2026-07-20):** `case_status()` (ui/server.py
-~baris 341) hanya memetakan verdict `"pass"` → PASS, sehingga verdict FIX
-`"flip"` jatuh ke default FAIL (baris 363) — panel menampilkan FAIL padahal
-baris tabel menampilkan `✅ flip` (`verdict_icon` sudah mengenal flip).
-Perbaikannya menunggu keputusan arsitektur 2-lapisan di bawah.
+**KNOWN ISSUE dashboard (2026-07-20) — SELESAI.** Bug lama (`case_status()`
+memetakan verdict `"flip"` ke default FAIL padahal baris tabel menampilkan
+`✅ flip`) sudah diperbaiki bersamaan dengan implementasi status 2-lapisan
+di bawah (`case_status` sekarang eksplisit menangani `flip` via
+`pass_l1`/`_fix_verify_status`).
 
-## Aturan status 2-lapisan (keputusan Mirza 2026-07-20) — BELUM diimplementasi
+## Aturan status 2-lapisan (keputusan Mirza 2026-07-20) — TERIMPLEMENTASI
 
-Status PASS di dashboard = **AND dua lapisan judgment**:
+Status dashboard kampanye `f-*` = **AND dua lapisan judgment**:
 
 | Lapisan | Isi | Field |
 |---|---|---|
-| L1 — product harness (gold-blind) | FIX: repro flip | `pass_l1` |
-| L2 — development (SWE-bench checker ASLI) | resolved? via FAIL_TO_PASS / PASS_TO_PASS resmi | `pass_l2` |
+| L1 — product harness (gold-blind) | FIX: repro flip | `pass_l1` (`verdict.json`) |
+| L2 — development (SWE-bench checker ASLI) | resolved? via FAIL_TO_PASS / PASS_TO_PASS resmi | `resolved` (`swebench_eval.json`) |
 
-- Product FAIL → FAIL. Product PASS + L2 FAIL → **tetap FAIL**. PASS hanya
-  bila keduanya lulus.
+- Product FAIL → FAIL. Product PASS + L2 FAIL → **tetap FAIL** (kategori
+  `verify-fail`). PASS hanya bila keduanya lulus.
 - **swe_bench checker asli dibangun sebagai SATU modul** (SRP: satu alasan
-  berubah), hidup di realm dev (`eval/`), dipanggil dev-eval FIX sekarang
-  (→ `pass_l2`) dan **VERIFY nanti sebagai caller tipis**. TIDAK ditanam
-  inline di driver/gate FIX — product FIX tetap gold-blind (yardstick repro
-  flip), swe_bench = pengukuran dev, tak pernah diumpan balik ke loop model.
+  berubah), hidup di realm dev (`eval/`), TIDAK ditanam inline di
+  driver/gate FIX — product FIX tetap gold-blind (yardstick repro flip),
+  swe_bench = pengukuran dev, tak pernah diumpan balik ke loop model.
 - Preseden pola: fase LOCALIZE (`eval/localize_gold_eval.py` memakai gold di
   development; product LOCALIZE tetap gold-blind dgn kriteria SHORTLIST).
+
+**Invokasi (dari root `main\`):**
+
+```
+python -m eval.fetch_swebench_spec --case <id> [--case <id> ...]
+python -m eval.swebench_checker --case <id> --rerun <N>
+```
+
+`fetch_swebench_spec` membekukan `cases/gold/<id>/swebench_spec.json` dari
+dataset HF SWE-bench_Lite sekali per case (append-only, sama seperti spec
+gold lain). `swebench_checker` menjalankan grading resmi SWE-bench di
+container Epoch (`ghcr.io/epoch-research/swe-bench.eval.*`) untuk satu run
+FIX beku dan menulis `../artifacts/f-dev/f-dev--<id>--r<N>/swebench_eval.json`
+(+ `files/swebench_test_output.log`) — **tidak pernah menyentuh
+`verdict.json`** (emitter tunggal fase FIX tetap `harness/emit.py`;
+checker L2 murni realm dev, read-only terhadap verdict).
+
+**5 state status dashboard** (`ui/server.py:case_status` /
+`_fix_verify_status`):
+
+| Status | Arti |
+|---|---|
+| `PASS` | `pass_l1` (flip) DAN `resolved=true` — lulus L1 + L2 |
+| `FAIL` (`verify-fail`) | `pass_l1` TRUE tapi `resolved=false` — L1 lulus, L2 gagal (regresi P2P / F2P / patch gagal apply) |
+| `FAIL` (alur lama) | product FAIL biasa (no-flip/timeout/abort) — L2 tak relevan |
+| `WAIT` | product PASS tapi `swebench_eval.json` belum ada — menunggu `swebench_checker` dijalankan (bukan FAIL palsu) |
+| `ANOMALY` | product FAIL tapi `resolved=true` — kontradiksi sinyal, ditandai menonjol utk autopsi manual |
