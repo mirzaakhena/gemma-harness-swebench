@@ -110,9 +110,19 @@ python -m eval.swebench_checker --case <case_id> --rerun <N>
 
 ## 6. Dashboard status 2-lapisan (`ui/server.py`)
 
+**Disambiguasi nama (penting — sempat tertukar di brainstorm, diluruskan
+Mirza msg 2297-2298):** ada DUA file eval berbeda di run dir.
+`swebench_eval.json` = hasil SWE-bench checker (menjalankan test resmi) —
+**INILAH penentu PASS**. `gold_eval.json` = hasil `fix_gold_eval`
+(pembanding alamat file/baris, tanpa eksekusi) — advisory murni; dia tak
+membuktikan fix bekerja, dan fix alternatif yang benar di file berbeda
+akan salah divonis olehnya. Label di dashboard wajib membedakan keduanya
+secara eksplisit (mis. "VERIFY (SWE-bench)" vs "gold-match (advisory)").
+
 - **Tab FIX di-rename "FIX and VERIFY"** (keputusan Mirza): dashboard =
   alat monitoring development, checker ini secara tak langsung pekerjaan
-  VERIFY. TIDAK ada tab keempat.
+  VERIFY. TIDAK ada tab keempat. **Struktur/tampilan tab TETAP seperti
+  sebelumnya** — hanya label yang berubah (keputusan Mirza msg 2297).
 - `case_status()` dibenahi — menutup known issue flip→FAIL (verdict `flip`
   tak dikenal, jatuh ke default FAIL, inkonsisten dengan `verdict_icon`).
 - Status per run kampanye `f-*` (merge saat render, viewer tetap
@@ -121,12 +131,19 @@ python -m eval.swebench_checker --case <case_id> --rerun <N>
 | Kondisi | Status |
 |---|---|
 | `pass_l1` ✅ ∧ `swebench_eval.resolved` ✅ | **PASS** |
-| product FAIL (no-flip/timeout/abort/…) | **FAIL** (alasan product) |
+| product FAIL (no-flip/timeout/abort/…) tanpa sinyal L2 | **FAIL** (alasan product) |
 | `pass_l1` ✅ ∧ `resolved` ❌ | **FAIL** (alasan: daftar `f2p_failed`/`p2p_failed`) |
 | `pass_l1` ✅ ∧ `swebench_eval.json` belum ada | ⏳ **"product-pass, menunggu VERIFY"** — state ketiga, BUKAN FAIL |
+| product FAIL ∧ `resolved` ✅ | ⚠️ **ANOMALY** (keputusan Mirza msg 2297): repro bilang gejala masih ada tapi test resmi bilang resolved — kontradiksi sinyal, di-flag menonjol utk autopsi, BUKAN diam-diam FAIL |
 
 - `gold_eval` (file/line match) tampil sebagai **advisory** (parameter
   penilaian tambahan, keputusan Mirza) — tidak menentukan PASS f-dev.
+- **Detail per case di tab FIX and VERIFY** (keputusan Mirza msg 2297):
+  bagian detail menjelaskan banyak hal secara mendetail — `pass_l1`
+  (vonis repro product), `resolved` + daftar test F2P/P2P yang gagal
+  (regresi per nama test), gold_eval advisory (file/baris vs gold), flag
+  anomaly bila ada, dan tautan/lokasi log mentah
+  `swebench_test_output.log`.
 - Panel ringkasan ("pernah qualified") mengikuti definisi PASS baru.
 
 ## 7. `fix_gold_eval` — dipertahankan (keputusan Mirza)
