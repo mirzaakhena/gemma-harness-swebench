@@ -163,6 +163,41 @@ yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan a
   sasaran — lalu dibuang setelah penolakan judge (LV-05/LV-08). Ini kejadian **kedua** setelah
   13230 di mana yardstick yang dibekukan terbukti lebih longgar daripada yang sudah disaksikan
   driver, dan sebabnya sama.
+- **Bukti penguat (case ketujuh — repro yang predikatnya "tidak ada exception", di run yang
+  `resolved=true`) — django-13658**, `r-dev--django__django-13658--r1/files/repro.py`
+  (temuan bot-01, 2026-07-20). Repro qualified (2 turn di LOCALIZE, dipakai FIX sampai
+  `resolved=true`). Seluruh vonisnya:
+  `try: execute_from_command_line(['my_prog','help']); return True` / `except Exception: return
+  False`, lalu `True → REPRO_STATUS: PASS`. Konsekuensi yang bisa dibaca langsung:
+  - **Predikatnya crash-vs-tidak-crash**, bukan nilai. Bug 13658 adalah *program name dihitung
+    dari argv pemanggil, bukan dari `sys.argv`* — yaitu klaim tentang **string**. Repro tidak
+    pernah memeriksa string apa pun. Tanda tangan sama dengan 12915 (sisi PASS kosong) dan
+    11039/12286 (predikat satu-arah), jadi ini kemunculan ketujuh.
+  - **Ironi yang layak dicatat:** repro ini memakai `custom_argv = ['my_prog', 'help']` —
+    yaitu ia **sudah membangun persis skenario yang membedakan** gold dari fix salah, lalu
+    membuang hasilnya tanpa diperiksa. Selisih yang tersedia gratis di variabel `out`-nya
+    (gold → top-level parser `prog='my_prog'`; patch model → `'django-admin'`) tidak pernah
+    ditanyakan. Kontrol positif juga nol (K4).
+  - Bedanya dengan enam bukti sebelumnya, dan ini yang membuatnya penting: di 13660/14017
+    repro longgar meloloskan fix salah yang **lalu ketahuan di L2**. Di 13658 **L2 juga tidak
+    melihatnya** (rincian di autopsi 13658 di bawah dan di LV-14) — jadi ini case pertama di
+    korpus di mana kelonggaran repro dan plafon alat ukur resmi **bertepatan pada run yang sama**.
+- **Bukti penguat (case kedelapan — sisi kontrol, dan ia mempertegas K4 sebagai kriteria
+  yang paling kurang terwakili) — django-11179**, `r-dev--django__django-11179--r1/files/repro.py`
+  (temuan bot-01, 2026-07-20). Repro ini termasuk yang **lebih baik** dari rata-rata korpus:
+  in-process murni, nol `pipe_runtime`, dan vonisnya adalah **perbandingan nilai** (`obj.pk is
+  None`) — bukan substring, bukan "tidak melempar exception". Jadi ia **bukan** K1 dan **bukan**
+  K5. Tetapi ia tetap **K4**, dan lubangnya bisa dinyatakan dengan satu contoh:
+  > fix yang menyetel `instance.pk = None` lalu `return 0, {}` **tanpa pernah menjalankan
+  > `delete_batch`** akan tetap LOLOS repro ini — karena repro tidak pernah memverifikasi
+  > bahwa barisnya benar-benar terhapus dari DB (`SimpleModel.objects.count()` tidak pernah
+  > dipanggil sesudah `delete()`).
+  Nilainya untuk entri ini: K4 menggigit **terlepas dari** kualitas predikatnya. Repro boleh
+  memeriksa nilai dengan benar dan tetap tidak punya cara membuktikan bahwa yang ia ukur
+  memang dihasilkan oleh mekanisme yang seharusnya. Ini menguatkan arah yang sudah dicatat di
+  Konsekuensi tabel frekuensi butir 2 (kontrol positif sebagai isi konkret pertama LV-01),
+  dan menambah satu bentuk kontrol yang murah dan tidak membocorkan gold sama sekali:
+  **assert atas efek samping yang seharusnya menyertai perbaikan**, bukan hanya atas gejalanya.
 - **Diagnosa:** dua lapis.
   - *Akar-model* pada pilihan fix-nya sendiri (`{}` vs `globals()`; early-return khusus
     `Exists`) — pemahaman semantik, dan terbukti muncul konsisten & independen di LOCALIZE
@@ -1370,6 +1405,30 @@ menjelaskan bagian harness dari kemahalan run ini. **Tidak ada satu pun retry ya
   hasil.** Itu tepat profil **instrumentasi** — sinyal yang akurat mendeteksi prosa yang
   salah, tetapi tidak berkorelasi dengan kegagalan — dan karenanya menguatkan keputusan
   (b) untuk mencatat `citation_mismatch` tanpa menggugurkan apa pun.
+- **Titik data ketiga untuk (B) — django-13658**, run `l-dev--django__django-13658--r1`
+  (temuan bot-01, 2026-07-20). `gold_eval.json`: `pointed_lines: [115, 130]`,
+  `line_overlap: false`, `file_match: true`, `criterion: shortlist-v2`, `qualified: true`.
+  Slot `evidence` di `files/localize.md` berbunyi: *"In `django/core/management/__init__.py`,
+  the `ManagementUtility.__init__` method (around line 123) calls `CommandParser(usage=...)`"*.
+  **Dibantah mesin dari gold patch dan dari sumbernya:** panggilan itu ada di
+  `ManagementUtility.execute()`, bukan di `__init__` — header hunk gold berbunyi
+  `@@ -344,7 +344,12 @@ def execute(self):`, dan `grep -n 'CommandParser(' /testbed/django/`
+  di image case ini mengembalikan `__init__.py:347` (diverifikasi bot-01 di dalam image).
+  `__init__` hanya menghitung `self.prog_name`. Jadi: **nama method salah di file yang benar,
+  rentang baris meleset ~220 baris** — tanda tangan identik dengan 13230 (~50 baris) dan
+  12286 (~40 baris), dan kali ini selisihnya yang terbesar.
+  **Dan sekali lagi kesimpulannya tetap benar:** `what` dan `why` di `localize.md` menyatakan
+  fix yang **persis sama dengan gold** (*"CommandParser should be instantiated with the `prog`
+  argument set to `self.prog_name`"*), dan CANDIDATE 1 = file gold. Profil detektornya
+  karenanya tidak berubah: **3 dari 3 case ber-`line_overlap: false` adalah konfabulasi yang
+  bisa dibuktikan salah dari artefak resmi, dan 3 dari 3 tidak menyesatkan kesimpulannya.**
+  **Yang BARU di case ini dan wajib dicatat supaya tidak salah dibaca:** 13658 adalah run
+  pertama di mana sitasi LOCALIZE yang meleset **berdampingan dengan** fase FIX yang mendarat
+  di file NON-gold (attempt 2, lihat autopsi di bawah). Menggoda untuk menghubungkan keduanya.
+  **Hubungan itu tidak didukung bukti:** LOCALIZE menunjuk file gold sebagai CANDIDATE 1 dan
+  FIX memang mencobanya lebih dulu selama 40 turn penuh; perpindahan ke CANDIDATE 2 adalah
+  mekanisme fallback antar-attempt yang bekerja sebagaimana dirancang, bukan akibat rentang
+  baris yang salah — rentang itu, seperti di 13230 dan 12286, tidak pernah membatasi apa pun.
 - **Diagnosa — akar-harness murni, satu mekanisme di dua tempat.** Di kedua titik, harness
   menerima **prosa tentang kode** sebagai masukan yang menentukan (menahan DONE; mengisi slot
   yang diteruskan ke fase berikutnya) **tanpa pernah mencocokkannya dengan kode**. Padahal
@@ -1583,6 +1642,83 @@ padahal secara non-fungsional lebih buruk dari gold** — lihat LV-14.
   - **Kalibrasi kepentingan, supaya tidak dilebihkan:** komentar basi bukan regresi dan tidak
     terukur test mana pun; ongkos run-nya nol (full green, 7 turn di FIX). Nilainya murni
     sebagai **batas detektor**, bukan sebagai kerugian.
+- **Bukti penguat (case keempat — dan yang PERTAMA di mana sinyal yang sudah dipegang harness
+  benar-benar akan menandai sebuah lulus-palsu) — django-13658** (temuan bot-01, 2026-07-20).
+  Bukti: `f-dev--django__django-13658--r1/files/fix.diff` vs
+  `cases/gold/django__django-13658/gold.patch`; `gold_eval.json` + `swebench_eval.json` run
+  yang sama; `test_patch` di `cases/gold/django__django-13658/swebench_spec.json`.
+  - **Kedua patch tidak berada di file yang sama.** Gold menyentuh
+    `django/core/management/__init__.py` (menambah `prog=self.prog_name` pada `CommandParser`
+    di `execute()`); model menyentuh `django/core/management/base.py` (menambah default
+    `kwargs["prog"] = sys.argv[0] if (sys.argv and sys.argv[0] is not None) else "django-admin"`
+    di `CommandParser.__init__`). `gold_eval.json`: **`file_match: false`**,
+    `line_overlap: null`. `swebench_eval.json`: **`resolved: true`**, F2P 1/1
+    (`test_program_name_from_argv`), P2P **181/181**.
+  - **Divergensi perilakunya nyata dan terukur** (diverifikasi bot-01 dengan menjalankan
+    A/B base vs model vs gold di dalam image case ini, meng-instrumentasi `prog` dari setiap
+    `CommandParser` yang dibuat). Dengan argv pemanggil `['my_prog','help','shell']`:
+    - `sys.argv[0]` berbeda dari argv pemanggil → parser top-level: **gold `'my_prog'`,
+      model `'/usr/local/bin/other_prog'`**.
+    - `sys.argv[0] is None` (kondisi issue) → **gold `'my_prog'`, model `'django-admin'`**.
+    Yaitu: gold menurunkan program name dari **argv pemanggil**, model dari **`sys.argv`
+    dengan konstanta cadangan** — persis perilaku yang judul test resminya menyatakan sudah
+    diperbaiki.
+  - **Regresi diam-diam ke call site kedua, terverifikasi eksekusi.** Hanya ada **dua**
+    pemanggil `CommandParser` tanpa `prog` di seluruh `django/`:
+    `__init__.py:347` (titik gold) dan `utils.py:118`
+    (`get_command_line_option`) — `base.py:280` mengoper `prog` eksplisit
+    (`grep -rn 'CommandParser(' /testbed/django/`). Karena patch model bekerja di
+    **konstruktor**, ia ikut mengubah `utils.py:118`: default argparse
+    `os.path.basename(sys.argv[0])` menjadi `sys.argv[0]` **utuh berikut path**. Terukur:
+    dengan `sys.argv[0] = '/usr/local/bin/my_prog'`, prog parser itu **base `'my_prog'` →
+    model `'/usr/local/bin/my_prog'`**, sedangkan **gold membiarkannya `'my_prog'`**. Jadi
+    berbeda dari 12915 dan 12286, di sini patch model **mengubah perilaku di luar situs yang
+    diperbaiki** — dan **181 P2P tidak melihatnya**.
+  - **Kenapa case ini lebih kuat daripada tiga case sebelumnya, dan ini kontribusi utamanya:**
+    di 12915, 12286, dan 11039 divergensi hanya bisa ditemukan dengan **membuka dua diff
+    berdampingan** — persis keluhan yang melahirkan entri ini. Di 13658, harness **sudah
+    menuliskan vonisnya sendiri ke disk**: `file_match: false` ada di `gold_eval.json` sejak
+    detik run itu selesai. Yang hilang bukan datanya, melainkan **konsumennya** — dashboard
+    menghitung AND(L1, L2) dan `fix_gold_eval` berstatus advisory, sehingga satu-satunya
+    run di korpus yang patch-nya mendarat di file lain sama sekali terbaca **hijau sempurna**
+    di papan skor.
+  - **Konsekuensi konkret untuk usulan (a) — sub-item berongkos nol yang mendahuluinya.**
+    (a) sebagaimana ditulis menuntut pekerjaan baru (bandingkan himpunan identifier di baris
+    `+`). 13658 menunjukkan ada **lapis yang lebih murah lagi dan sudah selesai dikerjakan**:
+    **munculkan `resolved` dan `file_match` berdampingan**. Usul konkret: state dashboard baru
+    — sejajar dengan ANOMALY yang sudah ada untuk *"product FAIL tapi `resolved=true`"* — untuk
+    kebalikannya, **`resolved=true` tetapi situs patch berbeda dari gold**. Nol komputasi baru,
+    nol perubahan kontrak, nol sentuhan ke jalur vonis; ia hanya berhenti menyembunyikan dua
+    field yang sudah tertulis. Frekuensinya di korpus: **1 dari 12 run `f-dev` yang punya
+    `swebench_eval.json` DAN `gold_eval.json`** (dan **1 dari 8** yang `resolved=true`) —
+    lihat Tabel D di section frekuensi.
+- **Bukti penguat (case kelima — batas KEDUA instrumentasi (a), kali ini sisi false positive) —
+  django-11179** (temuan bot-01, 2026-07-20). Bukti:
+  `f-dev--django__django-11179--r1/files/fix.diff` vs `cases/gold/django__django-11179/gold.patch`.
+  - `gold_eval.json`: `file_match: true`, `line_overlap: true`, `resolved: true`,
+    F2P 1/1, P2P 40/40. Titik sisip identik, satu baris.
+  - **Barisnya berbeda secara tekstual tetapi setara secara semantik.** Gold:
+    `setattr(instance, model._meta.pk.attname, None)`. Model: `instance.pk = None`.
+    Kesetaraannya **diverifikasi bot-01 di dalam image case ini**, bukan disimpulkan:
+    `django/db/models/base.py:571` pada base commit case ini berbunyi persis
+    `def _set_pk_val(self, value): return setattr(self, self._meta.pk.attname, value)`,
+    dengan `pk = property(_get_pk_val, _set_pk_val)` di baris 574. Jadi bentuk model
+    **men-desugar tepat menjadi bentuk gold**.
+  - **Kenapa ini wajib ditulis di entri ini:** instrumentasi (a) membandingkan **himpunan
+    identifier di baris `+`**. Di sini `gold_only_symbols` = `{setattr, model, _meta, attname}`
+    dan `model_only_symbols` = `{}` — yaitu **(a) akan melaporkan divergensi untuk patch yang
+    sepenuhnya setara.** 11039 sudah menandai batas (a) di sisi **false negative**
+    (`gold_only_symbols` kosong padahal isi hunk beda); 11179 menandai batas yang berlawanan.
+    Dua-duanya perlu, dan dua-duanya menuju kesimpulan desain yang sama: **`gold_only_symbols`
+    adalah pemicu untuk DILIHAT MANUSIA, bukan predikat kesetaraan** — jangan sekali-kali
+    dibaca sebagai vonis ke arah mana pun. Ini memperkuat, bukan melemahkan, keputusan entri
+    ini bahwa (a) hidup sebagai instrumentasi non-blocking.
+  - **Catatan kalibrasi versi, karena ia bisa menjebak pembaca kemudian:** kesetaraan itu
+    **spesifik untuk commit ini**. Di Django yang lebih baru `_set_pk_val` menambahkan loop
+    atas `self._meta.parents` (diverifikasi ada di image `django__django-13658`), sehingga
+    `instance.pk = None` di sana melakukan **lebih** daripada `setattr(...)` untuk model
+    multi-table inheritance. Jadi "setara" di sini adalah pernyataan tentang **satu commit**,
+    dan itu sendiri argumen kenapa perbandingan tekstual tidak boleh dipromosikan jadi vonis.
 - **Diagnosa — dan bagian terpentingnya adalah memisahkan dua hal yang mudah tercampur:**
   1. **Batas metodologi (BUKAN akar-harness, BUKAN akar-model).** Bahwa L2 tidak menangkap
      regresi non-fungsional adalah sifat dari *definisi ground truth* yang kita pakai:
@@ -1947,6 +2083,178 @@ bergeser.** Itu memperkuat LV-10(b) dan tidak menuntut lever baru.
 
 ---
 
+## Komparasi kontras django-13658 (LULUS PALSU) vs django-11179 (hijau asli)
+## (bot-01, 2026-07-20)
+
+**Korpus 13658:** `artifacts/r-dev/r-dev--django__django-13658--r1` (qualified, 16 turn,
+4 attempt), `artifacts/l-dev/l-dev--django__django-13658--r1` (qualified, 2 turn,
+`line_overlap: false`), `artifacts/f-dev/f-dev--django__django-13658--r1`
+(attempt 1 **exhausted** 40 turn di file gold dengan `attempt-1.diff` **kosong 0 byte**;
+attempt 2 **win** 7 turn di file NON-gold). Gold: `cases/gold/django__django-13658/gold.patch`.
+
+**Korpus 11179:** `r-dev--...--r1` (qualified, 6 turn, 3 attempt),
+`l-dev--...--r1` (qualified, 3 turn, `file_match` + `line_overlap` true),
+`f-dev--...--r1` (attempt 1 **win**, 5 turn). `resolved=true`, F2P 1/1, P2P 40/40,
+`file_match: true`, `line_overlap: true`.
+
+**Hasil di papan skor — identik. Di disk — tidak.** 13658: `resolved=true`, F2P 1/1,
+P2P **181/181**, `pass_l1=true`, **`file_match: false`**, `line_overlap: null`.
+11179: `resolved=true`, F2P 1/1, P2P 40/40, `file_match: true`, `line_overlap: true`.
+Dua field itu adalah **satu-satunya** tempat perbedaannya terekam.
+
+### Mekanisme lulus-palsu 13658 — diverifikasi eksekusi, dan HASILNYA MENGOREKSI hipotesis awal
+
+Hipotesis yang dibawa ke autopsi ini: *"model lolos karena konstanta hardcoded `"django-admin"`
+kebetulan persis string yang di-assert test"* — yaitu kelas **"menghafal nilai fixture"**.
+Hipotesis itu diuji di dalam image case ini dan **terbantah**. Yang benar lebih buruk.
+
+**Fakta 1 — string yang di-assert test tidak diproduksi oleh kode yang disentuh patch mana pun.**
+F2P resmi berbunyi:
+
+> `with mock.patch('sys.argv', [None] + args): execute_from_command_line(['django-admin'] + args)`
+> lalu `assertIn('usage: django-admin shell', out.getvalue())` dan `assertEqual(err.getvalue(), '')`.
+
+Baris `usage: django-admin shell` dicetak oleh parser **sub-command** (`base.py:280`), yang
+sudah menerima `prog` eksplisit dari `self.prog_name` **di base yang belum dipatch sama sekali**.
+Bug-nya ada di parser **top-level** (`__init__.py:347`), yang di base jatuh ke default argparse
+`os.path.basename(sys.argv[0])` → `basename(None)` → `TypeError`. Jadi test ini gagal di base
+**karena crash**, bukan karena string yang salah.
+
+**Fakta 2 — eksperimen sabotase.** Patch berikut dipasang di titik gold, membaca **nol** dari argv:
+
+> `parser = CommandParser(prog='ZZZ-NGAWUR', usage='%(prog)s subcommand [options] [args]', ...)`
+
+Hasil `runtests.py admin_scripts.tests.ExecuteFromCommandLine.test_program_name_from_argv`:
+base + test patch → **FAILED (errors=1)**; sabotase → **OK**. Yaitu: **konstanta yang ngawur,
+yang jelas-jelas salah menurut judul test-nya sendiri, LOLOS F2P.**
+
+**Kesimpulan yang menggantikan hipotesis awal.** Test `test_program_name_from_argv` — yang
+docstring-nya berbunyi *"Program name is computed from the execute_from_command_line()'s argv
+argument, not sys.argv"* — **tidak menguji pernyataan itu sama sekali.** Daya bedanya
+seluruhnya **crash vs tidak-crash**. Setiap patch yang membuat `__init__.py:347` berhenti
+melempar `TypeError` akan lolos, termasuk patch model, termasuk `prog='ZZZ-NGAWUR'`.
+Konstanta `"django-admin"` di patch model **bukan** sebab kelulusan; kalau ia diganti string
+lain, run ini tetap `resolved=true`. Jadi ini **bukan** kelas "menghafal nilai fixture" —
+vonis lengkapnya di butir 2 catatan penutup.
+
+**Fakta 3 — apa yang sebenarnya berbeda, terukur.** Instrumentasi `prog` atas setiap
+`CommandParser` yang dibuat, tiga dunia (base / model / gold), di dalam image:
+
+- argv pemanggil `['my_prog',...]`, `sys.argv[0]='/usr/local/bin/other_prog'` →
+  parser top-level: gold `'my_prog'`, model `'/usr/local/bin/other_prog'`.
+- argv pemanggil `['my_prog',...]`, `sys.argv[0]=None` →
+  gold `'my_prog'`, model `'django-admin'`.
+- skenario test resmi (argv pemanggil `['django-admin',...]`, `sys.argv[0]=None`) →
+  gold `'django-admin'`, model `'django-admin'`. **Di sinilah keduanya bertemu**, dan hanya
+  di sini.
+
+Dan satu regresi yang tidak diminta siapa pun: karena patch model bekerja di **konstruktor**,
+ia ikut mengubah pemanggil kedua tanpa `prog`, `utils.py:118`
+(`get_command_line_option`), dari `os.path.basename(sys.argv[0])` menjadi `sys.argv[0]` utuh
+berikut path — terukur `'my_prog'` → `'/usr/local/bin/my_prog'`, sementara gold membiarkannya
+`'my_prog'`. **181 P2P hijau tidak melihatnya.** (Hanya ada dua pemanggil tanpa `prog` di
+seluruh `django/`; `base.py:280` mengoper eksplisit.)
+
+**Peringatan pembacaan, supaya klaim ini tidak melar:** satu hal yang TIDAK boleh dikatakan
+adalah bahwa patch model "merusak sesuatu yang tadinya baik" dalam arti yang besar. Terhadap
+base, ia perbaikan — crash-nya hilang. Yang benar dikatakan: ia **memperbaiki gejala (crash)
+tanpa memperbaiki kontrak (program name dari argv pemanggil)**, dan **menggeser perilaku satu
+call site yang tidak ada hubungannya**. Dua-duanya di luar jangkauan seluruh alat ukur kita.
+
+### Kenapa 11179 hijau, dan kenapa itu juga bukan validasi
+
+`instance.pk = None` (model) vs `setattr(instance, model._meta.pk.attname, None)` (gold)
+**setara**, diverifikasi di image: `base.py:571` pada commit ini adalah
+`def _set_pk_val(self, value): return setattr(self, self._meta.pk.attname, value)`.
+Tetapi hijau di sini **tetap tidak membuktikan gate bekerja**, dan alasannya sudah jadi tema
+berulang: ruang fix-nya sempit (satu baris, satu file, sudah ditunjuk LOCALIZE dengan
+`line_overlap: true`). Repro-nya sendiri **K4** — fix yang menyetel `instance.pk = None`
+lalu `return 0, {}` **tanpa menjalankan `delete_batch`** akan tetap lolos, karena repro tidak
+pernah mengecek barisnya terhapus dari DB. Ini alasan **keenam** untuk tidak membaca kolom
+hijau sebagai validasi (setelah 11099, 14017, 13230, 12915, 12286).
+
+Yang membuat 11179 tetap berguna sebagai pembanding bersih: ia menunjukkan bahwa **selisih
+antara dua run yang di papan skor identik dapat sepenuhnya diringkas oleh dua field yang sudah
+ada di disk** — `file_match` true vs false. Bukan oleh analisis baru, bukan oleh eksekusi ulang.
+
+### Ke mana temuan kedua run ini masuk (NOL entri baru)
+
+- **LV-01** — bukti penguat ketujuh (13658: predikat crash-vs-tidak-crash, dan ia **sudah**
+  membangun skenario `my_prog` yang membedakan lalu membuang hasilnya) dan kedelapan
+  (11179: K4 menggigit walau predikatnya berbasis nilai).
+- **LV-13(b)** — titik data ketiga: `evidence` 13658 menyebut `ManagementUtility.__init__`
+  (~baris 123) untuk panggilan yang ada di `execute()` baris 347 — meleset ~220 baris,
+  terbesar sejauh ini, dan sekali lagi **tidak merugikan** (3 dari 3).
+- **LV-14** — bukti penguat keempat (13658: case pertama di mana sinyal harness sendiri
+  akan menandai lulus-palsu; usul sub-item berongkos nol) dan kelima (11179: batas (a) di
+  sisi **false positive**, melengkapi batas false-negative dari 11039).
+
+---
+
+## Catatan penutup komparasi 13658 vs 11179 (bot-01, 2026-07-20)
+
+1. **Vonis atas kandidat "detektor lulus-palsu" (`resolved=true` ∧ `file_match=false`):
+   BUKAN entri baru — ia bagian dari LV-14, dan bentuknya adalah STATE DASHBOARD.** Tiga
+   alasan, berurut dari yang paling mengikat:
+   (i) **Aturan main #4.** Mekanismenya — *harness sudah memegang perbandingan terhadap gold,
+   sudah menuliskannya, dan tidak ada satu konsumen pun* — adalah **persis** diagnosa
+   akar-harness LV-14 butir 2, kata per kata. Yang berbeda hanya field-nya (`file_match` vs
+   `gold_only_symbols`) dan ongkosnya, bukan mekanismenya.
+   (ii) **Bedanya dengan LV-14(a) adalah ongkos, dan itu argumen untuk MENDAHULUKAN, bukan
+   untuk MEMISAHKAN.** LV-14(a) menuntut komputasi baru; ini nol. Karena itu ia dicatat
+   sebagai **sub-item (a0)** di dalam LV-14: munculkan `resolved` + `file_match` berdampingan
+   sebagai state dashboard, sejajar dengan ANOMALY yang sudah ada untuk kebalikannya
+   (*product FAIL tapi `resolved=true`*). Nama yang diusulkan: **`OFF-GOLD`**.
+   (iii) **Ia bukan detektor lulus-palsu, dan menamainya begitu akan menanam overclaim.**
+   `file_match=false` berarti *"patch mendarat di file lain"* — bukan *"patch salah"*. Fix
+   yang benar di file berbeda sepenuhnya mungkin, dan sebaliknya **seluruh empat lulus-palsu
+   lain di korpus (12915, 12286, dan setiap divergensi isi-hunk) ber-`file_match: true`** —
+   yaitu detektor ini **tidak akan menangkap satu pun dari mereka**. Recall-nya rendah secara
+   struktural. Yang sah diklaim: ia **sinyal berongkos nol dengan presisi yang belum diukur**,
+   dan di korpus ini 1 dari 1 kemunculannya memang lulus-palsu. n=1 untuk presisi.
+2. **Vonis atas kandidat kelas "lolos karena menghafal nilai fixture": KELASNYA TIDAK ADA
+   di case ini — premisnya terbantah eksperimen.** Konstanta `"django-admin"` bukan sebab
+   kelulusan; `prog='ZZZ-NGAWUR'` juga lolos. Yang sebenarnya terjadi adalah **F2P resmi yang
+   daya bedanya hanya crash-vs-tidak-crash**, padahal docstring-nya mengklaim menguji asal
+   program name. Itu **batas metodologi** — instansi kedua dari Catatan penutup 12915 butir 1
+   — dan **bukan** varian LV-01 (usulan LV-01 adalah *perketat repro*; tidak ada versi dari
+   usulan itu yang bisa menjangkau test suite SWE-bench), **bukan** mekanisme baru.
+   **Yang BARU dan layak dinaikkan bukan kelasnya, melainkan kelas buktinya:** di 12915 batas
+   metodologi ditegakkan lewat **pembacaan** dua diff; di 13658 ia ditegakkan lewat
+   **eksperimen sabotase yang bisa diulang siapa pun** — pasang konstanta ngawur, jalankan F2P,
+   lihat OK. Itu teknik yang bisa dipakai ulang untuk **mengukur** daya beda F2P mana pun, dan
+   dicatat di sini sebagai metode, bukan sebagai lever.
+   *Contoh hipotetis yang dibawa dari autopsi 11179 (fix disempitkan ke `app_label ==
+   'repro_app'` akan lolos repro karena repro cuma punya satu app) adalah hal yang BERBEDA
+   dan tetap **LV-01 + K4**: di sana yang tertipu adalah repro buatan model. Di 13658 yang
+   tertipu adalah **test resmi**. Jangan digabung — sumber kelonggarannya beda dan, seperti
+   sudah dicatat di 12915 butir 2, **konsekuensinya beda**: yang satu masih punya lapis
+   berikutnya yang bisa melihat, yang satu tidak.*
+3. **Sinyal jenuh: konfirmasi keenam, dan kali ini di autopsi yang paling menjanjikan.**
+   13658 dibawa ke meja sebagai *lulus palsu* — kategori yang belum pernah diautopsi langsung
+   — dan tetap menghasilkan **nol mekanisme baru**: seluruh temuannya mendarat di LV-01,
+   LV-13(b), dan LV-14. Pembacaan yang paling jujur tidak berubah dari catatan penutup 12286
+   butir 3, hanya menguat: **nilai marjinal autopsi berikutnya sekarang jelas lebih rendah
+   daripada nilai memasang LV-09 + LV-10(a) + LV-05(b), dan — baru dari batch ini —
+   LV-14(a0), yang ongkosnya nol.**
+4. **Satu hal yang case ini ubah soal prioritas LV-14.** Baris Prioritas LV-14 berbunyi
+   *"rendah sebagai lever, sedang sebagai instrumentasi"*, dengan alasan antara lain bahwa
+   biayanya *"bukan di run ini, melainkan di ketidaktahuan yang menumpuk lintas papan skor"*.
+   13658 mengubah itu dari argumen menjadi **angka**: ketidaktahuan itu kini punya satu
+   anggota yang teridentifikasi, dan biaya untuk berhenti tidak-tahu tentangnya adalah
+   **nol** (field-nya sudah tertulis). Rekomendasi: pasang **(a0) lebih dulu dan terpisah**
+   dari (a) — ia tidak menunggu spec apa pun.
+5. **Akar-model vs akar-harness, jujur.** *13658:* akar-model pada patch yang memperbaiki
+   gejala alih-alih kontrak, dan pada repro yang membuang skenario pembeda yang sudah ia
+   bangun sendiri. **Tetapi** — sama seperti catatan adil di LV-14 untuk 12915 dan 12286 —
+   **tak satu pun alat ukur menanyakannya**: repro tidak, F2P tidak, 181 P2P tidak. Akar-harness
+   di sini bukan pada vonisnya (yang sah menurut definisinya) melainkan pada **kebutaan papan
+   skor terhadap sinyal yang sudah ia miliki sendiri**. *11179:* nyaris tidak ada yang bisa
+   dikeluhkan pada run-nya — 5 turn, 1 attempt, patch setara gold; yang tersisa hanyalah bahwa
+   hijaunya, sekali lagi, tidak membuktikan apa pun tentang gate.
+
+---
+
 ## Tabel frekuensi kelas kegagalan (per 2026-07-20)
 
 **Section ini BOLEH diperbarui** — beda dari entri lever yang append-only. Setiap pembaruan
@@ -2081,6 +2389,88 @@ tetapi ia menggeser dua hal:
    diminta. Ini belum dinaikkan jadi usulan resmi di LV-01 (butuh spec, dan aturan main #6
    melarang mengubah kontrak berdasarkan pengamatan yang belum diuji); dicatat di sini
    sebagai arah yang paling didukung data.
+
+### Pembaruan bertanggal 2026-07-20 (bot-01, sesi kedua) — setelah 13658 dan 11179
+
+**Apa yang berubah pada denominator.** Sampel Tabel A naik dari **23 → 24 case**: `django-11179`
+adalah case dengan repro qualified yang belum pernah masuk hitungan. `django-13658` **sudah**
+terhitung di sampel 23 (ia ada di daftar K1 dan K5), jadi ia **tidak** menambah denominator —
+yang bertambah dari 13658 hanyalah bukti kualitatif di LV-01/LV-13/LV-14, bukan angka.
+Sampel `f-dev` naik dari **12 → 13 run** (11179 masuk).
+
+**Klasifikasi 11179** (dibaca manual dari `r-dev--django__django-11179--r1/files/repro.py`,
+metode sama dengan sampel 23):
+
+- **K1 — TIDAK.** Sisi PASS menuntut pengamatan positif (`if obj.pk is None: PASS`), bukan
+  ketiadaan gejala. **K1-ketat — TIDAK** (`except` membelokkan crash ke `REPRO_STATUS: FAIL`).
+- **K2 — TIDAK**, dengan catatan yang wajib disebut supaya tidak menyesatkan: seluruh **cabang
+  vonis** mencetak status, tetapi setup di level modul (`settings.configure`,
+  `schema_editor.create_model`) berada **di luar** `try`, sehingga crash di sana tidak
+  menghasilkan baris `REPRO_STATUS` sama sekali. Dihitung TIDAK karena K2 mengukur *cabang*,
+  konsisten dengan penilaian 23 file sebelumnya.
+- **K3 — TIDAK** (nol `pipe_runtime`; in-process murni).
+- **K4 — YA.** Nol kontrol positif; contoh konkretnya ditulis sebagai bukti penguat kedelapan
+  di LV-01 (`instance.pk = None` + `return 0, {}` tanpa `delete_batch` akan lolos).
+- **K5 — TIDAK.** Vonisnya perbandingan nilai (`obj.pk is None`), bukan substring dan bukan
+  "tidak melempar exception".
+
+**Hitungan K1–K5 yang diperbarui (denominator 24 case, satu repro qualified per case):**
+
+- **K1:** **10 dari 24** (turun proporsinya dari 10/23; daftar case tidak berubah).
+- **K1-ketat:** **3 dari 24** — 11039, 11910, 12286. Daftar tidak berubah; **13%**.
+- **K2:** **8 dari 24**. Daftar tidak berubah.
+- **K3:** **4 dari 24**. Daftar tidak berubah.
+- **K4:** **20 dari 24** — naik satu (11179). Tetap **kriteria dengan prevalensi tertinggi**,
+  kini **83%**. Empat yang punya kontrol tetap 10914, 11422 r44, 13768 r4, 14017.
+- **K5:** **12 dari 24**. Daftar tidak berubah.
+- **Irisan K4 ∧ K5:** **10 dari 24**. Tidak berubah (11179 K4 tapi bukan K5).
+
+**Pembacaan yang berubah — kecil tapi searah.** 11179 adalah contoh pertama di sampel ini yang
+**bagus di K1, K3, dan K5 sekaligus namun tetap K4**. Itu memisahkan dua hal yang sebelumnya
+cenderung bergerak bersama: *kualitas predikat* (apa yang diperiksa) dan *bukti bahwa alat
+ukurnya menyala* (K4). Konsekuensinya untuk urutan pemasangan: butir 2 di section
+"Konsekuensi untuk urutan pemasangan" (di atas) **menguat** — kontrol positif tidak bisa
+didapat gratis dengan memperbaiki predikat, karena repro dengan predikat terbaik di sampel
+pun tidak punya.
+
+**Pembaruan Tabel C (LV-09) yang menyertainya.** `grep -c "pipe_runtime"` atas `console.log`:
+`f-dev--django__django-11179--r1` → **0**, dan `f-dev--django__django-13658--r1` → **0**
+(13658 sudah terdaftar di kelompok bersih; 11179 baru). Kelompok **repro beku bersih** karenanya
+menjadi **8 run, 8 case** (10914, 11039, 11099, **11179**, 12915, 13230, 13658, 14017), dengan
+**7 dari 8 `resolved=true`**. Kelompok terpapar tidak berubah (5 run, 3 case, 1 dari 5).
+**Confounder yang sudah ditulis di Tabel C tetap berlaku dan tidak boleh dilupakan** — rasio
+ini tidak boleh dibaca kausal.
+
+### Tabel D — `resolved=true` dengan `file_match=false` (metrik baru, 2026-07-20)
+
+**Metode dan denominator, supaya bisa direproduksi persis.** Disweep seluruh
+`artifacts/f-dev/*/` yang punya **`swebench_eval.json` DAN `gold_eval.json`**; dibaca
+`resolved` dari yang pertama dan `file_match` / `line_overlap` dari yang kedua.
+
+- **Denominator: 13 run `f-dev`, di antaranya 12 punya kedua file.** Yang tidak punya:
+  `f-dev--django__django-11910--r1` (run itu `pass_l1=false`, tidak pernah sampai eval).
+- **`resolved=true`: 8 dari 12.** (10914, 11039, 11099, 11179, 12286, 12915, 13230, 13658.)
+- **`resolved=true` DAN `file_match=false`: 1 dari 12 run** — **`f-dev--django__django-13658--r1`**,
+  satu-satunya. Dinyatakan atas denominator yang lebih tajam: **1 dari 8 run `resolved=true`**.
+- **`resolved=true` DAN `line_overlap=false`: 0 dari 12.** (Di 13658 `line_overlap` adalah
+  `null`, bukan `false` — konsekuensi wajar dari `file_match=false`: tidak ada file yang sama
+  untuk dibandingkan barisnya. **Detektor apa pun yang dibangun di atas metrik ini wajib
+  memperlakukan `null` sebagai kasus tersendiri, bukan sebagai `false` dan bukan sebagai
+  "tidak ada masalah"** — kalau `null` dibulatkan ke salah satunya, satu-satunya hit di korpus
+  ini hilang.)
+- **Empat run `resolved=false`** semuanya `file_match=true` + `line_overlap=true`
+  (13660 r1/r2/r3, 14017) — yaitu **mendarat tepat di situs gold dan tetap gagal**. Ini
+  pembanding penting: kedua field ini tidak berkorelasi dengan hasil L2 ke arah mana pun di
+  korpus ini. **Jangan** dibaca sebagai prediktor.
+
+**Peringatan yang wajib menyertai angka ini, dan ia lebih besar daripada angkanya.** Metrik ini
+punya **recall struktural yang rendah**: seluruh lulus-palsu lain yang sudah tercatat di
+katalog (12915 dan 12286, dua-duanya divergensi isi hunk di file yang benar) ber-`file_match:
+true` dan **tidak akan tersentuh sama sekali**. Jadi "1 dari 12" adalah hitungan **kemunculan
+sinyal**, **bukan** perkiraan frekuensi lulus-palsu di korpus — yang terakhir itu masih
+termasuk hal yang sengaja dibiarkan kosong di bawah. Presisinya di korpus ini 1 dari 1, yaitu
+**n=1**. Nilai metrik ini seluruhnya terletak pada **ongkosnya yang nol**, bukan pada
+cakupannya.
 
 **Yang TIDAK bisa diukur andal, dan sengaja dibiarkan kosong:** apakah repro longgar
 **menyebabkan** patch yang tidak setara gold. Untuk menjawabnya perlu `gold_only_symbols`
