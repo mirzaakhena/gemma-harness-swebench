@@ -116,7 +116,86 @@ Lever L (2026-07-19, dua case bandel; detail vault R-dev Log):
   (kandidat: selector fresh-context / sinyal pembeda intra-pool / parkir
   kelas framing).
 
+## Fase FIX — stage baru (2026-07-20), kampanye `f-dev`
+
+Arsitektur (spec `docs/superpowers/specs/2026-07-20-fix-stage-design.md`,
+keputusan Mirza): **harness-driven iterasi kandidat** — harness mengambil
+shortlist `candidates.md` dari run L qualified (urutan tulis, tanpa
+prioritas) dan mencoba SATU kandidat per attempt; tiap attempt = sesi
+Gemma **fresh context** + container kerja BARU (pristine by construction).
+Model TIDAK pernah melihat kandidat lain (anti context-pollution — akar
+kegagalan pemilihan lapisan di fase L diambil alih harness).
+
+- **Seed per attempt**: problem statement + `repro.md` verbatim + **isi
+  `repro.py`** (pelajaran P21: model melihat lembar ujiannya) + kandidat
+  AKTIF saja.
+- **Bukti-dulu**: DONE ditolak sampai driver MENYAKSIKAN `repro.py`
+  mencetak `REPRO_STATUS: PASS` (standar token baris-eksak `exact_status`).
+- **Pre-check DONE = vonis dunia segar**: harness `git diff` container
+  kerja → apply ke container SEGAR → `repro.py` BEKU 2× (pair) → keduanya
+  PASS. State bengkel tak pernah dipercaya; repro vonis selalu salinan
+  beku artefak fase R.
+- **Pagar edit mekanis**: diff sah = hanya menyentuh file kandidat aktif
+  (prompt memakai scope positif, enforcement di evaluator).
+- **Standar tunggal**: `fix_patch_runner.evaluate_patch_in_fresh_world`
+  adalah SATU definisi "patch sah + flip" — dipakai pre-check driver DAN
+  gate. Vonis milik harness: driver tak menulis verdict, `run_fix_gates`
+  yang menulis (`flip | no-flip | timeout | abort`).
+- **Realm dev (gold)**: `eval/fix_gold_eval.py` — file_match + line_overlap
+  advisory, penangkap false-PASS. TIDAK pernah diumpankan ke loop model.
+
+Modul: `harness/stages/fix_gates.py` (pure) · `fix_patch_runner.py`
+(docker) · `run_fix_gemma.py` (driver) · `run_fix_gates.py` (gate) ·
+`fix_prompt.md` (kontrak ultra-slim) · `eval/fix_gold_eval.py` ·
+`harness/make_fix_campaign.py` (13 case populasi awal).
+
+**Invokasi WAJIB `python -m` dari root `main\`** (bukan
+`python harness/stages/<x>.py` — docstring modul masih menulis pola lama):
+
+```
+python -m harness.make_fix_campaign
+python -m harness.stages.run_fix_gemma --case <id> --rerun <N> --image <img> \
+    --input-localize-files <dir files run L qualified> \
+    --input-repro-files <dir files run R qualified> \
+    --problem-file cases/problems/<id>.txt
+python -m harness.stages.run_fix_gates --case <id> --rerun <N> --image <img> \
+    --input-repro-files <dir files run R qualified>
+python -m eval.fix_gold_eval --case <id> --rerun <N> --gold cases/gold/<id>/gold.patch
+```
+
+Status: **smoke run pertama TUNTAS** — `f-dev--django__django-13660--r1`
+menang di kandidat #1 (`shell.py`, 8 turn), gate `flip`, gold eval
+file_match+overlap TRUE (fix gold-equivalent: `exec(cmd)` →
+`exec(cmd, {})`). Riwayat per-run: vault `F-dev Log — fase FIX`.
+
 UI viewer (`python ui\server.py --root ..\artifacts --port 8766`): tabs
-per fase (REPRODUCE pertama), sort desc berdasar STARTED datetime (run
-terbaru case mana pun di halaman 1 — nomor rerun per-case), paging,
-kolom ikon/durasi/turns. Biasanya hidup sebagai proses detached.
+per fase (REPRODUCE → LOCALIZE → FIX; stage pipeline selalu tampil walau
+belum ada run), sort desc berdasar STARTED datetime (run terbaru case mana
+pun di halaman 1 — nomor rerun per-case), paging, kolom ikon/durasi/turns,
+panel infografik PASS/FAIL per stage. Biasanya hidup sebagai proses
+detached.
+
+**KNOWN ISSUE dashboard (2026-07-20):** `case_status()` (ui/server.py
+~baris 341) hanya memetakan verdict `"pass"` → PASS, sehingga verdict FIX
+`"flip"` jatuh ke default FAIL (baris 363) — panel menampilkan FAIL padahal
+baris tabel menampilkan `✅ flip` (`verdict_icon` sudah mengenal flip).
+Perbaikannya menunggu keputusan arsitektur 2-lapisan di bawah.
+
+## Aturan status 2-lapisan (keputusan Mirza 2026-07-20) — BELUM diimplementasi
+
+Status PASS di dashboard = **AND dua lapisan judgment**:
+
+| Lapisan | Isi | Field |
+|---|---|---|
+| L1 — product harness (gold-blind) | FIX: repro flip | `pass_l1` |
+| L2 — development (SWE-bench checker ASLI) | resolved? via FAIL_TO_PASS / PASS_TO_PASS resmi | `pass_l2` |
+
+- Product FAIL → FAIL. Product PASS + L2 FAIL → **tetap FAIL**. PASS hanya
+  bila keduanya lulus.
+- **swe_bench checker asli dibangun sebagai SATU modul** (SRP: satu alasan
+  berubah), hidup di realm dev (`eval/`), dipanggil dev-eval FIX sekarang
+  (→ `pass_l2`) dan **VERIFY nanti sebagai caller tipis**. TIDAK ditanam
+  inline di driver/gate FIX — product FIX tetap gold-blind (yardstick repro
+  flip), swe_bench = pengukuran dev, tak pernah diumpan balik ke loop model.
+- Preseden pola: fase LOCALIZE (`eval/localize_gold_eval.py` memakai gold di
+  development; product LOCALIZE tetap gold-blind dgn kriteria SHORTLIST).
