@@ -9,6 +9,19 @@ komponen teruji dari `workspace-shared\smartm2m-bench`).
   UI-driven; tiap fase divalidasi dengan komparasi frontier vs Gemma pada case nyata
   tanpa hardcode case.
 
+### Baca ini dulu kalau kamu menerima handoff
+
+| Dokumen | Isi |
+|---|---|
+| [`docs/sop-rlfv-case-run.md`](docs/sop-rlfv-case-run.md) | **SOP menjalankan & membedah case.** Prosedur eksekusi, aturan GPU, protokol pemeriksaan wajib (lulus palsu, kualitas repro, eksperimen sabotase), disiplin epistemik, anti-pattern. Mulai dari sini. |
+| [`docs/prinsip-pengembangan.md`](docs/prinsip-pengembangan.md) | Arah & keputusan Mirza; definisi "qualified setara"; aturan bahasa; higiene prompt. |
+| [`docs/katalog-lever.md`](docs/katalog-lever.md) | Backlog perbaikan harness ber-ID (LV-01…LV-14) + tabel frekuensi kelas kegagalan. **Semua berstatus BELUM DITERAPKAN** — rekomendasi, bukan instruksi kerja. |
+| [`docs/koreksi-hipotesis.md`](docs/koreksi-hipotesis.md) | Klaim yang pernah kami pegang lalu dibantah (KH-01…KH-10), beserta buktinya. Baca supaya tidak mengulang klaim yang sudah mati. |
+
+**Peringatan yang paling sering salah dibaca:** `resolved=true` dari `swebench_checker`
+berarti "tidak ada test resmi yang gagal", **bukan** "patch benar". Sudah terbukti tiga
+kali berbeda (12915, 13658, 12286). Lihat SOP §4.
+
 ## Struktur dunia (satu folder = satu dunia)
 
 ```
