@@ -53,6 +53,21 @@ def test_build_eval_script_shape():
     assert "foo" in script.split(START_TEST_OUTPUT)[1]  # direktif test
 
 
+def test_build_eval_script_guards_checkout_and_test_patch_apply():
+    """checkout base_commit dan apply test_patch tanpa guard bisa gagal
+    diam-diam (file test stale/renamed, base_commit tak cocok) lalu lolos
+    ke echo START_TEST_OUTPUT — grading salah baca log sbg hasil valid.
+    Guard pakai marker RESMI swebench (bad_codes di get_logs_eval) supaya
+    grade_log() balik patch_successfully_applied=False, bukan set -e (yang
+    akan gugurkan END_TEST_OUTPUT saat test biasa gagal — P2P regressions
+    butuh marker itu tetap muncul)."""
+    from swebench.harness.constants import APPLY_PATCH_FAIL, RESET_FAILED
+    script = build_eval_script(SPEC)
+    assert "set -e" not in script  # test biasa gagal harus tetap emit END marker
+    assert RESET_FAILED in script and "exit 3" in script
+    assert APPLY_PATCH_FAIL in script and "exit 4" in script
+
+
 def test_grade_log_resolved_true(tmp_path):
     log = tmp_path / "out.log"
     log.write_text(_log("test_a (foo.tests.FooTest) ... ok\n"

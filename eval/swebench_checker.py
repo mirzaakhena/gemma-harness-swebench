@@ -37,8 +37,10 @@ def build_eval_script(spec: dict) -> str:
     test F2P∪P2P ber-marker (pola inspect_evals, terbukti utk image Epoch).
     Gagal apply fix → exit 2 tanpa marker (grading: applied=False)."""
     ensure_resource_shim()
-    from swebench.harness.constants import (END_TEST_OUTPUT,
+    from swebench.harness.constants import (APPLY_PATCH_FAIL,
+                                            END_TEST_OUTPUT,
                                             MAP_REPO_VERSION_TO_SPECS,
+                                            RESET_FAILED,
                                             START_TEST_OUTPUT)
     from swebench.harness.test_spec.python import get_test_directives
     specs = MAP_REPO_VERSION_TO_SPECS[spec["repo"]][spec["version"]]
@@ -62,8 +64,8 @@ def build_eval_script(spec: dict) -> str:
         {specs.get("install", "")}
         git apply --check /patch-in/fix.diff || {{ echo FIX_APPLY_FAILED; exit 2; }}
         git apply /patch-in/fix.diff
-        git checkout {spec["base_commit"]} {" ".join(tp_files)}
-        git apply /patch-in/test_patch.diff
+        git checkout {spec["base_commit"]} {" ".join(tp_files)} || {{ echo '{RESET_FAILED}'; exit 3; }}
+        git apply /patch-in/test_patch.diff || {{ echo '{APPLY_PATCH_FAIL}'; exit 4; }}
         set +x
         echo '{START_TEST_OUTPUT}'
         {test_cmd} {" ".join(directives)}
