@@ -318,10 +318,61 @@ def _wrong_file_reasons(run_dir: Path) -> list[str]:
             + " vs gold: " + (", ".join(str(f) for f in gold) or "?")]
 
 
+def read_swebench_eval(run_dir: Path) -> dict | None:
+    """swebench_eval.json (checker L2 realm dev) — None bila absen/rusak."""
+    p = Path(run_dir) / "swebench_eval.json"
+    if not p.is_file():
+        return None
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def _fix_verify_status(vtext: str, vj: dict, run_dir: Path) -> dict | None:
+    """Status 2-lapisan kampanye f-* (spec checker L2 §6). None -> alur lama.
+
+    PASS = pass_l1 (product, flip) AND resolved (SWE-bench checker).
+    Product-pass tanpa eval = WAIT (bukan FAIL palsu). Product FAIL tapi
+    resolved=true = ANOMALY (kontradiksi sinyal, flag menonjol)."""
+    sw = read_swebench_eval(run_dir)
+    resolved = sw.get("resolved") if sw else None
+    product_pass = vtext == "flip" and vj.get("pass_l1") is True
+    if product_pass and resolved is True:
+        return {"status": "PASS", "category": "pass (L1+L2)", "reasons": []}
+    if product_pass and resolved is False:
+        reasons = []
+        if sw.get("f2p_failed"):
+            reasons.append("F2P gagal: " + ", ".join(
+                str(t) for t in sw["f2p_failed"][:5]))
+        if sw.get("p2p_failed"):
+            reasons.append("regresi P2P: " + ", ".join(
+                str(t) for t in sw["p2p_failed"][:5]))
+        if not sw.get("patch_successfully_applied", True):
+            reasons.append("patch/test_patch gagal apply di dunia VERIFY")
+        return {"status": "FAIL", "category": "verify-fail",
+                "reasons": reasons or ["resolved=false tanpa detail"]}
+    if product_pass:
+        return {"status": "WAIT", "category": "product-pass, menunggu VERIFY",
+                "reasons": ["swebench_eval.json belum ada — jalankan "
+                            "python -m eval.swebench_checker"]}
+    if resolved is True:
+        return {"status": "ANOMALY",
+                "category": "anomaly: product FAIL tapi SWE-bench resolved",
+                "reasons": [f"verdict product: {vtext} — kontradiksi sinyal, "
+                            "autopsi manual"]}
+    return None  # product fail biasa -> alur lama (exit_fails dst.)
+
+
 def case_status(campaign: str, run_dir: Path) -> dict:
     """Status qualified SATU run sebuah case (lihat definisi di atas).
 
-    Return {"status": "PASS"|"FAIL"|"?", "category": str, "reasons": [str]}.
+    Return {"status": "PASS"|"FAIL"|"WAIT"|"ANOMALY"|"?", "category": str,
+    "reasons": [str]}. Kampanye "f-*" pakai status 2-lapisan (spec §6):
+    PASS = pass_l1 (flip) DAN swebench_eval.resolved; product-pass tanpa
+    swebench_eval.json -> WAIT (bukan FAIL palsu); product FAIL tapi
+    resolved=true -> ANOMALY (kontradiksi sinyal).
     JUJUR: alasan hanya dari artefak terekam; tanpa detail -> kategori saja.
     """
     run_dir = Path(run_dir)
@@ -337,6 +388,11 @@ def case_status(campaign: str, run_dir: Path) -> dict:
 
     vtext, icon = index_row_verdict(phases, vj.get("wall"))
     vtext, icon = merge_gold_verdict(vtext, icon, campaign, run_dir)
+
+    if campaign.startswith("f-"):
+        two = _fix_verify_status(vtext, vj, run_dir)
+        if two is not None:
+            return two
 
     if vtext == "pass":
         # l-*: merge_gold_verdict sudah menjamin qualified=true di sini
@@ -396,6 +452,8 @@ def stage_summary(campaign_dir: Path, campaign: str,
     return {"total": len(items),
             "pass": sum(1 for i in items if i["status"] == "PASS"),
             "fail": sum(1 for i in items if i["status"] == "FAIL"),
+            "wait": sum(1 for i in items if i["status"] == "WAIT"),
+            "anomaly": sum(1 for i in items if i["status"] == "ANOMALY"),
             "unknown": sum(1 for i in items if i["status"] == "?"),
             "items": items}
 
@@ -405,18 +463,24 @@ def _pct(x: int, n: int) -> str:
 
 
 def render_stage_summary(s: dict) -> str:
-    """Panel infografik: angka+persen, bar bertumpuk CSS, rincian FAIL
-    collapsible (details/summary). Tanpa case -> string kosong."""
+    """Panel infografik: angka+persen, bar bertumpuk CSS, rincian
+    FAIL/ANOMALY/? dan daftar WAIT (menunggu VERIFY) collapsible
+    (details/summary). Tanpa case -> string kosong."""
     n = s["total"]
     if n == 0:
         return ""
     head = (f"<b>{n} cases</b> &middot; "
             f"PASS {s['pass']} ({_pct(s['pass'], n)}) &middot; "
             f"FAIL {s['fail']} ({_pct(s['fail'], n)})")
+    if s.get("wait"):
+        head += f" &middot; ⏳ WAIT {s['wait']} ({_pct(s['wait'], n)})"
+    if s.get("anomaly"):
+        head += f" &middot; ⚠️ ANOMALY {s['anomaly']} ({_pct(s['anomaly'], n)})"
     if s["unknown"]:
         head += f" &middot; ? {s['unknown']} ({_pct(s['unknown'], n)})"
     segs = []
     for cnt, cls in ((s["pass"], "sp"), (s["fail"], "sf"),
+                     (s.get("wait", 0), "sw"), (s.get("anomaly", 0), "sa"),
                      (s["unknown"], "su")):
         if cnt:
             segs.append(f"<span class='{cls}' "
@@ -426,7 +490,7 @@ def render_stage_summary(s: dict) -> str:
              "FAIL = tak pernah qualified, alasan dari run terbaru</p>",
              "<div class='sbar'>", "".join(segs), "</div>"]
 
-    problems = [i for i in s["items"] if i["status"] in ("FAIL", "?")]
+    problems = [i for i in s["items"] if i["status"] in ("FAIL", "ANOMALY", "?")]
     if problems:
         rows = []
         for i in problems:
@@ -442,6 +506,16 @@ def render_stage_summary(s: dict) -> str:
                      "</summary><table><tr><th>case</th><th>run</th>"
                      "<th>mulai</th><th>kategori</th><th>alasan</th></tr>"
                      + "".join(rows) + "</table></details>")
+    waiting = [i for i in s["items"] if i["status"] == "WAIT"]
+    if waiting:
+        rows = [f"<tr><td>{html.escape(i['case'])}</td>"
+                f"<td class='dim'>{html.escape(i['rerun'])}</td>"
+                f"<td class='dim'>{html.escape(i.get('started', '?'))}</td>"
+                "</tr>" for i in waiting]
+        parts.append(f"<details><summary>menunggu VERIFY ({len(waiting)})"
+                     "</summary><table><tr><th>case</th><th>run</th>"
+                     "<th>mulai</th></tr>" + "".join(rows)
+                     + "</table></details>")
     passes = [i for i in s["items"] if i["status"] == "PASS"]
     if passes:
         rows = [f"<tr><td>{html.escape(i['case'])}</td>"
@@ -540,6 +614,7 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
 .sbar{display:flex;height:10px;background:#333;border-radius:3px;
       overflow:hidden;margin:.45em 0}
 .sp{background:#2e7d32}.sf{background:#b03030}.su{background:#666}
+.sw{background:#8a6d1a}.sa{background:#7b1fa2}
 .summary details{margin-top:.35em}
 .summary summary{cursor:pointer;color:#7bf}
 </style>"""
