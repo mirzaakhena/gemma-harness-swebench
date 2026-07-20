@@ -96,6 +96,12 @@ def run_turns(run_dir: Path) -> int | None:
 _CAMPAIGN_LABELS = {"r-dev": "REPRODUCE", "l-dev": "LOCALIZE",
                     "f-dev": "FIX", "v-dev": "VERIFY"}
 
+# Stage pipeline yang tabnya selalu tampil di dashboard, dalam urutan
+# pipeline REPRODUCE -> LOCALIZE -> FIX (permintaan Mirza 2026-07-20:
+# tab FIX tampil walau kampanye f-dev belum punya run — kosong dulu).
+# v-dev (VERIFY) menyusul setelah stage-nya didesain.
+_PIPELINE_STAGES = ("r-dev", "l-dev", "f-dev")
+
 
 def campaign_label(name: str) -> str:
     """Label tab manusiawi (masukan Mirza); kampanye tak dikenal tampil
@@ -103,10 +109,18 @@ def campaign_label(name: str) -> str:
     return _CAMPAIGN_LABELS.get(name, name)
 
 
+def with_stage_tabs(campaigns: list[str]) -> list[str]:
+    """Tambahkan stage pipeline yang belum punya direktori artifacts —
+    tabnya tetap tampil (kosong) supaya pipeline terlihat utuh."""
+    return list(campaigns) + [s for s in _PIPELINE_STAGES
+                              if s not in campaigns]
+
+
 def order_campaigns(campaigns: list[str]) -> list[str]:
-    """r-dev (REPRODUCE) selalu tab pertama (permintaan Mirza)."""
-    return ([c for c in campaigns if c == "r-dev"]
-            + [c for c in campaigns if c != "r-dev"])
+    """Urutan tab = urutan pipeline (r-dev REPRODUCE selalu pertama,
+    permintaan Mirza); kampanye di luar pipeline menyusul terurut nama."""
+    return ([s for s in _PIPELINE_STAGES if s in campaigns]
+            + [c for c in campaigns if c not in _PIPELINE_STAGES])
 
 
 def run_sort_key(run_id: str) -> tuple:
@@ -574,7 +588,7 @@ PAGE_SIZE = 15
 def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
     parts = ["<h1>gemma-harness log viewer</h1>",
              f"<p class='dim'>root: {html.escape(str(root))}</p>"]
-    campaigns = order_campaigns(list_campaigns(root))
+    campaigns = order_campaigns(with_stage_tabs(list_campaigns(root)))
     if not campaigns:
         parts.append("<p>(belum ada campaign)</p>")
         return _page("log viewer", "".join(parts))

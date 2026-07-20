@@ -90,6 +90,7 @@ def test_campaign_label_maps_known_names():
     from ui.server import campaign_label
     assert campaign_label("r-dev") == "REPRODUCE"
     assert campaign_label("l-dev") == "LOCALIZE"
+    assert campaign_label("f-dev") == "FIX"
     assert campaign_label("x-camp") == "x-camp"
 
 
@@ -97,6 +98,60 @@ def test_order_campaigns_puts_rdev_first():
     from ui.server import order_campaigns
     assert order_campaigns(["l-dev", "r-dev"]) == ["r-dev", "l-dev"]
     assert order_campaigns(["a", "b"]) == ["a", "b"]
+
+
+# --- tab FIX (kampanye f-dev, permintaan Mirza 2026-07-20) ------------------
+
+def test_order_campaigns_pipeline_order_r_l_f():
+    from ui.server import order_campaigns
+    # urutan tab = urutan pipeline REPRODUCE -> LOCALIZE -> FIX
+    assert order_campaigns(["f-dev", "l-dev", "r-dev"]) == [
+        "r-dev", "l-dev", "f-dev"]
+    # kampanye tak dikenal menyusul setelah stage pipeline
+    assert order_campaigns(["x-camp", "f-dev", "r-dev"]) == [
+        "r-dev", "f-dev", "x-camp"]
+
+
+def test_with_stage_tabs_adds_missing_pipeline_stages():
+    from ui.server import with_stage_tabs
+    # f-dev belum punya direktori artifacts -> tab tetap ada (kosong)
+    assert set(with_stage_tabs(["r-dev", "l-dev"])) >= {
+        "r-dev", "l-dev", "f-dev"}
+    # tanpa duplikat bila sudah ada
+    tabs = with_stage_tabs(["f-dev", "r-dev"])
+    assert tabs.count("f-dev") == 1 and tabs.count("r-dev") == 1
+
+
+def test_page_index_shows_fix_tab_without_fdev_dir(tmp_path):
+    from ui.server import page_index
+    (tmp_path / "r-dev" / "r-dev--case-a--r1").mkdir(parents=True)
+    out = page_index(tmp_path)
+    assert ">FIX</a>" in out
+    assert "/?tab=f-dev" in out
+
+
+def test_page_index_fix_tab_empty_is_safe(tmp_path):
+    from ui.server import page_index
+    (tmp_path / "r-dev" / "r-dev--case-a--r1").mkdir(parents=True)
+    out = page_index(tmp_path, tab="f-dev")
+    assert "(belum ada run)" in out
+    assert "class='active' href='/?tab=f-dev'" in out
+    assert "cases" not in out  # tanpa run: tanpa panel ringkasan
+
+
+def test_page_index_fdev_runs_listed_under_fix_tab(tmp_path):
+    from ui.server import page_index
+    run = tmp_path / "f-dev" / "f-dev--django__django-11910--r1"
+    run.mkdir(parents=True)
+    (run / "verdict.json").write_text(json.dumps({
+        "phases": {"fix": {"verdict": "pass"}}, "wall": None,
+        "pass_l1": True, "started": "2026-07-20T09:00:00+07:00",
+        "finished": "2026-07-20T09:05:00+07:00"}), encoding="utf-8")
+    out = page_index(tmp_path, tab="f-dev")
+    assert "<td>django__django-11910</td>" in out   # kolom case
+    assert ">r1</a>" in out                         # kolom run ber-link
+    assert "2026-07-20 09:00" in out                # kolom mulai
+    assert "✅" in out                              # ikon pass
 
 
 # --- durasi run (permintaan Mirza 2026-07-19: tampil di dashboard) ----------
