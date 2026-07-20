@@ -89,6 +89,32 @@ yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan a
   `files/repro-first-fail.py` memeriksa `feed_gen.items[0]['comments']` langsung dari objek
   feed generator, tanpa monkeypatch dan tanpa `except` lebar, dan itu sudah exec-pair hijau.
   Bentuk yang lebih longgar lahir setelah penolakan judge (lihat bukti penguat di LV-05).
+- **Bukti penguat (case keempat — yardstick paling longgar di korpus sejauh ini) —
+  django-12915**, run `r-dev--django__django-12915--r2/files/repro.py` (temuan bot-01,
+  2026-07-20). Repro ini qualified (`verdict.json` pass, flip base FAIL → gold PASS) dan
+  dipakai fase FIX sampai full green, tetapi **tidak memuat satu pun assert atas nilai**:
+  - `async def send(message): pass` — **seluruh pesan ASGI dibuang**. Padahal justru di
+    pesan-pesan itulah jawabannya berada: F2P resmi `test_static_file_response` memeriksa
+    `response_start['status'] == 200`, empat header (`Content-Length`, `Content-Type`,
+    `Content-Disposition`, `Last-Modified`), dan `response_body['body'] == test_file_contents`.
+    Repro membuang semuanya lalu mencetak `Request handled successfully`.
+  - Vonis PASS-nya murni **"tidak ada exception yang lolos"** (`try: await handler(...)` →
+    `return "PASS"`). Jadi predikatnya bukan "sempit", melainkan **kosong** di sisi PASS —
+    satu langkah lebih jauh dari 13660/14017/11099/13230, yang setidaknya masih memeriksa
+    *sesuatu*.
+  - **Cabang `except Http404` gold tidak pernah dieksekusi.** Script membuat `test.txt`
+    lebih dulu sehingga `self.serve()` selalu sukses; jalur 404 tidak pernah disentuh —
+    padahal gold punya **dua** baris dan SWE-bench punya F2P khusus untuknya
+    (`test_get_async_response_not_found`). Repro menutupi 1 dari 2 baris gold.
+  - **Kontrol positifnya mati:** `mock_app` didefinisikan sebagai inner application tetapi
+    tidak pernah dieksekusi (`ASGIStaticFilesHandler` menangani `/static/...` sendiri dan
+    tidak pernah mendelegasikan ke `self.application`). Sama seperti catatan kontrol positif
+    di bukti 13230.
+  Tanda tangan sama: predikat proksi lebih sempit daripada kontrak yang dilanggar, dan
+  hijau karenanya tidak informatif. **Konsekuensi baru yang layak dicatat:** di case ini
+  yardstick yang kosong itu tetap menghasilkan `resolved=true` — jadi repro longgar bukan
+  hanya "tidak bisa membedakan"; ia juga tidak memberi tekanan apa pun ke arah patch yang
+  setara gold (lihat LV-14).
 - **Diagnosa:** dua lapis.
   - *Akar-model* pada pilihan fix-nya sendiri (`{}` vs `globals()`; early-return khusus
     `Exists`) — pemahaman semantik, dan terbukti muncul konsisten & independen di LOCALIZE
@@ -249,6 +275,46 @@ bukan tentang bug-nya, melainkan tentang mekanika harness.** Kelas-kelasnya di b
   yang diusulkan di (b) menyaring temuan judge berkategori `mechanics`. Di 13230 kategorinya
   `correctness`, jadi **(b) sebagaimana ditulis tidak akan menyelamatkan run ini.** Yang
   ternyata dibutuhkan adalah kewajiban bukti, bukan kategori aturan — lihat LV-13.
+- **Bukti penguat (case ketiga — dan ini yang paling telak: A/B nyaris terkontrol di dalam
+  SATU case) — django-12915**, `r-dev--django__django-12915--r1` vs `--r2`
+  (temuan bot-01, 2026-07-20). Dua run, case sama, model sama (`google/gemma-4-31B-it`),
+  driver sama, kontrak `slim` sama, dan **script yang dinilai judge secara struktural sama**:
+  in-process, `ASGIStaticFilesHandler(mock_app)`, scope ASGI palsu, loop asyncio, tangkap
+  `TypeError`. `diff r1/files/repro-first-fail.py r2/files/repro.py` hanya berbeda kosmetik
+  plus tiga hal yang tak ada hubungannya dengan aturan yang dikutip (nilai `ROOT_URLCONF`,
+  pembuatan `test.txt`, gaya `send_response`). Vonis judge-nya **berlawanan**:
+  - r1 (`console.log` baris 567–574): *"REVIEW: ISSUES ... the script runs the handler
+    in-process via `asyncio.run` instead of spawning a real ASGI server (e.g., using `daphne`
+    or `uvicorn`) as a child process"* + *"Contract rule 'use the runtime module provided at
+    /testbed/.pipe/pipe_runtime.py' violated"* → `done-deferred: judge review found issues`
+    (`events.jsonl` retry ke-3, msg_used=10).
+  - r2 (`console.log` baris 534): *"The script correctly identifies the missing
+    `get_response_async` ... It follows the user's reported traceback and uses a minimal
+    Django configuration to trigger the specific `TypeError`."* → lolos.
+  **Ongkos dari satu panggilan judge yang berbeda itu, dalam angka:** r1 = **26 turn, 11
+  attempt, 12 event retry, verdict `wrong-logic`** (`console.log` 2.119 baris); r2 = **10
+  turn, 2 attempt, 1 retry, verdict `pass`** (541 baris). **8 dari 12 retry r1 (67%) lahir
+  setelah penolakan judge**, dan **16 dari 26 turn (62%)** dijalani sesudahnya. Rangkaiannya
+  terbaca lurus di console: t11 cari `daphne` (tidak terpasang, exit 1), t12 cari `uvicorn`
+  (tidak terpasang, exit 1), t13 `pip list`, lalu model membangun server ASGI-nya sendiri
+  di atas `pipe_runtime` → 4× `app failed to become ready` (LV-06) → 4× `REPRO_STATUS: ERROR`
+  (LV-10) → flip gagal.
+- **Yang membuat bukti ini beda kualitasnya dari 13660/13230:** di dua case itu judge menolak
+  di **semua** run, jadi masih bisa dibaca sebagai "aturannya memang menjerat bentuk ini".
+  Di 12915 aturannya menjerat **sekali dan tidak di run berikutnya atas script yang sama** —
+  jadi yang terukur bukan cuma aturan yang terlalu luas, melainkan **non-determinisme judge
+  atas masukan yang praktis identik**, dan selisih hasilnya adalah selisih antara gagal
+  dan lolos. Presedensi vonis terbalik (cacat #2 di diagnosa) karenanya bukan risiko
+  teoretis: satu lemparan koin menentukan verdict fase.
+- **Catatan penting untuk desain (b) — ini kebalikan dari catatan 13230:** aturan yang
+  dikutip di 12915 adalah `app-runtime` + `pipe_runtime`, dua-duanya berkategori
+  **`mechanics`**, dan exec-pair hijau **sudah** disaksikan driver sebelum judge bicara
+  (2 run segar, dua-duanya `Caught expected bug: 'NoneType' object is not callable` +
+  `REPRO_STATUS: FAIL`, exit 0; checkpoint tersimpan di `console.log` baris 539). Jadi
+  **(b) sebagaimana ditulis akan menyelamatkan run ini persis seperti yang dirancang.**
+  Di 13230 (b) tidak menggigit karena kategorinya `correctness`. Kesimpulan gabungan:
+  (b) berguna dan sudah punya satu case tempat ia tepat sasaran, tetapi cakupannya memang
+  parsial — LV-13(a) tetap yang lebih luas.
 - **Diagnosa — akar-harness, hampir murni.** Dua cacat terpisah:
   1. **Pemicu aturan terlalu luas.** Teks di `harness/stages/reproduce_prompt.md`
      (`rule:app-runtime`) berbunyi *"When your scenario runs an application as a child
@@ -296,6 +362,17 @@ bukan tentang bug-nya, melainkan tentang mekanika harness.** Kelas-kelasnya di b
   `print('READY')` artifisial di baris pertama semata-mata agar `App.start()` mau lewat.
   Ini bukan kecerdikan model, ini gejala: model membangun kanal keluaran sendiri karena
   API tidak menyediakannya.
+- **Bukti penguat (case kedua, independen — kelas "`start()` gagal ready", 4×) —
+  django-12915**, run `r-dev--django__django-12915--r1` (temuan bot-01, 2026-07-20).
+  `events.jsonl` retry ke-4 s/d ke-7, keempatnya identik: `RuntimeError: pipe_runtime: app
+  failed to become ready (application exited before printing the ready line)`. Skenarionya
+  sama bentuknya dengan 13660: **satu request ASGI sekali jalan**, bukan server berumur
+  panjang — prosesnya memang harus mati setelah menangani satu scope. Model akhirnya lolos
+  dengan trik yang sama seperti r1/r2 13660: menyuntik `print("Ready")` artifisial di baris
+  pertama `runner.py` semata-mata agar `App.start()` mau lewat (`r1/files/repro.py`).
+  Kelas "one-shot vs ready line" kini **2 case, 6 kejadian**. Catatan penting soal sebab:
+  model tidak memilih `pipe_runtime` sendiri — ia didorong ke sana oleh penolakan judge
+  (LV-05), setelah lebih dulu punya repro in-process yang sudah terbukti hijau.
 - **Diagnosa — akar-harness dominan, dengan komponen model kecil.**
   - *Akar-harness:* `App` memodelkan satu bentuk dunia saja (server berumur panjang dengan
     ready line). (i) `start()` **wajib** ready_token dan melempar RuntimeError kalau proses
@@ -382,6 +459,18 @@ bukan tentang bug-nya, melainkan tentang mekanika harness.** Kelas-kelasnya di b
   bukan kegagalan vonis melainkan **7 turn hangus plus yardstick akhir yang lebih longgar
   daripada checkpoint yang dibuang** (LV-01). Ambang N=4 yang diusulkan entri ini akan
   memicu tepat di t17–t18, saat model masih menebak-nebak nama simbol `feedgenerator`.
+- **Bukti penguat (case ketiga — dan di sini kerugiannya bisa dikuantifikasi persis, karena
+  run tetangga membuktikan checkpoint-nya SUDAH cukup) — django-12915**, run
+  `r-dev--django__django-12915--r1` (temuan bot-01, 2026-07-20). `console.log` baris 539
+  menyimpan `files/repro-first-fail.py`; setelah penolakan judge di baris 574, model
+  mengembara **16 turn (t11–t26)** dan tidak pernah kembali, berakhir `wrong-logic`.
+  **Yang membuat case ini istimewa:** script yang dibuang itu praktis sama dengan
+  `r-dev--django__django-12915--r2/files/repro.py` — yang di run berikutnya **lolos gate,
+  lolos judge, dan menjadi yardstick yang membawa case ini sampai `resolved=true`**. Jadi
+  bukan sekadar "checkpoint mungkin cukup baik"; di korpus ini ada bukti langsung bahwa
+  bentuk itu **cukup untuk memenangkan seluruh pipeline**. Ambang N=4 yang diusulkan entri
+  ini akan memicu tepat di t15, saat model sedang mengulang `app failed to become ready`
+  untuk ketiga kalinya.
 - **Diagnosa:** akar-harness (mekanisme ada tapi pasif). Berbeda dari `next-step nudge`
   (`4541654`) yang menangani loop degeneratif — di sini modelnya justru produktif, hanya
   saja produktif ke arah yang salah.
@@ -513,6 +602,21 @@ n=1 vs n=1; jangan dijadikan aturan sebelum ada case ketiga.
   Ini bukti korelasional, bukan eksperimen terkontrol — tapi arahnya searah dengan akar mekanis
   yang sudah **diverifikasi di kode** (`run_fix_gemma.py` baris 231–232), sehingga fungsinya
   menguatkan, bukan menggantikan, bukti kode itu.
+- **Bukti penguat (titik korelasi keempat — dan ia menambah temuan yang tidak nyaman:
+  keterpaparan LV-09 ditentukan lemparan koin) — django-12915** (temuan bot-01,
+  2026-07-20). Di case ini dua run REPRODUCE atas bug yang sama menghasilkan dua kelas
+  repro yang berbeda, semata-mata karena judge menolak di satu run dan tidak di run lain
+  (LV-05): `r-dev--django__django-12915--r1/files/repro.py` **mengimpor `pipe_runtime`**
+  (`from pipe_runtime import App`), sedangkan `--r2/files/repro.py` **nol kemunculan**
+  string `pipe_runtime` (in-process murni). Yang lolos gate kebetulan r2, sehingga fase FIX
+  menerima repro yang bersih — dan hasilnya konsisten dengan tiga case sebelumnya:
+  `f-dev--django__django-12915--r1/console.log` **0 kemunculan** `ModuleNotFoundError`,
+  fase FIX selesai **2 turn, 1 attempt, `win`**, `resolved=true`.
+  **Yang baru dan penting:** kalau r1 yang lolos gate, repro beku itu akan diawali
+  `from pipe_runtime import App` dan fase FIX 12915 akan mendarat persis di kelas 11910 —
+  di case yang, sebagaimana terbukti, sebetulnya bisa diselesaikan dalam 2 turn. Jadi
+  LV-09 bukan cuma "bug yang menunggu case yang tepat": ia menunggu **run** yang tepat,
+  dan di case yang sama peluangnya di korpus ini 1 dari 2.
 - **Diagnosa — akar-harness murni, dan ini bukan non-determinisme.** Penting untuk tidak
   salah label: hipotesis kerja sebelumnya adalah "script yang sama berperilaku beda
   antara dunia gate dan dunia FIX, jadi tidak deterministik lintas dunia". Bukti
@@ -571,6 +675,39 @@ n=1 vs n=1; jangan dijadikan aturan sebelum ada case ketiga.
      satunya — dan model membulatkannya ke arah yang paling berbahaya. Ini bukan
      kesalahan model semata: **kontraknya memang tidak menyediakan kata untuk
      "tidak tahu"**.
+- **Bukti penguat untuk bagian (b) — kali ini dari sisi yang berlawanan, dan terverifikasi
+  di kode — django-12915**, run `r-dev--django__django-12915--r1` (temuan bot-01,
+  2026-07-20). Di 11910 keluhannya adalah *kontrak tidak punya kata untuk "tidak tahu"*.
+  Di 12915 ternyata **model sudah menciptakan kata itu sendiri**: `repro.py` di r1 **dan**
+  r2 sama-sama punya cabang ketiga yang mencetak `REPRO_STATUS: ERROR` untuk exception yang
+  tak dikenali — model membedakan "aku tak berhasil mengamati" dari PASS/FAIL tanpa diminta.
+  Yang tidak punya kata itu adalah **harness**:
+  - `harness/stages/reproduce_gates.py` baris 11:
+    `_STATUS_RE = re.compile(r"^REPRO_STATUS: (PASS|FAIL)\s*$", re.MULTILINE)` — pola yang
+    sama di `harness/stages/gemma_protocol.py` baris 244. `ERROR` **tidak terlihat sebagai
+    token sama sekali**, bukan "terlihat lalu ditolak".
+  - Akibat #1 (mid-loop, **4×**): `events.jsonl` retry ke-8 s/d ke-11, semuanya
+    `repro run exited 0 without REPRO_STATUS: FAIL; last output line: REPRO_STATUS: ERROR`.
+    Model tidak pernah diberi tahu apa yang salah, dan salah menebaknya sendiri — `console.log`
+    baris 1543: *"The `REPRO_STATUS: ERROR` occurred because `app.wait_for` might have missed
+    the error message ... if the timing was off"* (sebenarnya bukan timing).
+  - Akibat #2 (vonis, **1×**, dan ini yang paling merusak): flip gagal dengan alasan
+    `no REPRO_STATUS token in gold-patched run output` (`reproduce_gates.py` baris 84)
+    **padahal `flip_run.json` berakhir dengan baris `REPRO_STATUS: ERROR`**. Diagnosis yang
+    dicetak harness **salah secara faktual, dan salahnya by construction** — konsekuensi
+    langsung dari kosakata dua-nilai di baris 11.
+  - Akibat #3 (label): `harness/stages/run_repro_gates.py` baris 105 memetakan **setiap**
+    kegagalan flip ke verdict `wrong-logic`. Sebab sebenarnya di sini adalah *environment
+    repro yang rusak di sisi gold* — `ROOT_URLCONF='django.conf.urls'` (modul tanpa
+    `urlpatterns`) plus `test.txt` yang tak pernah dibuat, sehingga run gold-patched jatuh
+    Http404 → `response_for_exception` → `technical_404_response` → `ImproperlyConfigured`.
+    Di papan skor itu terbaca sebagai "logika predikat model salah". Ini **persis** jenis
+    penyamaran yang jadi alasan (a) mengusulkan verdict terpisah `repro-not-armed`,
+    hanya di fase yang berbeda.
+  Konsekuensi untuk desain: bagian (b) sebaiknya tidak dibaca lagi sebagai "ajari model
+  menulis ERROR" melainkan sebagai **"ajari parser membaca ERROR"** — perubahannya satu
+  regex plus satu cabang penanganan, jauh lebih murah daripada perkiraan awal entri ini,
+  dan tanpa itu setiap repro yang berlaku benar akan didiagnosis salah.
 - **Usulan lever (dua bagian, keduanya mekanis):**
   - (a) **Gerbang pre-flight FIX.** Sebelum pesan pertama ke model, driver menjalankan
     repro beku di container kerja yang masih pristine. Kalau keluarannya bukan
@@ -806,6 +943,23 @@ menjelaskan bagian harness dari kemahalan run ini. **Tidak ada satu pun retry ya
   `comments`; `feedgenerator.add_item` sudah menerimanya), dan FIX menyelesaikannya dalam
   3 turn. Harness merekam ketidakcocokan itu (`line_overlap: false`) tetapi **tidak ada satu
   konsumen pun** untuk sinyal itu: `shortlist-v2` meluluskan atas dasar file saja.
+- **Bukti penguat untuk (A) — case kedua, klaim judge yang juga bisa dibantah dari artefak
+  resmi — django-12915**, run `r-dev--django__django-12915--r1/console.log` baris 567–574
+  (temuan bot-01, 2026-07-20). Judge menahan DONE dengan klaim bahwa repro in-process
+  *"bypasses the actual ASGI server initialization and the specific environment ... that
+  leads to the `NoneType` error"* dan menuntut server ASGI sungguhan sebagai child process.
+  **Klaim itu terbantah dua kali, masing-masing dari sumber yang tidak bisa didebat:**
+  1. Driver sendiri **sudah menyaksikan** exec-pair hijau atas script itu — 2 run segar,
+     dua-duanya `REPRO_STATUS: FAIL` dengan `TypeError: 'NoneType' object is not callable`.
+     Bug-nya jelas-jelas muncul tanpa server ASGI apa pun.
+  2. Test resmi SWE-bench untuk case ini melakukan hal yang **persis sama**: `test_patch`
+     di `swebench_spec.json` berisi `handler = ASGIStaticFilesHandler(ASGIHandler())` lalu
+     `response = await handler.get_response_async(request)` — in-process, tanpa daphne,
+     tanpa uvicorn, tanpa child process.
+  Ongkosnya sudah dirinci di LV-05 (16 turn, 8 retry, verdict gagal). Yang relevan untuk
+  entri ini: klaim judge di 12915 **bisa diverifikasi mesin dan hasilnya negatif**, sama
+  seperti di 13230 — dan di kedua case driver tidak pernah memintanya. Titik (A) kini
+  **n=2 dengan dua bantahan berbasis artefak**, bukan lagi n=1.
 - **Diagnosa — akar-harness murni, satu mekanisme di dua tempat.** Di kedua titik, harness
   menerima **prosa tentang kode** sebagai masukan yang menentukan (menahan DONE; mengisi slot
   yang diteruskan ke fase berikutnya) **tanpa pernah mencocokkannya dengan kode**. Padahal
@@ -889,3 +1043,190 @@ menjelaskan bagian harness dari kemahalan run ini. **Tidak ada satu pun retry ya
    repro bersih dari `pipe_runtime` → 0 `ModuleNotFoundError` di FIX → 3 turn menang.
    Bukan pengganti bukti kode (`run_fix_gemma.py:231–232`), tapi ia menutup kemungkinan
    bahwa 11910 gagal karena sebab lain yang kebetulan bersamaan.
+
+---
+
+## Entri baru — autopsi django-12915: full green dengan patch yang lebih buruk dari gold
+## (bot-01, 2026-07-20)
+
+**Korpus:** `artifacts/r-dev/r-dev--django__django-12915--r1` (gagal, `wrong-logic`),
+`--r2` (qualified), `artifacts/l-dev/l-dev--django__django-12915--r1`,
+`artifacts/f-dev/f-dev--django__django-12915--r1`.
+Gold: `cases/gold/django__django-12915/gold.patch`. Bug: `StaticFilesHandlerMixin`
+tidak punya `get_response_async`, sehingga `ASGIStaticFilesHandler` jatuh ke
+`BaseHandler.get_response_async` dan menabrak `_middleware_chain = None`.
+
+**Hasil (terverifikasi ulang dari artefak):** FULL GREEN.
+`f-dev/.../swebench_eval.json` → `resolved=true`, `patch_successfully_applied=true`,
+F2P **3/3** (`test_get_async_response`, `test_get_async_response_not_found`,
+`test_static_file_response`), P2P **8/8**, `f2p_failed=[]`, `p2p_failed=[]`.
+`swebench_test_output.log`: `Ran 11 tests ... OK`.
+
+**Angka biaya per fase:**
+
+- REPRODUCE r1: **26 turn, 11 attempt, 12 event retry**, verdict `wrong-logic`,
+  `console.log` 2.119 baris. Rincian 12 retry: 2× error koding model
+  (`module 'django.conf' has no attribute 'urls'`; `module 'asyncio' has no attribute 'run'`),
+  **1× penolakan judge**, 4× `pipe_runtime: app failed to become ready`,
+  4× `exited 0 ... last output line: REPRO_STATUS: ERROR`, 1× `PASS_OBSERVABLE not found`.
+- REPRODUCE r2: **10 turn, 2 attempt, 1 retry**, verdict `pass`, console 541 baris.
+- LOCALIZE: 1 retry (format `candidates.md`), `qualified=true`, `file_match=true`,
+  `line_overlap=true`. Kandidat 1 = file gold.
+- FIX: **2 turn, 1 attempt, `win`**, 1 penolakan DONE (`run repro first`), `flip`.
+
+**Kelas kegagalan REPRODUCE r1 — semuanya sudah tercatat, tidak ada yang baru:**
+LV-05 (1×, dan ia yang memicu 8 retry berikutnya), LV-06 (4×), LV-10b (4×),
+LV-08 (checkpoint dibuang, 16 turn). Rinciannya sudah ditulis sebagai bukti penguat di
+entri masing-masing. **Nol retry yang sebabnya "salah paham bug"** — konsisten dengan
+13660 dan 13230; pemahaman model atas bug ini benar sejak turn-turn awal di kedua run,
+dan `localize.md` menjelaskan mekanismenya dengan tepat sampai ke
+`django/core/handlers/base.py:148`.
+
+**Yang BARU di case ini, dan jadi alasan autopsi ini ditulis:** patch model **lolos L2
+padahal secara non-fungsional lebih buruk dari gold** — lihat LV-14.
+
+## LV-14 — Divergensi patch-vs-gold berhenti di file/baris; isinya tidak pernah dibandingkan
+
+- **Asal-usul:** django-12915. Bukti:
+  `artifacts/f-dev/f-dev--django__django-12915--r1/files/fix.diff` vs
+  `cases/gold/django__django-12915/gold.patch`; `gold_eval.json` dan `swebench_eval.json`
+  di run yang sama; `test_patch` di `cases/gold/django__django-12915/swebench_spec.json`.
+- **Gejala (angka keras):** kedua patch menambahkan `get_response_async` ke
+  `StaticFilesHandlerMixin`, di file yang sama, di titik sisip yang sama. Bedanya dua baris:
+  - Gold: `return await sync_to_async(self.serve)(request)` dan
+    `return await sync_to_async(response_for_exception)(request, e)` (plus import
+    `from asgiref.sync import sync_to_async`).
+  - Model: `return self.serve(request)` dan `return response_for_exception(request, e)`.
+  Model menjalankan **file I/O sinkron di dalam `async def`**, di atas event loop —
+  persis yang keberadaan `sync_to_async` di gold dimaksudkan mencegah. Toh hasilnya
+  **F2P 3/3, P2P 8/8, `resolved=true`**, karena test suite resmi hanya memeriksa nilai:
+  `status_code == 200`, `status_code == 404`, empat header, dan isi body. **Tidak ada satu
+  pun test yang mengukur blocking.** Sinyal yang sudah dikumpulkan harness pun buta pada
+  ini: `gold_eval.json` mencatat `file_match: true` dan `line_overlap: true` — dua-duanya
+  hijau, dan memang benar; keduanya berhenti di *lokasi*, tidak pernah menyentuh *isi*.
+  Hasilnya: **divergensi ini tidak muncul di satu artefak pun.** Ia hanya ketahuan karena
+  seorang analis kebetulan membuka dua diff berdampingan.
+- **Diagnosa — dan bagian terpentingnya adalah memisahkan dua hal yang mudah tercampur:**
+  1. **Batas metodologi (BUKAN akar-harness, BUKAN akar-model).** Bahwa L2 tidak menangkap
+     regresi non-fungsional adalah sifat dari *definisi ground truth* yang kita pakai:
+     `resolved=true` berarti "test resmi SWE-bench hijau", tidak pernah berarti "patch
+     setara gold". Test suite itu milik benchmark, bukan milik kita; memperbaikinya berarti
+     berhenti mengukur SWE-bench. Jadi ini bukan cacat yang bisa dilever — ini **plafon
+     dari alat ukurnya**, dan yang bisa kita lakukan hanyalah berhenti membacanya lebih
+     jauh dari yang ia klaim. Dicatat sebagai batas, lihat Catatan penutup #1.
+  2. **Akar-harness yang sempit dan nyata (inilah yang dilever entri ini):** di realm eval,
+     harness **sudah memegang gold patch** dan sudah membandingkannya dengan patch model —
+     tetapi perbandingannya berhenti di himpunan file dan rentang baris. Tidak ada satu
+     konsumen pun untuk pertanyaan "apa yang ada di hunk gold dan tidak ada di hunk model".
+     Padahal di case ini pertanyaan itu dijawab oleh satu nama simbol: `sync_to_async`.
+  3. *Akar-model:* ada, tapi tipis dan tidak boleh dibesarkan. Model tidak diberi tahu
+     bahwa jalur ini async-sensitif, dan yardstick satu-satunya yang ia punya (repro r2)
+     memang tidak bisa membedakan kedua bentuk (lihat LV-01, bukti penguat 12915).
+     Menyalahkan penalaran model untuk sesuatu yang tak satu pun alat ukur kita tanyakan
+     adalah cara termahal untuk belajar (aturan main #6).
+- **Usulan lever — instrumentasi, non-blocking, seluruhnya di realm eval:**
+  - (a) **Flag divergensi isi di `gold_eval.json`.** Setelah L2 selesai, bandingkan
+    himpunan identifier yang muncul di baris `+` gold dengan yang muncul di baris `+`
+    patch model, lalu catat `gold_only_symbols` (di 12915 isinya `sync_to_async`,
+    `asgiref.sync`) dan `model_only_symbols`. **Tidak menggugurkan apa pun** — ia hanya
+    membuat "hijau tapi tidak setara" jadi terbaca dari artefak. Ini pola yang persis sama
+    dengan LV-13(b): mengubah detektor gratis yang sudah setengah terpasang menjadi detektor
+    yang punya konsumen. Bedanya objek: LV-13(b) mencocokkan *prosa model* dengan kode;
+    entri ini mencocokkan *patch model* dengan *gold*, post-hoc. Karena itu dicatat sebagai
+    lever tersendiri, bukan bukti penguat LV-13.
+  - (b) **Lint async advisory** atas file yang disentuh patch: tandai pemanggilan sinkron
+    tanpa `await`/`sync_to_async` di dalam `async def` yang baru ditambahkan. Dinilai
+    **lebih rendah** dari (a) dengan sengaja: cakupannya cuma satu domain (async), rawan
+    false positive (banyak panggilan sinkron di `async def` memang sah), dan ia menjawab
+    gejala 12915 secara spesifik alih-alih kelasnya. (a) generik dan tidak butuh tahu apa
+    pun soal async.
+  - **Batas yang wajib dijaga:** keduanya hanya boleh hidup **setelah** vonis L2, dan
+    hasilnya **tidak boleh** kembali ke model atau ke fase mana pun. Begitu perbandingan
+    gold dipakai sebagai umpan balik, kita berhenti mengukur dan mulai membocorkan.
+- **Status:** BELUM DITERAPKAN.
+- **Prioritas:** **rendah sebagai lever, sedang sebagai instrumentasi** — sama persis dengan
+  posisi LV-12 dan LV-13(b), dan alasannya sama: **n=1**, ongkos run-nya **nol** (full green,
+  2 turn di FIX, tidak ada churn yang bisa dihemat), dan ia tidak memperbaiki hasil satu run
+  pun. Yang membuatnya tetap layak dicatat sekarang bukan frekuensi melainkan (i) divergensinya
+  **definitif dan bisa diverifikasi mesin** dari gold patch — bukan soal selera, sama seperti
+  alasan LV-13 diterima di n=1; dan (ii) tanpa flag ini kita **tidak punya cara tahu berapa
+  banyak kolom hijau lain yang berdiri di atas patch yang tidak setara** — jadi biaya
+  sebenarnya bukan di run ini, melainkan di ketidaktahuan yang menumpuk lintas papan skor.
+- **Catatan kejujuran (dua hal yang TIDAK boleh diklaim):**
+  1. Ini bukan "regresi". Terhadap base, patch model adalah perbaikan — sebelumnya
+     `ASGIStaticFilesHandler` tidak berfungsi sama sekali. Yang benar dikatakan: patch model
+     **kehilangan properti non-fungsional yang dimiliki gold**, bukan merusak sesuatu yang
+     tadinya baik.
+  2. Ada kemungkinan divergensinya **tidak murni non-fungsional** — Django menandai operasi
+     tertentu `async_unsafe`, sehingga jalur `response_for_exception` yang menyentuh operasi
+     semacam itu akan melempar di dunia model tapi tidak di dunia gold. **Ini hipotesis yang
+     TIDAK diverifikasi di run ini** (tidak ada artefak yang menyentuhnya, dan F2P 404 lolos),
+     jadi ditulis sebagai catatan, bukan sebagai bukti. Kalau ada yang mau menaikkan prioritas
+     entri ini, verifikasi itulah pekerjaannya.
+
+---
+
+## Catatan penutup autopsi 12915 (bot-01, 2026-07-20)
+
+1. **Batas metodologi, dinyatakan eksplisit supaya tidak terus-menerus ditemukan ulang:**
+   `resolved=true` adalah pernyataan tentang **test suite resmi SWE-bench**, bukan tentang
+   kesetaraan dengan gold. 12915 adalah bukti terbersih untuk itu di korpus ini, karena di
+   sini semuanya hijau — F2P 3/3, P2P 8/8, `file_match`, `line_overlap` — dan patch-nya
+   tetap berbeda dari gold pada properti yang keberadaan `sync_to_async` di gold justru
+   ada untuk menjamin. **Ini plafon alat ukur, bukan cacat yang bisa diperbaiki:** test
+   suite-nya milik benchmark. Konsekuensi praktis: L2 adalah yardstick tertinggi kita dan
+   tetap begitu, tapi ia **lantai kepercayaan, bukan langit-langitnya**. Ini alasan keempat
+   (setelah 11099, 14017, 13230) untuk tidak membaca kolom hijau sebagai validasi — dan yang
+   pertama di mana kelonggarannya datang dari alat ukur **resmi**, bukan dari repro buatan
+   model. Yang bisa dilever hanyalah kemampuan **melihat** divergensinya (LV-14a).
+2. **Vonis atas pertanyaan "kelas baru atau varian LV-01": DUA-DUANYA BUKAN, dan pemisahannya
+   penting.** Mekanisme abstraknya memang sekeluarga dengan LV-01 ("predikat lebih sempit
+   daripada kontrak"), tapi menggabungkannya akan merusak LV-01: usulan lever LV-01 adalah
+   *perketat repro*, dan tidak ada versi dari usulan itu yang bisa menjangkau test suite
+   SWE-bench. Sumber kelonggarannya beda, dan yang lebih menentukan: **konsekuensinya beda.**
+   Di LV-01, yardstick longgar meloloskan fix salah yang **kemudian ketahuan di L2** (13660,
+   14017) — sistemnya masih punya mata. Di 12915, tidak ada lapis berikutnya yang bisa
+   melihat. Karena itu bagian yang tak bisa diperbaiki dicatat sebagai **batas metodologi**
+   (butir 1 di atas), dan hanya bagian yang benar-benar kita miliki — instrumentasi
+   perbandingan patch-vs-gold di realm eval — yang jadi entri (LV-14).
+3. **12915 adalah A/B terbaik yang dimiliki korpus ini untuk LV-05.** Satu case, dua run,
+   script yang praktis sama, vonis judge berlawanan, dan selisihnya 26 turn gagal vs 10 turn
+   lolos. Sebelumnya judge selalu menolak di **semua** run sebuah case, sehingga masih bisa
+   dibaca sebagai "aturannya menjerat bentuk ini". Sekarang terukur bahwa **judge tidak
+   deterministik atas masukan yang praktis identik**, dan lemparan koin itu menentukan
+   verdict fase. Ini menaikkan bobot LV-05 dari "aturan terlalu luas" jadi "presedensi vonis
+   diberikan ke komponen yang tidak stabil". LV-05(b) sebagaimana tertulis akan menyelamatkan
+   run ini (kategori `mechanics` + exec-pair sudah hijau) — case pertama di mana (b) tepat
+   sasaran.
+4. **Keterpaparan LV-09 di case ini murni kebetulan, dan itu temuan tersendiri.** r1 memakai
+   `pipe_runtime`, r2 tidak; yang lolos gate kebetulan r2, sehingga fase FIX 12915 selesai
+   dalam 2 turn dan bukan meledak seperti 11910. Kalau r1 yang lolos, repro beku akan diawali
+   `from pipe_runtime import App` di container FIX yang tidak punya modul itu. Jadi papan skor
+   yang kita baca sebagian ditentukan oleh **gaya repro mana yang kebetulan lolos judge** —
+   dan itu memperkuat dua lever sekaligus (LV-05 di hulu, LV-09 di hilir).
+5. **Kelas kegagalan REPRODUCE r1 seluruhnya sudah tercatat.** 12 retry, nol mekanisme baru:
+   1 judge (LV-05) yang memicu 8 retry berikutnya, 4 `app failed to become ready` (LV-06),
+   4 `REPRO_STATUS: ERROR` (LV-10b), checkpoint dibuang selama 16 turn (LV-08). Bahwa autopsi
+   ketiga berturut-turut tidak menemukan mekanisme kegagalan REPRODUCE yang baru adalah
+   sinyal yang layak dibaca: katalog ini mulai **jenuh** di fase REPRODUCE, dan nilai marjinal
+   dari autopsi berikutnya kemungkinan lebih rendah daripada nilai memasang LV-05/LV-09/LV-10.
+6. **Kandidat lever yang SENGAJA TIDAK dijadikan entri — "model menargetkan Python modern,
+   testbed Python 3.6".** `AttributeError: module 'asyncio' has no attribute 'run'` muncul di
+   **kedua** run 12915 (r1 retry ke-2, r2 retry ke-1) — 2 kejadian, 2 run, **1 turn masing-masing**,
+   dan model langsung memperbaikinya sendiri jadi `get_event_loop().run_until_complete(...)`.
+   Bentuk mekanisnya jelas dan murah (sebut versi interpreter container di prompt pembuka,
+   atau sediakan helper). **Tapi buktinya tipis dan ongkosnya kecil** — persis kategori yang
+   sama dengan kandidat "helper bootstrap framework" di catatan penutup 13230, dan alasan
+   penolakannya sama: jangan bikin lever dari 2 kejadian berongkos 1 turn. Dicatat di sini
+   supaya tidak hilang; naikkan jadi entri kalau muncul lagi di case ketiga, atau kalau
+   sekali waktu ia yang membunuh sebuah run alih-alih memakan satu turn.
+7. **Akar-model vs akar-harness untuk case ini, jujur.** Bagian model: repro r1 memakai
+   `ROOT_URLCONF='django.conf.urls'` (modul tanpa `urlpatterns`) dan tidak pernah membuat
+   `test.txt` — dua kecerobohan environment yang **asli miliknya**, dan itulah yang membuat
+   run gold-patched jatuh ke `ImproperlyConfigured`. Bagian harness: kecerobohan itu tidak
+   perlu berakhir sebagai verdict `wrong-logic` dengan diagnosis yang **salah secara faktual**
+   (`no REPRO_STATUS token` atas output yang jelas-jelas memuat `REPRO_STATUS: ERROR`), dan
+   16 dari 26 turn yang dipakai untuk sampai ke sana adalah anak penolakan judge. Pembagian
+   yang paling defensibel: **penyebab langsung kegagalan flip r1 adalah akar-model; penyebab
+   run itu ada di jalur tersebut sama sekali, dan penyebab kita salah mendiagnosisnya,
+   adalah akar-harness.**
