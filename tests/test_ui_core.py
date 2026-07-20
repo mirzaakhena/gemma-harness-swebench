@@ -90,7 +90,7 @@ def test_campaign_label_maps_known_names():
     from ui.server import campaign_label
     assert campaign_label("r-dev") == "REPRODUCE"
     assert campaign_label("l-dev") == "LOCALIZE"
-    assert campaign_label("f-dev") == "FIX"
+    assert campaign_label("f-dev") == "FIX and VERIFY"
     assert campaign_label("x-camp") == "x-camp"
 
 
@@ -126,7 +126,7 @@ def test_page_index_shows_fix_tab_without_fdev_dir(tmp_path):
     from ui.server import page_index
     (tmp_path / "r-dev" / "r-dev--case-a--r1").mkdir(parents=True)
     out = page_index(tmp_path)
-    assert ">FIX</a>" in out
+    assert ">FIX and VERIFY</a>" in out
     assert "/?tab=f-dev" in out
 
 

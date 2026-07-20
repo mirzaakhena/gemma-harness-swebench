@@ -94,12 +94,13 @@ def run_turns(run_dir: Path) -> int | None:
 
 
 _CAMPAIGN_LABELS = {"r-dev": "REPRODUCE", "l-dev": "LOCALIZE",
-                    "f-dev": "FIX", "v-dev": "VERIFY"}
+                    "f-dev": "FIX and VERIFY"}
 
 # Stage pipeline yang tabnya selalu tampil di dashboard, dalam urutan
 # pipeline REPRODUCE -> LOCALIZE -> FIX (permintaan Mirza 2026-07-20:
 # tab FIX tampil walau kampanye f-dev belum punya run — kosong dulu).
-# v-dev (VERIFY) menyusul setelah stage-nya didesain.
+# TANPA tab keempat untuk VERIFY (keputusan Mirza 2026-07-20): checker L2
+# adalah pekerjaan VERIFY di dalam tab "FIX and VERIFY" itu sendiri.
 _PIPELINE_STAGES = ("r-dev", "l-dev", "f-dev")
 
 
@@ -761,6 +762,51 @@ def page_run(root: Path, campaign: str, run_id: str, n: int) -> str:
     else:
         parts.append("<p class='dim'>(verdict.json belum ada — run berjalan?)"
                      "</p>")
+
+    if campaign.startswith("f-"):
+        sw = read_swebench_eval(run_dir)
+        parts.append("<h2>VERIFY (SWE-bench)</h2>")
+        if case_status(campaign, run_dir).get("status") == "ANOMALY":
+            parts.append("<p>⚠️ ANOMALY: product FAIL tapi "
+                         "SWE-bench resolved — autopsi manual</p>")
+        if sw is None:
+            parts.append("<p class='dim'>product-pass, menunggu VERIFY — "
+                         "swebench_eval.json belum ada (jalankan "
+                         "python -m eval.swebench_checker)</p>")
+        else:
+            ok = "✅" if sw.get("resolved") else "❌"
+            parts.append(
+                f"<p>resolved: {ok} {html.escape(str(sw.get('resolved')))} | "
+                f"apply: {html.escape(str(sw.get('patch_successfully_applied')))} | "
+                f"F2P lulus {len(sw.get('f2p_passed') or [])} / gagal "
+                f"{len(sw.get('f2p_failed') or [])} | P2P lulus "
+                f"{sw.get('p2p_passed_count', '?')} / regresi "
+                f"{len(sw.get('p2p_failed') or [])}</p>")
+            for label, key in (("F2P gagal", "f2p_failed"),
+                               ("regresi P2P", "p2p_failed")):
+                if sw.get(key):
+                    items = "".join(f"<li>{html.escape(str(t))}</li>"
+                                    for t in sw[key])
+                    parts.append(f"<p>{label}:</p><ul>{items}</ul>")
+        gpath = run_dir / "gold_eval.json"
+        parts.append("<h2>gold-match (advisory)</h2>")
+        if gpath.is_file():
+            try:
+                g = json.loads(gpath.read_text(encoding="utf-8"))
+                parts.append(
+                    f"<p class='dim'>file_match: {g.get('file_match')} | "
+                    f"line_overlap: {g.get('line_overlap')} | touched: "
+                    f"{html.escape(', '.join(g.get('touched_files') or []))} "
+                    f"vs gold: "
+                    f"{html.escape(', '.join(g.get('gold_files') or []))}</p>")
+            except (OSError, ValueError):
+                parts.append("<p class='dim'>gold_eval.json rusak</p>")
+        else:
+            parts.append("<p class='dim'>(gold_eval.json belum ada)</p>")
+        swlog = tail_lines(run_dir / "files" / "swebench_test_output.log", n)
+        if swlog:
+            parts.append(f"<h2>swebench_test_output.log (tail {n})</h2>")
+            parts.append("<pre>" + html.escape("\n".join(swlog)) + "</pre>")
 
     parts.append(f"<h2>events.jsonl (tail {n})</h2>")
     ev_lines = tail_lines(run_dir / "events.jsonl", n)
