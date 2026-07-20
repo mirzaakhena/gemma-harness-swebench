@@ -15,3 +15,12 @@ def test_shim_idempotent():
     before = sys.modules["resource"]
     ensure_resource_shim()
     assert sys.modules["resource"] is before
+
+
+def test_shim_skips_on_non_win32(monkeypatch):
+    """Di platform non-Windows, shim tidak dipasang (guard early-return)."""
+    from eval._swebench_compat import ensure_resource_shim
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delitem(sys.modules, "resource", raising=False)
+    ensure_resource_shim()
+    assert "resource" not in sys.modules
