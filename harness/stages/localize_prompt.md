@@ -23,7 +23,7 @@ this form:
 CANDIDATE <n>
 file: <path relative to the repo root>
 evidence: <what this code does that can own the wrong behavior>
-expectation: <how a change here directly satisfies what the user explicitly expects in the issue>
+expectation: <the criterion a correct fix must satisfy here — the observable behavior the code should exhibit to meet the user's expectation, stated as an outcome>
 ```
 
 Every candidate file must exist in the repository, and must come from the
@@ -37,7 +37,7 @@ chooses among these candidates.
 chosen: <number of the chosen candidate; 1 if you only had one>
 file: <path relative to the repo root, e.g. django/utils/autoreload.py>
 lines: <N-M — a range of at most 200 lines containing the mechanism site>
-what: <what kind of change is needed at this location (description, not a patch)>
+what: <the outcome a correct fix must achieve at this location — the criterion it must satisfy, stated as a result rather than a specific edit>
 why: <the mechanism that makes this location the ROOT of the symptom, not merely a place the symptom passes through>
 evidence: <concrete proof in the form "function X around line Y does Z, which causes the symptom; proven by ...">
 ```
@@ -72,5 +72,9 @@ evidence: <concrete proof in the form "function X around line Y does Z, which ca
    at nothing.
 5. Before submitting, ask yourself: "if an engineer read only my
    localize.md, would they immediately know WHAT to edit and WHERE?"
+6. **State the target, not the edit.** `expectation` and `what` describe the
+   CRITERION a correct fix must satisfy — the outcome or behavior the code
+   should exhibit — not the specific change to make. Designing the fix
+   belongs to a later stage.
 
 Work iteratively: explore, probe, revise. Only your final output counts.
