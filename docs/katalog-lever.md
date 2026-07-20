@@ -3221,3 +3221,262 @@ frozen repro tetap PASS, F2P resmi FAIL. (b) 13028 — pasang `check_filterable:
 prediksi repro PASS DAN F2P PASS (repro dan test resmi sama-sama tak menegaskan ekspresi
 tak-filterable harus tetap ditolak — ini kontrol positif yang hilang). Keduanya menyasar
 **kelemahan repro**, bukan menuduh patch salah.
+
+---
+
+## Catatan penutup autopsi batch bot-03 (2026-07-21) — estafet 22-case, bagian 7 (3 django + 4 astropy)
+
+**Korpus:** 7 case dijalankan RLFV penuh lewat `scripts/run_rlfv_batch.py`
+(`django__django-15789, 15814, 15851, astropy__astropy-12907, 14365, 14995, 6938`), state
+`artifacts/batch-bot03.json`. Model `google/gemma-4-31B-it`. **4 case astropy = base non-django
+PERTAMA di korpus** (sebelumnya 100% django). Autopsi tiap case oleh satu subagent read-only
+(izin eksplisit membantah pemanggil, SOP §6a); integrasi (tulisan ini) serial oleh bot-03.
+Metode klasifikasi K1–K5 = manual, satu repro qualified per case, konsisten dengan 33 file
+sebelumnya. **Sabotase §3d DIEKSEKUSI untuk 12907 dan 14365** (dua case yang vonisnya bergeser
+oleh eksperimen) — kontras dengan bot-02 yang tidak menjalankan sabotase; alasan per-case di
+bawah.
+
+**Papan skor akhir: resolved=3/7.** Tiga case gagal di REPRODUCE/FIX bukan karena laju hijau
+rendah semata — dua di antaranya membawa temuan akar-harness.
+
+### Papan skor yang membedakan (bukan angka agregat)
+
+- **Hijau ASLI (patch SETARA gold secara semantik) — 1:** 6938.
+- **Hijau DENGAN CATATAN (patch memperbaiki bug tapi LEBIH LONGGAR/divergen dari gold di sudut
+  tak-teruji) — 2:** 15814 (over-select: `only()` diam-diam tak dihormati untuk relasi proxy),
+  14995 (aliasing: `deepcopy` dibuang, mask dikembalikan by-reference).
+- **Merah di FIX, akar-MODEL pada patch + akar-METODOLOGI pada repro (LV-01) — 2:** 12907
+  (patch over-broad me-rewrite modul & menghapus API publik `is_separable` → ImportError
+  collection → 15 test error serempak), 14365 (patch SUBSET: 1 dari 2 hunk gold, hunk kedua
+  `v.upper()=="NO"` hilang → F2P gagal deterministik).
+- **Merah di REPRODUCE — 2, akar BERBEDA:** 15789 (akar-MODEL: penukaran urutan argumen
+  `json_script` → repro logis-benar tapi gagal flip), 15851 (akar-HARNESS: model tak pernah
+  menulis repro; loop tool-call-token 40 turn ×3, verdict `syntax-fail` salah-label).
+- **Kegagalan sisi-model MURNI yang "bersih": 1** (15789 — arg-swap; sisanya bercampur akar).
+- **Lulus-palsu tipe file-salah (à la 13658): 0.** Ketiga resolved (15814, 14995, 6938)
+  `file_match=true` DAN `line_overlap=true`. (Recall detektor rendah — §3b tetap dijalankan;
+  dan dua hijau-dengan-catatan lolos justru karena §3b, bukan gold_eval.)
+
+### Per-case (ringkas; bukti di run dir yang disebut)
+
+- **6938** (`f-dev--…--r1`, resolved, F2P 2/2, P2P 11/11, file+line match). §3b **SETARA**:
+  `output_field[:] = output_field.replace(encode_ascii('E'), encode_ascii('D'))` vs gold
+  `replace(b'E', b'D')`; `encode_ascii(s)=s.encode('ascii')` → byte-identik; inti fix
+  (in-place slice atas bytes immutable) identik. Repro r2 **K4∧K5** (vonis kehadiran substring
+  byte `b'D+'`, tak baca-balik nilai). Under-general yang lolos: hapus guard `if 'D' in format:`
+  (repro 1-kolom D, tak ada E-format legit terlihat rusak). **Hijau-asli TANPA bantuan
+  yardstick** (mirip 15347/14238). Kelas menarik di r1 (mock-churn) → **kandidat-ditolak**
+  (lihat di bawah). LV-09 bersih.
+- **14995** (`f-dev--…--r1`, resolved, F2P 1/1 `test_nddata_bitmask_arithmetic`, P2P 179/179,
+  file+line match). §3b **LEBIH LONGGAR (divergen gold, tak lulus-palsu)**: gold 1-hunk
+  `elif operand is None:` → `elif operand.mask is None:`; model rewrite `_arithmetic_mask` jadi
+  guard 4-cabang, **value-equivalent di semua jalur teruji** TAPI (a) mengembalikan mask
+  by-reference alih-alih `return deepcopy(...)` gold (komentar gold: *"so there is no reference
+  in the result"*) → **aliasing** yang tak satu pun dari 180 test mengukur (semua `assert_equal`
+  nilai) — tanda tangan **LV-14**, sekelas 12915; (b) cabang `first_found` = dead code. Repro
+  **K1+K4** (`_ = res1.mask` dibuang; PASS = "tak ada TypeError"). Under-general yang lolos:
+  `elif operand.mask is None: return None` — repro PASS, F2P resmi FAIL. LV-09 bersih.
+- **15814** (`f-dev--…--r1`, resolved, F2P 1/1 `test_select_related_only`, P2P 29/29, file+line
+  match). §3b **LEBIH LONGGAR (divergen gold)**: di `deferred_to_data` (~751) gold menyetel
+  `cur_model = cur_model._meta.concrete_model` (concrete); model menulis
+  `opts = cur_model._meta.concrete_model._meta` sehingga `cur_model` **tetap PROXY** dan
+  dipakai sebagai key `must_include`/`seen`, sedang konsumen di `compiler.py` mencari dengan
+  key **concrete** → restriksi `only()` tak diterapkan pada relasi proxy → **semua kolom dimuat**
+  (crash hilang lewat over-select, bukan pk tepat). **Probe (probe15814, testbed interp):** gold
+  → `get_deferred_fields()=['age']`, 3 kolom SQL; model → `[]`, 4 kolom. **Baris fix model =
+  saran reporter verbatim di problem statement (baris 51-52); maintainer sengaja memilih varian
+  lebih ketat** (`cur_model`, hanya di `hints_text` yang model tak lihat) — jadi hijau-dengan-
+  catatan muncul di case **tier-1 "fix verbatim"** justru karena baris verbatim itu under-general.
+  **Kedua yardstick BUTA:** F2P resmi hanya `assert qs.get()==issue` (by-pk), tak cek deferred
+  fields. Repro **K1+K1-ketat+K4+K5** (`except ValueError 'id'…→FAIL`, semua cabang lain→PASS).
+- **12907** (`f-dev--…--r1`, **resolved=FALSE**, F2P 0/2, P2P 0/13, `file_match=true`,
+  `line_overlap=false`). §3b **OVER-BROAD (akar-model)**: gold = **1 baris** di `_cstack`
+  (`cright[...] = 1` → `= right`); model **menemukan fix inti benar** (`= right` hadir) tapi
+  me-**rewrite seluruh modul** dan **menghapus `is_separable`** (ada di `__all__`, diimpor di
+  kepala `test_separable.py`) → `ImportError: cannot import name 'is_separable'` →
+  **`collected 0 items / 2 errors`** → 15 test (2 F2P + 13 P2P) error **serempak di collection**,
+  bukan 13 kegagalan-nilai individual. **`line_overlap=false` MENYESATKAN**: baris fix gold ada
+  & benar; overlap hilang karena rewrite menggeser penomoran baris (lihat KH-13). Repro
+  **K1+K2+K4** (impor hanya `separability_matrix`, cek satu off-diagonal `==True`, nol kontrol
+  positif). **Sabotase (probe12907, testbed interp):** baseline FAIL → gold PASS → gold+`_cdot`
+  raise (operator `|` tak dipakai repro) **PASS** → gold+`separability_matrix` return float
+  **PASS**. Repro buta terhadap kelas kerusakan yang justru dieksekusi test resmi.
+- **14365** (`f-dev--…--r1`, **resolved=FALSE**, F2P 0/1 `test_qdp.py::test_roundtrip[True]`,
+  P2P 8/8, `file_match=true`, `line_overlap=true`). §3b **SUBSET KETAT**: gold 2 hunk (hunk-1
+  `re.IGNORECASE` di `_line_type`; hunk-2 `if v.upper()=="NO":` di `_get_tables_from_qdp_file`);
+  model **hanya hunk-1**, hunk-2 hilang. `line_overlap=true` benar tapi menyesatkan — cocok
+  hanya karena hunk-1 menindih baris gold; metrik berhenti di lokasi, tak lihat hunk-2 absen.
+  **Sabotase/flaky-test (probe14365, testbed interp):** gold **3/3 PASS**, model **3/3 FAIL**,
+  error identik tiap kali (`could not convert string to float: 'no'` @ qdp.py:316) — **noise-prone
+  TERBANTAH, test deterministik**; pergeseran lokasi crash baseline:78 → model:316 = bukti kausal
+  hunk-1 lolos, mati di titik hunk-2. Repro **K4+K5** (data uji tanpa `no` lowercase → hunk-2 tak
+  teruji; §3c(a) under-coverage). LV-09 bersih.
+- **15789** (`r-dev--…--r1/r2/r3`, REPRODUCE tidak qualified, `wrong-logic` 3/3). Akar-MODEL
+  murni. Signature `json_script(value, element_id=None, encoder=None)`; model memanggil
+  `json_script("my-id", data, encoder=…)` → argumen tertukar, encoder men-serialize string id
+  bukan set → predikat tak menyentuh jalur gold. **Probe (probe15789):** gold + panggilan model
+  apa adanya → FAIL (reproduksi vonis `patched:FAIL`); gold + urutan argumen dibetulkan → PASS.
+  **Nol retry** ketiga run (model yakin; pre-check gold-blind hanya verifikasi base FAIL, tak bisa
+  lihat flip-fail). Tak menambah Tabel A (tak ada repro qualified). LV-05/06/09 semua NEGATIF;
+  gate flip bekerja benar (menolak repro takkan flip).
+- **15851** (`r-dev--…--r1/r2/r3`, REPRODUCE tidak qualified, `syntax-fail` 3/3). **Akar-HARNESS
+  primer.** `syntax-fail` **BUKAN SyntaxError** — model **tak pernah menulis repro.py**; `files/`
+  ketiga run hanya berisi `pipe_runtime.py`. Ketiga run terjebak loop degeneratif meng-emit token
+  `<|tool_call|>` sendiri **tanpa fenced-block**, `parse_actions`→0 aksi, byte-identik 40 turn ×3
+  (temp 0.0). Verdict `syntax-fail` (`run_repro_gates.py:65-68` "required artifacts missing")
+  me-relabel "artefak tak diproduksi". Detail + kandidat mekanis di **temuan observability (B)**.
+
+### Bukti penguat yang ditambahkan ke entri lever (per case)
+
+- **LV-01 (yardstick longgar):** +6938 (K4∧K5, under-general hapus guard format), +14995
+  (K1+K4, under-general `return None`), +15814 (K1+K1-ketat+K4+K5, under-general over-select),
+  +12907 (K1+K2+K4, sabotase 2/2 PASS), +14365 (K4+K5 under-coverage). **Nilai marjinal
+  terpenting: kelima adalah instans NON-DJANGO pertama, dan tanda tangan LV-01 SAMA PERSIS di
+  luar django** → kelemahan yardstick adalah **struktural pada product harness**, bukan artefak
+  korpus django. Dua hijau (15814, 14995) + satu merah (14365) menegaskan "HIJAU/lokasi-benar
+  tak membuktikan yardstick"; 15814 menambah kasus di mana **test resmi F2P pun ikut buta**
+  (sejajar §4 12915/12286/13658).
+- **LV-01 sub-lubang baru (dari 12907) — cakupan permukaan publik:** semua bukti LV-01 django
+  menang lewat nilai-test-salah/regresi-diam; 12907 menang lewat **ImportError di collection**
+  karena repro **tak mengimpor simbol publik yang dihapus** (`is_separable`). Isi konkret
+  tambahan untuk LV-01: *repro sebaiknya mengimpor & melatih SELURUH permukaan publik yang
+  disentuh/berdampingan gold, bukan hanya fungsi target.* (Gold-blind: nama simbol publik ada
+  di modul, bukan di gold.)
+- **LV-14 (isi patch-vs-gold tak dibandingkan):** +14995 (aliasing: `deepcopy` dibuang → mask
+  by-reference; tak terukur test mana pun), +14365 (**subset-hunk**: gold 2 region, model 1),
+  +12907 (rewrite → `line_overlap=false` false-negative). **Detektor termurah baru (dari 14365):
+  hitung jumlah region hunk gold vs patch; mismatch region SEKALIGUS `line_overlap=true` = sinyal
+  subset yang murah & mekanis**, tak butuh diff simbol seperti 12286.
+- **Kandidat-ditolak — "mock-churn astropy" (dari 6938 r1):** r1 habis 40 msg/8 attempt karena
+  model membangun objek FITS palsu (`MockColDefs not subscriptable`, `MockFormat not iterable`,
+  halusinasi `ImportError _AsciiColDefs/ColDef`) alih-alih `fits.TableHDU`+`np.rec.array` nyata;
+  r2 self-recover pakai objek nyata. **DITOLAK sebagai entri** — akar-model, self-recover, n=1,
+  tak mengikat verdict (hasil akhir hijau-asli). Syarat naik: ≥ beberapa case pustaka-saintifik
+  (astropy/numpy) dengan tanda-tangan mock-churn sama DAN ada bentuk mekanis (hint "pakai objek
+  nyata via API publik" = tambah-kalimat-prompt, prioritas rendah aturan #7).
+
+### Temuan BARU (bug-robustness) — dicatat, TIDAK diberi nomor LV (bar tinggi, katalog jenuh)
+
+**(A) `swebench_checker` crash `charmap` di Windows atas output test astropy — realm EVAL.**
+
+- **Gejala (deterministik):** 3 dari 4 case astropy (12907, 14365, 14995) — `swebench_checker`
+  exit 1 dengan `UnicodeDecodeError: 'charmap' codec can't decode byte 0x81`; `swebench_eval.json`
+  **tidak ditulis** (vonis resmi hilang). Django & astropy-6938 tidak terkena (output test-nya
+  kebetulan cp1252-safe).
+- **Akar:** `eval/swebench_checker.py:141` menulis log dengan `encoding="utf-8"`, lalu baris 142
+  `grade_log` → swebench `get_eval_report(str(log_path))` **membaca ulang log tanpa `encoding=`**
+  → Windows memakai `cp1252` default → mati pada byte non-cp1252 di output test astropy. Mismatch
+  tulis-UTF-8 / baca-cp1252. `except Exception` (baris 147) menelannya sehingga
+  `swebench_eval.json` sengaja tak ditulis (desain: jangan tulis vonis yang tak tercapai) — benar
+  sebagai kebijakan, tetapi menyembunyikan bahwa **sebabnya lingkungan, bukan grading**.
+- **Klasifikasi:** akar-ENVIRONMENT/harness di realm eval (bukan product R→L→F, jadi di luar
+  cakupan LV-01..LV-14). Deterministik & mekanis → keyakinan lebih tinggi dari n=1 biasa.
+- **Cara vonis diperoleh (dicatat demi transparansi):** ketiga checker di-**re-run di bawah
+  `PYTHONUTF8=1`** (flag interpreter, memaksa `open()` default UTF-8) — **tanpa mengubah kode
+  harness**, tanpa rename/hapus run dir; `swebench_eval.json` yang hilang lalu terisi. Ini higiene
+  interpreter, sekelas "pakai interpreter testbed / hapus bytecode basi" (SOP §3d), bukan
+  penerapan lever. Hasil: 12907 resolved=false, 14365 resolved=false, 14995 resolved=true.
+- **Rekomendasi (JANGAN eksekusi):** `get_eval_report` dipanggil dengan log yang dibaca eksplisit
+  `encoding="utf-8"`, ATAU harness men-set `PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8` untuk subproses
+  eval. **Syarat naik jadi entri lever bernomor:** bila base non-ASCII lain (numpy/scipy/dll) juga
+  memicunya — yang praktis pasti, karena sebabnya default-encoding platform, bukan astropy.
+
+**(B) Verdict REPRODUCE `syntax-fail`/`wrong-logic` = bucket catch-all yang menyesatkan autopsi —
+observability.**
+
+- **Gejala:** label verdict menyatukan sebab yang berbeda dan **langsung menyebabkan misdiagnosa
+  pemanggil di batch ini** (dua read-awal bot-03 terbantah karena percaya label; lihat KH-11/KH-12):
+  - `syntax-fail` (`run_repro_gates.py:65-68` "required artifacts missing") menyatukan ≥3 kondisi,
+    **nol di antaranya SyntaxError**: (i) model tak pernah menulis repro (15851 ×3, loop tool-call-
+    token); (ii) budget habis oleh mock-churn (astropy-6938 r1); (iii) `REPRO_STATUS token not
+    found` / `repro.md missing slots`. Distinct case yang menyentuh "artefak tak diproduksi" =
+    **5 dari 45** (astropy-6938, django-11422/11797/14752/15851); **15851 satu-satunya gagal-total
+    3/3** karena ini.
+  - `wrong-logic`/"gold-unsatisfiable predicate" (kandidat-ditolak #3 LV-10, ~41 run) menyatukan
+    ≥3 sub-sebab: setup tak lengkap (14382/11039), environment repro rusak dibaca predikat-salah
+    (14752/CSRF-403), dan **sub-sebab BARU dari 15789: pemetaan argumen API yang salah** (repro
+    logis-benar, gagal flip hanya karena urutan argumen tertukar).
+- **Akar (15851, akar-harness):** `format_reminder()` (`run_reproduce_gemma.py:471-479`, yang
+  menjelaskan bentuk ```bash benar) hanya dikirim bila `has_fences=True`; mode kegagalan
+  token-`<|tool_call|>`-tanpa-fence justru dapat pesan generik terlemah. `next_step_nudge`
+  (pemutus loop) hanya menyala bila `observed_fail=True`. Temp 0.0 → regenerasi byte-identik →
+  40 turn terbakar 3×. Signature `<|tool_call|>` ini persis yang melahirkan `format_reminder`
+  (docstring: "r11 11422") → **instansi kedua kelas yang sudah dikenal**, bukan kelas baru.
+- **Kandidat mekanis (JANGAN eksekusi; urut nilai):**
+  1. **Split verdict bucket** (nyaris gratis): `run_repro_gates` beri label sendiri
+     (`no-artifact` vs `syntax-fail` yang sungguh SyntaxError). Persis defek observability yang
+     menyesatkan batch ini. Sekaligus pisah bucket `wrong-logic` per sub-sebab (via `flip_run.json`).
+  2. **Generalisasi `format_reminder`** agar menyala saat `has_fences=false` bila reply memuat
+     penanda tool-call model (`<|tool_call|>`/`call:bash`).
+  3. **Pemutus loop no-progress** lepas dari `observed_fail`: abort/eskalasi setelah K reply
+     (near-)identik atau K turn tanpa repro.py.
+- **Syarat naik jadi entri:** #1 nyaris gratis & berdampak langsung ke kualitas autopsi berikutnya;
+  #2/#3 mekanis tapi menyentuh penalaran loop — angkat bila token-loop kambuh setelah #1 terpasang
+  atau denominator gagal-total melebar (>1 case).
+
+### Pembaruan Tabel frekuensi (bot-03, 2026-07-21) — 5 case baru ber-repro-qualified
+
+**Denominator.** Sampel Tabel A naik **33 → 38 case** (+5: 15814, 12907, 14365, 14995, 6938;
+masing-masing punya repro qualified baru). **15789 & 15851 TIDAK menambah** (tak ada repro
+qualified). `r-dev` delta: +11 run (5 qualified + 6 non-qualified: 15789 r1-r3 `wrong-logic`,
+15851 r1-r3 `syntax-fail`). Sampel `f-dev` **+5 run** (15814/12907/14365/14995/6938; 15789 &
+15851 berhenti di R).
+
+**Klasifikasi 5 repro baru** (manual, metode sama):
+
+- **15814** — K1 Y, **K1-ketat Y** (cabang error non-target → PASS), K2 T, K3 T, **K4 Y**, **K5 Y**.
+- **12907** — K1 Y, K1-ketat T (crash → tanpa `REPRO_STATUS`, tak mendarat PASS), **K2 Y**, K3 T,
+  **K4 Y**, K5 T (vonis perbandingan nilai off-diagonal, bukan substring).
+- **14365** — K1 T (polaritas aman, exception→FAIL), K1-ketat T, K2 T, K3 T, **K4 Y**, **K5 Y**.
+- **14995** — K1 Y, K1-ketat T (`except`→FAIL), K2 T, K3 T, **K4 Y**, **K5 Y**.
+- **6938** — K1 T (polaritas sehat, PASS menuntut `b'D'` hadir), K1-ketat T, K2 T, K3 T, **K4 Y**,
+  **K5 Y**.
+
+**Hitungan K1–K5 diperbarui (denominator 38 case, satu repro qualified per case):**
+
+- **K1: 19 dari 38** (50%). Naik tiga: +15814, +12907, +14995.
+- **K1-ketat: 6 dari 38** (16%). Naik satu: **+15814**. Daftar kini 11039, 11910, 12286, 14238,
+  14580, 15814. Proporsi tetap minoritas — **KH-05 tetap tidak terbantah**.
+- **K2: 12 dari 38**. Naik satu: +12907 (cabang crash tanpa `REPRO_STATUS`).
+- **K3: 4 dari 38**. Tidak berubah (nol dari lima repro baru mengimpor `pipe_runtime`; keempat
+  astropy in-process bersih). Kelas ini tetap tidak menyebar, **kini terkonfirmasi lintas-repo**.
+- **K4: 32 dari 38** (84%). Naik lima (**kelima repro baru K4**). **Tetap kriteria prevalensi
+  tertinggi**, dan kini terbukti dominan **di luar django juga**. Yang punya kontrol positif tetap
+  6 (10914, 11422 r44, 13768 r4, 14017, 14382 r2, 14580) — nol dari batch ini.
+- **K5: 24 dari 38** (63%). Naik empat (+15814, 14365, 14995, 6938; **12907 TIDAK** — vonis nilai).
+- **Irisan K4 ∧ K5: 20 dari 38** (53%). Naik empat (15814, 14365, 14995, 6938; 12907 K4 tanpa K5).
+  **Tetap profil kelemahan yardstick yang sebenarnya**, kini > separuh korpus.
+
+**Pembacaan yang searah, tidak membalik apa pun.** Lima repro non-django menambah bukti bahwa
+**K4 (kontrol positif absen) adalah sumbu dominan lintas-repo** (32/38, 84%), dan bahwa **kualitas
+predikat lepas dari kontrol** (12907 punya predikat nilai, K5 TIDAK, tetap K4). Urutan pemasangan
+yang disarankan tidak berubah; kontrol positif (K4) tetap kandidat isi konkret pertama LV-01.
+
+**Tabel D (OFF-GOLD) — sweep 5 `f-dev` baru** (semua punya `swebench_eval.json` DAN `gold_eval.json`):
+`resolved=true` **3 dari 5** (15814, 14995, 6938); **`resolved=true` DAN `file_match=false`: 0** —
+hit korpus tetap **hanya 13658**. Denominator `f-dev` ber-kedua-file naik ke **25 run**;
+`resolved=true` **18 dari 25**; `resolved=true & file_match=false` **tetap 1** (13658), kini
+**1 dari 18**. **Sel baru yang layak dicatat: 12907 = `resolved=false` + `file_match=true` +
+`line_overlap=false`** — kasus pertama di korpus di mana `line_overlap=false` muncul PADAHAL baris
+fix benar hadir (artefak rewrite; lihat KH-13). Peringatan recall-rendah tetap berlaku penuh —
+dua hijau-dengan-catatan batch ini (15814, 14995) dua-duanya `file_match=true`+`line_overlap=true`
+dan **tidak tersentuh** metrik ini, persis pola 12915/12286.
+
+### Kenapa sabotase §3d DIEKSEKUSI di batch ini (kontras bot-02)
+
+bot-02 tidak menjalankan sabotase (divergensi struktural terbaca dari diff). bot-03 menjalankannya
+untuk **12907 dan 14365** karena di kedua case eksperimen **menggeser kesimpulan**, bukan sekadar
+menambah titik ke kelas jenuh:
+- **14365:** sumber menandai case "noise-prone". Klaim itu **tentang alat ukur** → SOP §3d/KH-07
+  mewajibkan menjalankannya. Hasil (gold 3/3 PASS, model 3/3 FAIL, deterministik) **membantah**
+  noise-prone dan memindahkan vonis dari "mungkin flaky" ke "patch subset, test tajam" (KH-11).
+- **12907:** perlu memisahkan "repro salah menilai fix inti" dari "repro buta terhadap kerusakan
+  kolateral". Sabotase (gold+`_cdot`-raise → PASS; gold+float → PASS) membuktikan yang kedua.
+- **15814:** probe dijalankan untuk **mengukur** over-select (deferred fields gold vs model) —
+  mengubah vonis dari dugaan "hijau-dengan-catatan" jadi angka (`['age']` vs `[]`, 3 vs 4 kolom).
+- **6938 & 14995:** sabotase TIDAK dijalankan (patch 6938 = gold; kelemahan repro 14995 tekstual
+  & F2P resmi sudah menutup fix under-general) — konsisten dengan aturan "hanya bila mengubah
+  kesimpulan".
+- Jebakan §3d ditangani di keempat probe: interpreter `/opt/miniconda3/envs/testbed/bin/python`,
+  `__pycache__` dihapus, `PYTHONDONTWRITEBYTECODE=1`; semua container `probe*` dihentikan+dihapus,
+  `git checkout` dijalankan. Nol hasil "terlalu dramatis" (tak ada artefak probe, KH-07).

@@ -187,6 +187,68 @@ operasional:
 - **Pelajaran:** satu pesan error yang sama bisa punya dua sebab yang berbeda. Kelompokkan
   berdasarkan sebab, bukan berdasarkan teks errornya.
 
+## KH-11 — "astropy-14365 gagal karena test noise-prone/flaky"
+
+- **Yang dinyatakan:** sumber handoff menandai `astropy__astropy-14365` sebagai **noise-prone**;
+  hipotesis awal (bot-03) menampung kemungkinan bahwa `resolved=false` disebabkan kegagalan F2P
+  `test_qdp.py::test_roundtrip[True]` yang flaky, bukan patch model.
+- **Derajat: TERBANTAH.**
+- **Yang benar:** test-nya **deterministik penuh**, dan `resolved=false` sepenuhnya dijelaskan
+  oleh **patch model = subset ketat gold** (menerapkan hunk-1 `re.IGNORECASE`, menghilangkan
+  hunk-2 `if v.upper()=="NO":` di `_get_tables_from_qdp_file`).
+- **Bukti pembantah — eksperimen (container `probe14365`, interpreter testbed, `__pycache__`
+  dihapus tiap putaran, `PYTHONDONTWRITEBYTECODE=1`):** GOLD dipasang → `test_roundtrip[True]`
+  **PASS 3/3**; patch MODEL → **FAIL 3/3**, error identik tiap kali
+  (`could not convert string to float: 'no'` @ `qdp.py:316`). Nol variansi antar-jalankan.
+  Bukti kausal tambahan: lokasi crash bergeser baseline `qdp.py:78` (hunk-1) → model
+  `qdp.py:316` (hunk-2) — membuktikan hunk-1 model lolos, lalu mati tepat di titik yang hunk-2
+  gold seharusnya perbaiki.
+- **Pelajaran:** label "noise-prone" adalah klaim **tentang alat ukur** — SOP §3d/KH-07 mewajibkan
+  MENJALANKANNYA, bukan menerimanya. Menjalankan gold berulang memisahkan "test flaky" dari
+  "patch tak lengkap" dengan angka.
+
+## KH-12 — "django-15851 gagal karena repro model ber-SyntaxError (analog LV-02)"
+
+- **Yang dinyatakan (bot-03, read-awal ke subagent):** verdict `syntax-fail` 3/3 berarti model
+  berulang kali menulis `repro.py` yang punya `SyntaxError`; kelas ini analog LV-02 (`py_compile`
+  di titik tulis, tapi di fase REPRODUCE).
+- **Derajat: TERBANTAH.**
+- **Yang benar:** **tidak ada SyntaxError, dan tidak ada `repro.py` yang pernah ditulis.** `files/`
+  ketiga run hanya berisi `pipe_runtime.py`. Model terjebak loop degeneratif: meng-emit token
+  `<|tool_call|>` miliknya sendiri **tanpa fenced-block** ```` ``` ````, sehingga `parse_actions`
+  menghasilkan **0 aksi** dan reply byte-identik diregenerasi 40 turn ×3 (temp 0.0). Verdict
+  `syntax-fail` berasal dari `run_repro_gates.py:65-68` (`"required artifacts missing"`) —
+  me-relabel "artefak tak diproduksi" jadi seolah kegagalan sintaks.
+- **Bukti pembantah:** `files/` ketiga run tanpa `repro.py`; `console.log` r1 = 40 reply
+  byte-identik dengan **nol** baris `[exec]`; `parse_actions` atas reply asli → `[]`,
+  `has_fences=False` (r1/r3). Akar: mismatch protokol tool-call model↔driver +
+  `format_reminder` yang dipagari `has_fences=True` (jadi mode kegagalan ini dapat pesan
+  terlemah) + tak ada pemutus loop no-progress lepas dari `observed_fail`.
+- **LV-02 tidak berlaku:** ia mengandaikan ada file yang ditulis untuk di-`py_compile`; di sini
+  tak ada write. Dicatat sebagai temuan observability (B) di katalog batch bot-03, bukan LV-02.
+- **Pelajaran:** JANGAN percaya label verdict sebagai diagnosa. `syntax-fail`/`wrong-logic`
+  adalah bucket catch-all; buka artefaknya (`files/`, `console.log`, `parse_actions`) sebelum
+  menamai sebab. Dua read-awal batch ini (KH-11, KH-12) terbantah justru karena awalnya percaya
+  label/anotasi.
+
+## KH-13 — "`gold_eval.line_overlap=false` berarti patch di baris yang salah"
+
+- **Yang dinyatakan (bot-03, read-awal 12907):** `astropy-12907` punya `file_match=true` tetapi
+  `line_overlap=false`, jadi patch model ada di **file benar, baris salah**.
+- **Derajat: DIPERSEMPIT.**
+- **Yang benar:** pada patch yang **me-rewrite file** (bukan hunk minimal), `line_overlap=false`
+  bisa **false-negative**: patch model 12907 **memuat baris fix gold yang benar**
+  (`cright[-right.shape[0]:, -right.shape[1]:] = right`), tetapi karena model menulis ulang
+  seluruh modul (hunk pembuka `@@ -1,191 +1,55 @@`) penomoran baris bergeser total sehingga
+  detektor overlap tak menemukannya. Kegagalan `resolved=false` bukan "baris salah" melainkan
+  **kerusakan kolateral rewrite** (penghapusan API publik `is_separable` → ImportError di
+  collection).
+- **Bukti pembantah:** pembacaan `fix.diff` (baris `= right` hadir & benar) + `swebench_test_output.log`
+  (`ImportError: cannot import name 'is_separable'`, `collected 0 items / 2 errors`).
+- **Pelajaran:** `line_overlap` andal untuk patch hunk-minimal, TIDAK untuk patch rewrite.
+  Sebelum menyimpulkan "baris salah" dari `line_overlap=false`, verifikasi kehadiran baris fix
+  secara semantik di `fix.diff`.
+
 ---
 
 ## Pola kesalahan kami (per 2026-07-20)
@@ -207,3 +269,15 @@ Penangkal yang terbukti bekerja, dan sebaiknya dipertahankan:
 - **Bar tinggi untuk entri baru** di katalog lever, plus kewajiban mencatat kandidat
   yang ditolak beserta syarat kapan boleh dinaikkan.
 - **Eksperimen, bukan pembacaan**, untuk klaim tentang alat ukur (KH-06, KH-07).
+
+### Addendum 2026-07-21 (bot-03) — bias ketiga: percaya label verdict/anotasi
+
+Dua koreksi batch bot-03 (**KH-11, KH-12**) berbentuk sama dan berbeda dari dua bias di atas:
+**menerima label verdict atau anotasi sumber sebagai diagnosa, tanpa membuka artefaknya.**
+`syntax-fail` dibaca sebagai SyntaxError (padahal artefak repro tak pernah ditulis); "noise-prone"
+dibaca sebagai flaky (padahal test deterministik). Keduanya tumbang di detik artefaknya dibuka
+(`files/`, `console.log`, `parse_actions`) atau alat ukurnya dijalankan (gold berulang). Penangkal
+yang sama bekerja — subagent dengan izin membantah + eksperimen atas klaim-alat-ukur — dan
+ditambah satu aturan konkret: **verdict REPRODUCE (`syntax-fail`/`wrong-logic`) adalah bucket
+catch-all; perlakukan sebagai penunjuk, bukan sebab** (lihat temuan observability (B) di katalog
+batch bot-03).
