@@ -3743,6 +3743,11 @@ Dari 7 fail: **1/7 (7746)** diperbaiki ketatkan-repro (LV-01+K4); **2/7 (11797,1
 
 **Usulan lever Mirza (2026-07-21): detektor "≥3 command/reply identik berturut → ingatkan/putus loop."** = **persis candidate mechanism #3** temuan observability (B) 15851 ("Pemutus loop no-progress lepas dari `observed_fail`: abort/eskalasi setelah K reply byte-identik"). **DIKONFIRMASI penguat, BUKAN kelas/lever baru** (aturan katalog #3: satu mekanisme = satu lever).
 - **Caveat load-bearing:** reminder murni terbukti TAK cukup (14855/15902: `format_reminder` menyala, model tetap gagal 40 turn ×3 di temp-0). Maka breaker efektif harus **mengubah konteks** (mis. suntik parse-failure eksplisit / eskalasi berbeda) ATAU **putus-dini** (hemat 35+ turn terbakar), bukan sekadar menempel pesan yang diabaikan.
-- **Prioritas early-cut vs context-change:** menunggu keputusan Mirza (dia akan jelaskan manual).
+- **Prioritas early-cut vs context-change — KEPUTUSAN Mirza (2026-07-21):** **KEDUANYA, berurutan.** Watcher mendeteksi response identik berulang → (1) **putus-dini** loop yang terbakar sia-sia, lalu (2) **inject prompt peringatan mekanis** (workaround ubah-konteks) untuk mencoba pecah fixed-point. Watcher = komponen baru; kedua aksi dipicu dari sinyal "≥K response byte-identik".
+
+**Observasi turunan (bot-02, 2026-07-21) — rerun byte-identik = budget rerun sia-sia di temp 0.0.** `chat()` ketiga driver set `temperature: 0.0` (greedy), tanpa `top_p`/seed (`run_reproduce_gemma.py:110`, `run_localize_gemma.py:71`, `run_fix_gemma.py:110`). Konsekuensi: rerun-sampai-qualified (r1→r2→r3) dgn input identik menghasilkan output **byte-identik** — 14411 r1/r2/r3 semua 39 hit/205 baris. Budget 3-rerun beli **0 informasi** kecuali input berubah antar-rerun. Kandidat lever antar-run (menunggu keputusan Mirza, sumbu reproducibility vs eksplorasi):
+- **(a) temperature-di-rerun** (r1 greedy + gate deterministik; r2/r3 temp>0 + **seed dipin** per-rerun → reproducible-given-seed);
+- **(b) feedback-injection deterministik** (inject kegagalan rerun sebelumnya sebagai konteks r2/r3 — tetap temp 0.0, tanpa flakiness).
+Komplementer dgn watcher (watcher = intra-run; a/b = antar-run).
 
 **Status: BELUM DITERAPKAN** (default catat-only).
