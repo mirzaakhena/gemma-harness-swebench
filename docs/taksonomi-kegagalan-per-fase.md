@@ -403,15 +403,17 @@ resolved=false target-fail-murni (f2p>0,p2p=0) **8** · resolved=false campuran
   (`line_overlap=null` — jangan dibulatkan). Recall detektor ini RENDAH (lulus-palsu
   di file benar tak tersentuh — 12915/12286).
 - **Frekuensi (refresh 2026-07-22):** **2 dari 40 run resolved=true**: `13658`
-  (TERKONFIRMASI lulus-palsu — KH-06), `11620` (**belum diputuskan**: fix_file_match
-  =false tapi 0 regresi dari 66 P2P → kandidat fix-alternatif-valid; §3b sabotase =
-  prioritas re-test). **Koreksi 2026-07-22:** `11964` yang sempat di-flag audit
+  (TERKONFIRMASI lulus-palsu — KH-06), `11620` (**DIPUTUSKAN 2026-07-22, KH-19 probe
+  sabotase bot-02:** BUKAN lulus-palsu, BUKAN alt-location bersih — patch model di
+  `resolvers.py` `return None` atas `Http404` converter → fallthrough ke pattern URL
+  berikutnya + pesan Http404 dibuang; divergen-laten dari gold `debug.py`. Direklas
+  ke **H-3 hijau-divergen**). **Koreksi 2026-07-22:** `11964` yang sempat di-flag audit
   sebagai kandidat lulus-palsu = **SEJATI** (flag berbasis l-dev file_match; padahal
   FIX patch-nya di file gold, fix_file_match=true).
 - **Aturan deteksi (pelajaran §3a, refine bot-03):** lulus-palsu WAJIB dideteksi dari
   **FIX `gold_eval.file_match`** (patch akhir), BUKAN dari l-dev/localize file_match —
   yang terakhir OVER-FLAG.
-- **Anggota:** 13658 (confirmed), 11620 (⏳ pending §3b).
+- **Anggota:** 13658 (confirmed). (11620 → H-3 per KH-19.)
 
 ### F-7 — Batas metodologi / gold-blind (bukan defek harness; JANGAN dipasangi lever)
 
@@ -506,15 +508,19 @@ LV-14). Per case + apa yang tak terukur:
 - `13447` — rename API publik tak diminta (`_build_app_dict`→`build_app_dict`).
 - `12700` — subtipe minor (`type(value)(...)` vs tuple) + key rekursi.
 - `12747` — 1 dari 2 hunk gold (jalur `delete_batch` hilang; repro & F2P sama-sama buta).
-- **12 case.** Lever: **LV-14** (+LV-01 utk sisi repro). Ini daftar yang paling layak
+- `11620` — **(+2026-07-22, KH-19)** fix di file non-gold (`resolvers.py`): `Http404`
+  converter → `return None` → fallthrough diam-diam ke pattern berikutnya + pesan
+  Http404 dibuang; probe 2-pattern membuktikan divergensi (gold: 404 seketika, model:
+  RESOLVED ke view_b). Satu-satunya anggota H-3 ber-`file_match=false`.
+- **13 case.** Lever: **LV-14** (+LV-01 utk sisi repro). Ini daftar yang paling layak
   masuk urutan re-test "enhance" Mirza.
 
 ### H-4 — Hijau BELUM diperiksa §3b (jangan dihitung ke H-1/H-3 dulu)
 
-- **8 case (refresh 2026-07-22):** `12908`, `12983` (hijau grup-1+2, §3b deferred —
-  papan §3), `12453`, `10914`, `11039`, `14382`, **11620** (F-6, §3b sabotase pending),
-  dan **`13033`** (solve-recovery pasca-false-prune — fix di file gold, 0 regresi,
-  tapi §3b patch-vs-gold semantik belum dijalankan). Aksi murah: §3b semantik.
+- **7 case (refresh 2026-07-22):** `12908`, `12983` (hijau grup-1+2, §3b deferred —
+  papan §3), `12453`, `10914`, `11039`, `14382`, dan **`13033`** (solve-recovery
+  pasca-false-prune — fix di file gold, 0 regresi, §3b semantik belum dijalankan).
+  (11620 sudah tuntas §3b → H-3, KH-19.) Aksi murah: §3b semantik.
 
 ---
 
@@ -565,6 +571,10 @@ Kandidat untuk dipindahkan ke katalog oleh penulis berikutnya:
    (+12184: 260, +13448: 13 — metode grep identik); (f) blind-spot **LV-14**: 12284
    over-broad DALAM hunk region-gold, tak tertangkap detektor mismatch-region;
    (g) board 103 first-pass TUNTAS — solve genuine baru: 13757, 13315, 13033.
+8. **KH-19 (2026-07-22, bot-02, probe sabotase):** `11620` DIPUTUSKAN — bukan
+   lulus-palsu, bukan alt-location bersih; **H-3 hijau-divergen** (fallthrough +
+   pesan Http404 dibuang, bug laten di jalur tak-teruji). F-6 kini beranggota
+   tunggal 13658; H-3 naik jadi 13 case.
 
 ---
 
