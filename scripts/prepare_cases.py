@@ -17,10 +17,42 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 MAIN = Path(__file__).resolve().parent.parent
+
+
+class GoldPatchCorrupt(RuntimeError):
+    """gold.patch gagal parse (`git apply --numstat`) — fail-fast setup."""
+
+
+def validate_gold_patch_parses(patch_path: Path | str) -> None:
+    """Fail-fast R18/KL-G3-1: pastikan gold.patch PARSE bersih.
+
+    Menjalankan `git apply --numstat <patch>` (cek PARSE murni — TIDAK
+    `--check`, yang butuh worktree django target yang belum ada di prep-time).
+    `--numstat` mem-parse patch & melaporkan jumlah baris per-file TANPA
+    menyentuh tree apa pun; keluar non-zero dengan `error: corrupt patch at
+    line N` untuk patch malformed (mis. body hunk kurang baris konteks trailing
+    vs header @@ — kelas korupsi KH-16). cwd = MAIN (root repo harness, sebuah
+    git repo) supaya `git apply` punya konteks git.
+
+    Raise GoldPatchCorrupt (menyebut path + error git) bila korup; return
+    None bila bersih.
+    """
+    patch_path = Path(patch_path)
+    proc = subprocess.run(
+        ["git", "apply", "--numstat", str(patch_path)],
+        cwd=str(MAIN), capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise GoldPatchCorrupt(
+            f"gold.patch korup / tak-parse: {patch_path} — git apply "
+            f"--numstat exit {proc.returncode}: {detail}"
+        )
 
 
 def gold_file_from_patch(patch: str) -> str:
@@ -76,7 +108,11 @@ def main(argv: list[str] | None = None) -> int:
         # Cukup pastikan tepat satu newline penutup.
         if not patch.endswith("\n"):
             patch += "\n"
-        (gdir / "gold.patch").write_bytes(patch.encode("utf-8"))
+        gold_patch_path = gdir / "gold.patch"
+        gold_patch_path.write_bytes(patch.encode("utf-8"))
+        # R18/KL-G3-1: fail-fast — tolak gold.patch yang tak parse (KH-16).
+        # Ketimbang diam-diam lolos & lahir verdict wrong-logic vacuous nanti.
+        validate_gold_patch_parses(gold_patch_path)
         files = gold_files_all(patch)
         (gdir / "gold.json").write_bytes(
             (json.dumps({"file": gold_file_from_patch(patch)},
