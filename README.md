@@ -222,7 +222,18 @@ Status dashboard kampanye `f-*` = **AND dua lapisan judgment**:
 - Preseden pola: fase LOCALIZE (`eval/localize_gold_eval.py` memakai gold di
   development; product LOCALIZE tetap gold-blind dgn kriteria SHORTLIST).
 
-**Invokasi (dari root `main\`):**
+**Setup case baru (pola reusable):** `scripts/prepare_cases.py` — untuk tiap
+case menulis `cases/problems/<id>.txt` (problem_statement), `cases/gold/<id>/`
+`gold.patch` + `gold.json` (`{"file": ...}`) + `swebench_spec.json`, semua dari
+HF SWE-bench_Lite sekali jalan. Pakai ini + `docker pull` image sebelum RLFV
+case yang belum ter-setup.
+
+```
+python -m scripts.prepare_cases --case django__django-<id> [--case ...]
+docker pull ghcr.io/epoch-research/swe-bench.eval.x86_64.django__django-<id>:latest
+```
+
+**Invokasi lain (dari root `main\`):**
 
 ```
 python -m eval.fetch_swebench_spec --case <id> [--case <id> ...]
