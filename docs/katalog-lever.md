@@ -4201,3 +4201,32 @@ turun dari 2 (11620/11964) → **1 (11620)**.
 **KL-G3-2 (prune keying `qualified`, bukan `file_match`)** kini punya **bukti solve-recovery konkret
 (13033)** → prioritas naik. **Status: BELUM DITERAPKAN** (disiplin lever: catat, jangan terapkan tanpa
 instruksi Mirza).
+
+---
+
+## Status DITERAPKAN — Gelombang 1 (2026-07-22)
+
+Keputusan Mirza 2026-07-22: pasang Gelombang 1 (quick-wins Tier-1). Eksekusi kode oleh
+bot-02 (R2–R7, R18); bot-04 memasang R1 + R19 lebih dulu lalu handoff eksekusi ke bot-02.
+Semua TDD, `python -m pytest` hijau tiap commit (**431 → 465 passing**, +34 test), satu
+commit per lever, trailer `Agent: bot-02`/`bot-04`. Repo HEAD `84c70e8`.
+
+Lever-lever ini kini **DITERAPKAN** (bukan lagi catat-only). Lever Gelombang 2/3 (R8–R17)
+TETAP catat-only sampai perintah Mirza berikutnya.
+
+| Lever | Commit | Ringkas perubahan |
+|---|---|---|
+| R19 / KL-G3-2 prune keying `qualified` | `0d835b6` (bot-04) | prune di-key ke `qualified`, bukan `file_match` (perbaiki false-prune KH-17) |
+| R1 / LV-09 pipe_runtime → FIX/LOCALIZE | `0444b81` (bot-04) | helper ship-repro; kirim `pipe_runtime.py` ke dunia kerja FIX & LOCALIZE |
+| R2 split-verdict | `8933a06` | 5 label REPRODUCE identifikasi-gejala (repro-missing / vacuous-repro / syntax-error / gold-wont-flip / gold-flip-crash) + whitelist `emit.py` + ikon `ui/server.py` |
+| R3 format_reminder | `d592ccc` | detektor `has_tool_call_marker` + helper `no_action_feedback`; reminder tool-call-marker digeneralisasi & di-port ke driver FIX/LOCALIZE |
+| R4 encoding checker | `8aac0d0` | salinan log ber-encoding locale (`errors=replace`) utk `grade_log`; artefak asli tetap UTF-8 (fix charmap Windows, V-C) |
+| R5 watcher no-progress | `d4c455b` | modul murni `harness/stages/no_progress.py`; trigger #1 (reply identik) / #2 (0-aksi) / #8 (observed_fail-never); aksi inject-UNIK lalu `break` (BUKAN `emit_abort` — hindari dua-penulis-verdict); K=3, X=15 (kalibrasi) |
+| R6 dedup papan batch | `6aff344` | `dedup_results` per-case (last-wins) saat menyusun ringkasan resume; prune tetap dihitung gagal |
+| R7 CRLF port LOCALIZE | `2279cbc` | `docker_write_file` LOCALIZE menulis raw bytes (LF-only), samakan pola driver R/F |
+| R18 / KL-G3-1 git-apply-check | `84c70e8` | `validate_gold_patch_parses` via `git apply --numstat` (fail-fast saat prepare_cases; guard kelas corrupt-gold KH-16) |
+
+**Catatan kejujuran (BELUM divalidasi):** "DITERAPKAN" = kode terpasang + unit-test hijau,
+BUKAN klaim unlock. Efek pada case-asal + kanari diukur di fase retest berikut (bot-02) per
+`docs/urutan-retest-lever.md` §0 (unlock/efficiency/observability, wasit L2, label rezim
+injeksi). K/X di R5 = kalibrasi awal, tunggu data retest.
