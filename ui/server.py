@@ -20,6 +20,14 @@ DEFAULT_PORT = 8766
 DEFAULT_TAIL = 200
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
+# Ambang keaktifan run tanpa verdict.json (detik). Run tanpa verdict yang
+# file aktivitasnya (console.log/events.jsonl) di-update <= ambang ini
+# dianggap "(live)"; lebih lama -> "(stale?)" (dibunuh/ditinggalkan).
+# Sengaja longgar (5 menit): sebuah REPRODUCE aktif meng-update console.log
+# tiap turn dan jeda antar-turn jarang > beberapa menit — jangan salah cap
+# run lambat-tapi-hidup sebagai stale.
+STALE_THRESHOLD_SECONDS = 300
+
 
 # --- logika inti (dites di tests/test_ui_core.py) ---------------------------
 
@@ -615,6 +623,45 @@ def run_duration_seconds(run_dir: Path) -> float | None:
         return None
 
 
+def run_liveness(run_dir: Path, now=None) -> str:
+    """Status keaktifan run TANPA verdict.json: "live" atau "stale".
+
+    Sinyal keaktifan = mtime TERBARU dari console.log / events.jsonl di run
+    dir. Bila (now - mtime_terbaru) <= STALE_THRESHOLD_SECONDS -> "live";
+    lebih lama -> "stale" (run dibunuh/ditinggalkan dari luar; ia tak akan
+    pernah menulis verdict.json sehingga dulu tampil "(live)" selamanya).
+
+    `now` opsional utk testability: epoch float ATAU datetime; default
+    time.time(). KEDUA file tak ada -> "stale": tanpa bukti keaktifan sama
+    sekali, lebih jujur menandai perlu-diperiksa daripada meng-klaim hidup
+    (run yang benar-benar berjalan selalu menulis console.log/events.jsonl).
+    """
+    import os
+    import time
+    from datetime import datetime
+    if now is None:
+        now = time.time()
+    elif isinstance(now, datetime):
+        now = now.timestamp()
+    run_dir = Path(run_dir)
+    latest = None
+    for name in ("console.log", "events.jsonl"):
+        try:
+            m = os.path.getmtime(run_dir / name)
+        except OSError:
+            continue
+        latest = m if latest is None else max(latest, m)
+    if latest is None:
+        return "stale"
+    return "live" if (now - latest) <= STALE_THRESHOLD_SECONDS else "stale"
+
+
+def _live_label(run_dir: Path) -> str:
+    """Sufiks label durasi utk run tanpa verdict.json (dipakai page_index &
+    page_run): " (live)" bila run_liveness live, else " (stale?)"."""
+    return " (live)" if run_liveness(run_dir) == "live" else " (stale?)"
+
+
 def fmt_duration(seconds: float | None) -> str:
     if seconds is None:
         return "-"
@@ -932,7 +979,10 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
                 + "&r=" + urllib.parse.quote(rid))
         dur = fmt_duration(run_duration_seconds(root / active / rid))
         if not vpath.is_file():
-            dur += " (live)"
+            # run tanpa verdict.json: bedakan yang masih aktif (mtime
+            # console.log/events.jsonl baru) dari yang beku (dibunuh) —
+            # jangan lagi cap semuanya "(live)" selamanya.
+            dur += _live_label(root / active / rid)
         turns = run_turns(root / active / rid)
         case_id, rerun = split_run_id(rid)
         # status baris utk data-status (radio filter) & modal alasan: dari
@@ -989,7 +1039,7 @@ def page_run(root: Path, campaign: str, run_id: str, n: int) -> str:
     title = f"{campaign} / {run_id}"
     dur = fmt_duration(run_duration_seconds(run_dir))
     if not (run_dir / "verdict.json").is_file():
-        dur += " (live)"
+        dur += _live_label(run_dir)
     parts = [f"<p><a href='/'>&larr; index</a></p>"
              f"<h1>{html.escape(title)}</h1>"
              f"<p class='dim'>durasi: {html.escape(dur)}</p>"]
