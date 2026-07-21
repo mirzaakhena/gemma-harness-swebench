@@ -16,11 +16,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+import run_rlfv_batch  # noqa: E402
 from run_rlfv_batch import (  # noqa: E402
     next_free_rerun,
     parse_case_list,
     parse_waiting,
     qualified_rerun,
+    wait_for_gpu,
 )
 
 
@@ -124,3 +126,15 @@ def test_qualified_rerun_none_when_all_failed(tmp_path):
     _mk_run(tmp_path, "r-dev", "django__django-1", 1, False)
     _mk_run(tmp_path, "r-dev", "django__django-1", 2, None)
     assert qualified_rerun(tmp_path, "r-dev", "django__django-1") is None
+
+
+# --- wait_for_gpu (flag --allow-concurrent) --------------------------------
+
+def test_wait_for_gpu_allow_concurrent_bypasses_gate(tmp_path, monkeypatch):
+    """EKSPERIMEN: allow_concurrent=True submit langsung — gpu_check TIDAK
+    dipanggil (bukan sekadar skip cek container, tapi bypass gate penuh)."""
+    def _boom(*a, **k):
+        raise AssertionError("gpu_check tak boleh dipanggil saat allow_concurrent")
+    monkeypatch.setattr(run_rlfv_batch, "run", _boom)
+    assert wait_for_gpu(tmp_path / "state.json", "django__django-1",
+                        allow_concurrent=True) is True

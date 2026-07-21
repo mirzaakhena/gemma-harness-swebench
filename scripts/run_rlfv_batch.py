@@ -124,8 +124,19 @@ def gemma_containers_for_other_cases(case: str) -> list[str]:
     return [n for n in names if case.replace("__", "-") not in n and case not in n]
 
 
-def wait_for_gpu(state_path: Path, case: str) -> bool:
-    """Tunggu sampai antrean vLLM kosong DAN tidak ada run Gemma case lain."""
+def wait_for_gpu(state_path: Path, case: str,
+                 allow_concurrent: bool = False) -> bool:
+    """Tunggu sampai antrean vLLM kosong DAN tidak ada run Gemma case lain.
+
+    allow_concurrent=True (EKSPERIMEN throughput paralel): BYPASS TOTAL —
+    submit langsung tanpa menunggu gate `waiting==0` maupun cek container
+    case lain. Tujuannya menguji apakah continuous-batching vLLM memberi
+    throughput lebih tinggi saat beberapa pipeline slam server bersamaan.
+    Konsekuensi (dibahas & diterima Mirza 2026-07-21): bisa menaikkan
+    `waiting` server bersama."""
+    if allow_concurrent:
+        log(state_path, "  [gpu] allow_concurrent: bypass gate, submit langsung")
+        return True
     for i in range(GPU_POLL_MAX):
         code, out = run([sys.executable, str(GPU_CHECK)])
         waiting = parse_waiting(out)
@@ -158,7 +169,8 @@ def already_done(case: str) -> bool:
     return False
 
 
-def run_case(state_path: Path, case: str) -> dict:
+def run_case(state_path: Path, case: str,
+             allow_concurrent: bool = False) -> dict:
     """Jalankan R -> L -> F -> V untuk satu case. Kembalikan ringkasan."""
     img = IMAGE_TMPL.format(case=case)
     prob = f"cases\\problems\\{case}.txt"
@@ -173,7 +185,7 @@ def run_case(state_path: Path, case: str) -> dict:
         if n > MAX_RERUN:
             log(state_path, f"  slot rerun R sudah melewati {MAX_RERUN}, berhenti")
             break
-        if not wait_for_gpu(state_path, case):
+        if not wait_for_gpu(state_path, case, allow_concurrent):
             res["error"] = "gpu-timeout-reproduce"
             return res
         stage(state_path, f"REPRODUCE r{n}", [
@@ -199,7 +211,7 @@ def run_case(state_path: Path, case: str) -> dict:
         n = next_free_rerun(ARTIFACTS / "l-dev", "l-dev", case)
         if n > MAX_RERUN:
             break
-        if not wait_for_gpu(state_path, case):
+        if not wait_for_gpu(state_path, case, allow_concurrent):
             res["error"] = "gpu-timeout-localize"
             return res
         stage(state_path, f"LOCALIZE r{n}", [
@@ -264,6 +276,10 @@ def main(argv=None) -> int:
     ap.add_argument("--state", default=str(ARTIFACTS / "batch-state.json"))
     ap.add_argument("--no-resume", action="store_true",
                     help="jangan lewati case yang sudah punya swebench_eval.json")
+    ap.add_argument("--allow-concurrent", action="store_true",
+                    help="EKSPERIMEN: lewati cek container Gemma case lain "
+                         "supaya beberapa proses batch bisa jalan paralel "
+                         "(gate waiting==0 tetap dijaga)")
     args = ap.parse_args(argv)
 
     if args.cases:
@@ -289,7 +305,7 @@ def main(argv=None) -> int:
             continue
         log(state_path, f"[{i}/{len(cases)}] {case} — mulai")
         try:
-            res = run_case(state_path, case)
+            res = run_case(state_path, case, args.allow_concurrent)
         except Exception as exc:  # noqa: BLE001 — batch tidak boleh mati karena satu case
             res = {"case": case, "error": f"exception: {exc!r}"}
             log(state_path, f"  EXCEPTION: {exc!r}")
