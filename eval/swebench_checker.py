@@ -9,6 +9,7 @@ events.jsonl; tidak pernah diumpankan ke loop model (boundary integritas).
 from __future__ import annotations
 
 import json
+import locale
 import re
 from pathlib import Path
 from textwrap import dedent
@@ -86,6 +87,23 @@ def build_eval_script(spec: dict) -> str:
     """)
 
 
+def write_gradeable_log_copy(log_text: str, dest_path: Path) -> Path:
+    """R4/V-C fix. swebench `grading.py:58` reads the test-output log with a bare
+    `open()` → the platform default codec (cp1252 on Windows), which raises
+    `UnicodeDecodeError: 'charmap'` on non-ASCII output (astropy 12907/14365/14995)
+    and prevents `swebench_eval.json` from ever being written.
+
+    Write a copy encoded with `locale.getpreferredencoding(False)` and
+    `errors="replace"` — i.e. exactly the codec the grader reads back with — so the
+    round-trip is always valid (no crash) and unrepresentable chars degrade to a
+    replacement char. Test markers and test names are ASCII, so grading is
+    unaffected. The original artifact log stays UTF-8 (written by the caller)."""
+    enc = locale.getpreferredencoding(False)
+    dest = Path(dest_path)
+    dest.write_text(log_text, encoding=enc, errors="replace", newline="\n")
+    return dest
+
+
 def grade_log(spec: dict, fix_diff_text: str, log_path: Path) -> dict:
     """Vonis resmi host-side: log parser per-repo + get_eval_report."""
     ensure_resource_shim()
@@ -134,12 +152,21 @@ def run_checker(case: str, rerun: int, campaign: str, artifacts: str,
     except (FileNotFoundError, ValueError) as e:
         return 1, {"error": str(e)}
     fix_diff = diff_path.read_text(encoding="utf-8")
-    log_path = run_dir / "files" / "swebench_test_output.log"
+    files_dir = run_dir / "files"
+    log_path = files_dir / "swebench_test_output.log"
+    grade_log_path = None
     try:
         res = runner(image, build_eval_script(spec), fix_diff,
                      spec["test_patch"], timeout)
         log_path.write_text(res["log"], encoding="utf-8", newline="\n")
-        raw = grade_log(spec, fix_diff, log_path)
+        # R4/V-C: swebench grading.py:58 reads the log with a bare open() → the
+        # platform default codec (cp1252 on Windows), which UnicodeDecodeError-
+        # crashes on non-ASCII output. Grade against a locale-encoded copy the
+        # grader can read; the UTF-8 artifact log above stays untouched. The copy
+        # is transient (cleaned up in finally).
+        grade_log_path = write_gradeable_log_copy(
+            res["log"], files_dir / "swebench_test_output.grade.log")
+        raw = grade_log(spec, fix_diff, grade_log_path)
         summary = summarize_report(
             raw, spec, case=case, rerun=rerun, image=image,
             spec_path=spec_path, log_rel="files/swebench_test_output.log",
@@ -153,6 +180,10 @@ def run_checker(case: str, rerun: int, campaign: str, artifacts: str,
         # misleading (no real verdict was reached).
         return 1, {"error": "swebench eval failed", "detail": str(e),
                    "case": case, "rerun": rerun}
+    finally:
+        # The grade copy is a transient encoding shim, not an artifact — drop it.
+        if grade_log_path is not None:
+            grade_log_path.unlink(missing_ok=True)
     (run_dir / "swebench_eval.json").write_bytes(
         (json.dumps(summary, ensure_ascii=False, indent=1) + "\n")
         .encode("utf-8"))

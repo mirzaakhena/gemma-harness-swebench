@@ -1,4 +1,6 @@
 """Test core pure checker SWE-bench L2 — tanpa docker, tanpa network."""
+import locale
+
 import pytest
 
 from eval._swebench_compat import ensure_resource_shim
@@ -7,7 +9,7 @@ ensure_resource_shim()
 from swebench.harness.constants import END_TEST_OUTPUT, START_TEST_OUTPUT
 
 from eval.swebench_checker import (build_eval_script, grade_log, load_spec,
-                                   summarize_report)
+                                   summarize_report, write_gradeable_log_copy)
 
 SPEC = {"instance_id": "django__django-99999", "repo": "django/django",
         "version": "3.0", "base_commit": "abc123",
@@ -107,6 +109,56 @@ def test_grade_log_p2p_regression(tmp_path):
     assert raw["resolved"] is False
     assert raw["tests_status"]["PASS_TO_PASS"]["failure"] == [
         "test_b (foo.tests.FooTest)"]
+
+
+# R4 (V-C): non-ASCII test output. U+2001 encodes to UTF-8 bytes E2 80 81;
+# byte 0x81 is UNDEFINED in cp1252, so a bare open() of the UTF-8 log under the
+# Windows default codec raises UnicodeDecodeError('charmap'). U+2603/U+0394 are
+# extra chars unrepresentable in cp1252 (exercise errors="replace").
+NON_ASCII = " ☃ astropy Δ output"
+
+
+def test_gradeable_log_copy_readable_by_grader_without_unicode_crash(tmp_path):
+    """swebench grading.py:58 reads the log with a bare open() → the platform
+    default codec (cp1252 on Windows), which UnicodeDecodeError-crashes on
+    non-ASCII astropy output (V-C). write_gradeable_log_copy must produce a copy
+    the grader can read under that same default codec, while the original UTF-8
+    artifact is left untouched."""
+    log_text = _log("test_a (foo.tests.FooTest) ... ok\n" + NON_ASCII)
+
+    # Reproduce the failure mode: a UTF-8 artifact read as cp1252 (the Windows
+    # grader default) raises. Pin cp1252 explicitly so this holds on any OS.
+    utf8_artifact = tmp_path / "swebench_test_output.log"
+    utf8_artifact.write_text(log_text, encoding="utf-8", newline="\n")
+    with pytest.raises(UnicodeDecodeError):
+        with open(utf8_artifact, encoding="cp1252") as f:
+            f.read()
+
+    # Fix: a locale-encoded copy the grader reads with its default codec.
+    grade_copy = write_gradeable_log_copy(
+        log_text, tmp_path / "swebench_test_output.grade.log")
+    assert grade_copy.is_file()
+    # Bare open() == grader style == platform default (matches how the copy was
+    # written) → round-trips with no UnicodeDecodeError on every platform.
+    with open(grade_copy) as f:
+        got = f.read()
+    assert START_TEST_OUTPUT in got and END_TEST_OUTPUT in got
+    assert "test_a (foo.tests.FooTest) ... ok" in got
+
+    # Original artifact stays byte-for-byte UTF-8.
+    assert utf8_artifact.read_text(encoding="utf-8") == log_text
+
+
+def test_gradeable_log_copy_uses_locale_encoding_with_replace(tmp_path):
+    """Copy is encoded with locale.getpreferredencoding(False), errors=replace —
+    so encoding never raises even when chars are unrepresentable, and the file is
+    valid under that codec (what the grader reads with)."""
+    enc = locale.getpreferredencoding(False)
+    dest = write_gradeable_log_copy(_log(NON_ASCII), tmp_path / "g.log")
+    # Valid under the locale codec (strict decode succeeds — grader read is strict).
+    dest.read_text(encoding=enc)
+    # ASCII markers survive regardless of codec.
+    assert START_TEST_OUTPUT in dest.read_text(encoding=enc)
 
 
 def test_grade_log_no_markers_means_apply_failed(tmp_path):
