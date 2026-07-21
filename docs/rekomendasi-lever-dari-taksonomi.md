@@ -3,9 +3,15 @@
 Dibuat 2026-07-21 (bot-04, Fable 5). Plane: SMARTXRESE-398 (permintaan Mirza,
 lanjutan SMARTXRESE-397 `docs/taksonomi-kegagalan-per-fase.md`).
 
-**Status seluruh rekomendasi: CATAT-ONLY — tidak ada yang diterapkan tanpa instruksi
-eksplisit Mirza.** Nomor LV-xx merujuk `katalog-lever.md`; kelas R-x/L-x/F-x/V-x/H-x
-merujuk `taksonomi-kegagalan-per-fase.md`.
+**Status (update 2026-07-22): GELOMBANG 1 DITERAPKAN — 9 lever, GO Mirza,
+TDD, pytest 465 hijau, satu commit per lever:**
+R19 `0d835b6` · R1 `0444b81` (bot-04) · R2 `8933a06` · R3 `d592ccc` ·
+R4 `8aac0d0` · R5 `d4c455b` (`no_progress.py`, trigger #1/#2/#8, K=3/X=15,
+inject-unik→break) · R6 `6aff344` · R7 `2279cbc` · R18 `84c70e8` (bot-02).
+Status DITERAPKAN + tabel hash juga tercatat di `katalog-lever.md` (`3faf24e`).
+**Gelombang 2/3 (R8–R17) tetap CATAT-ONLY** sampai instruksi Mirza berikutnya.
+Nomor LV-xx merujuk `katalog-lever.md`; kelas R-x/L-x/F-x/V-x/H-x merujuk
+`taksonomi-kegagalan-per-fase.md`.
 
 **Basis bukti (tiga sumber, dua di antaranya via subagent ber-izin-membantah):**
 1. Taksonomi per-fase + sweep mekanis seluruh artefak (220 r-dev / 135 l-dev / 66 f-dev).

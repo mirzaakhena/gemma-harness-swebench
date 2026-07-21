@@ -147,6 +147,9 @@ pakai FIX gold_eval (§3a).
 
 ---
 
-*Status: menunggu keputusan Mirza kapan Gelombang 1 dipasang. Eksekusi: bot-02.
-Analisa/refresh taksonomi pasca-retest: bot-04. Catat-only discipline tetap berlaku
-sampai perintah implement.*
+*Status (2026-07-22): **Gelombang 1 TERPASANG** (9 lever — R19/R1 bot-04,
+R2–R7/R18 bot-02; pytest 465 hijau; hash di header rekomendasi + katalog).
+Berikutnya: **retest batch-1 per §2** (origin 11422/11910/15388/12184 + 12856 +
+kanari) oleh bot-02, menunggu konfirmasi Mirza. Semua retest berlabel rezim
+Gelombang-1 (§0.4). Analisa/autopsi hasil + refresh taksonomi: bot-04.
+Gelombang 2/3 tetap catat-only.*
