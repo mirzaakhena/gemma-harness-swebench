@@ -146,12 +146,15 @@ Angka historis proyek sendiri (vault) yang jadi dasar bobot:
   bisa membaca artefak r(N−1): `verdict.json`, `events.jsonl` (exit `detail.failures`
   verbatim), `gate_runs.json`. Append blok "PREVIOUS ATTEMPT FAILED THE GATE: ..." ke
   pesan user pertama. Deterministik: artefak beku → konteks beku → reproducible.
-- **⚠ KEPUTUSAN GOLD-BLIND DIBUTUHKAN (Mirza):** `flip_run.json` = output repro di
-  dunia BER-GOLD-PATCH — mengumpankannya verbatim membocorkan perilaku gold ke loop
-  model. Usulan garis aman: hanya kegagalan base-world (syntax/vacuous/token/idempoten)
-  boleh verbatim; flip-fail → kalimat generik ("your predicate was never satisfied by
-  any correct fix — rethink the observable"). Konten injeksi = keputusan desain Mirza
-  (sudah diantisipasi di katalog: "konten feedback = keputusan desain berikutnya").
+- **⚠ Garis gold-blind (dibingkai dua-layer, penegasan Mirza 2026-07-21):** proyek
+  berjalan di dua layer — *harness development* (boleh mencontek gold) vs *harness as
+  product* (gold-blind). Feedback-injection menyuntik konten ke **konteks model** =
+  layer product → kontennya wajib derivable dari base-world. `flip_run.json` = output
+  repro di dunia BER-GOLD-PATCH — verbatim = bocor. Usulan garis: kegagalan base-world
+  (syntax/vacuous/token/idempoten) boleh verbatim; flip-fail → kalimat generik ("your
+  predicate was never satisfied by any correct fix — rethink the observable").
+  Konten final injeksi = keputusan desain Mirza (diantisipasi katalog: "konten
+  feedback = keputusan desain berikutnya").
 - Kompleksitas: kecil-sedang.
 
 ### R10. Gate L membaca `trace_pool.json` (lapisan kedua untuk run tembus-tanpa-DONE)
