@@ -83,6 +83,36 @@ def next_free_rerun(campaign_dir: Path, campaign: str, case: str) -> int:
     return n
 
 
+def should_prune_fix(gold_eval, enabled: bool) -> bool:
+    """Keputusan ORKESTRASI (bukan gate produk): haruskah FIX di-SKIP karena
+    LOCALIZE sudah pasti meleset dari gold?
+
+    PENTING soal prinsip: ini dipakai HANYA di batch runner (orkestrasi dev),
+    yang MEMANG boleh memegang gold DI LUAR loop model. Pipeline produk
+    REPRODUCE->LOCALIZE->FIX tetap gold-blind — model tak pernah melihat gold,
+    dan gate LOCALIZE produk (harness/stages/run_localize_gates.py) tidak
+    membaca file ini. Tujuannya murni hemat compute dev: kalau
+    `localize_gold_eval` sudah menuliskan bahwa file yang di-localize BUKAN file
+    gold, menjalankan FIX hanya membuang GPU pada case yang end-to-end pasti
+    gagal. Case yang di-skip TETAP dihitung gagal di papan skor (tidak resolved).
+    Ini BUKAN membocorkan gold ke model.
+
+    Argumen `gold_eval` boleh berupa path ke `gold_eval.json` (l-dev run dir)
+    atau dict yang sudah di-parse. Kembalikan True HANYA saat `enabled` dan
+    `file_match` eksplisit False. Semua kondisi lain (flag off, file hilang /
+    tak terbaca, `file_match` None/tak ada) → False = GAGAL-AMAN ke perilaku
+    lama (tetap jalankan FIX)."""
+    if not enabled:
+        return False
+    data = gold_eval
+    if not isinstance(data, dict):
+        try:
+            data = json.loads(Path(gold_eval).read_text(encoding="utf-8"))
+        except Exception:
+            return False  # tak terbaca → jangan prune (fail-safe)
+    return data.get("file_match") is False
+
+
 def qualified_rerun(campaign_dir: Path, campaign: str, case: str) -> int | None:
     """Nomor rerun QUALIFIED terakhir (pass_l1 true), bukan nomor terbesar."""
     best = None
@@ -170,7 +200,8 @@ def already_done(case: str) -> bool:
 
 
 def run_case(state_path: Path, case: str,
-             allow_concurrent: bool = False) -> dict:
+             allow_concurrent: bool = False,
+             prune_localize_miss: bool = False) -> dict:
     """Jalankan R -> L -> F -> V untuk satu case. Kembalikan ringkasan."""
     img = IMAGE_TMPL.format(case=case)
     prob = f"cases\\problems\\{case}.txt"
@@ -237,6 +268,21 @@ def run_case(state_path: Path, case: str,
         log(state_path, "  BERHENTI: run L qualified tidak punya candidates.md")
         return res
 
+    # --- PRUNE ORKESTRASI (opsional, --prune-localize-miss) ---
+    # Keputusan hemat-compute DI LUAR loop model: batch runner (bukan gate
+    # produk) membaca gold_eval.json LOCALIZE dan, bila file yang di-localize
+    # BUKAN file gold (file_match=false), melewati FIX/VERIFY. Pipeline produk
+    # tetap gold-blind; gate LOCALIZE produk tak tersentuh; case ini TETAP
+    # dihitung gagal (tidak resolved) di papan skor end-to-end. Gagal-aman:
+    # kalau gold_eval.json tak ada/tak terbaca/file_match None → tetap FIX.
+    l_gold_eval = ARTIFACTS / "l-dev" / f"l-dev--{case}--r{lq}" / "gold_eval.json"
+    if should_prune_fix(l_gold_eval, prune_localize_miss):
+        res["error"] = "skipped-fix-localize-miss"
+        res["localize_gold_miss"] = True
+        log(state_path,
+            "  SKIP FIX: localize meleset gold (file_match=false) — hemat compute")
+        return res
+
     # --- FIX + VERIFY ---
     fn = next_free_rerun(ARTIFACTS / "f-dev", "f-dev", case)
     if not wait_for_gpu(state_path, case, allow_concurrent):
@@ -280,6 +326,12 @@ def main(argv=None) -> int:
                     help="EKSPERIMEN: lewati cek container Gemma case lain "
                          "supaya beberapa proses batch bisa jalan paralel "
                          "(gate waiting==0 tetap dijaga)")
+    ap.add_argument("--prune-localize-miss", action="store_true",
+                    help="ORKESTRASI hemat-compute (default OFF): SKIP FIX bila "
+                         "gold_eval.json LOCALIZE menandai file_match=false. "
+                         "Pakai gold DI LUAR loop model (batch runner, bukan "
+                         "gate produk); pipeline produk tetap gold-blind; case "
+                         "di-skip tetap dihitung gagal di papan skor.")
     args = ap.parse_args(argv)
 
     if args.cases:
@@ -305,7 +357,8 @@ def main(argv=None) -> int:
             continue
         log(state_path, f"[{i}/{len(cases)}] {case} — mulai")
         try:
-            res = run_case(state_path, case, args.allow_concurrent)
+            res = run_case(state_path, case, args.allow_concurrent,
+                           args.prune_localize_miss)
         except Exception as exc:  # noqa: BLE001 — batch tidak boleh mati karena satu case
             res = {"case": case, "error": f"exception: {exc!r}"}
             log(state_path, f"  EXCEPTION: {exc!r}")

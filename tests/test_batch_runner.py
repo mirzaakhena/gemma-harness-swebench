@@ -22,6 +22,7 @@ from run_rlfv_batch import (  # noqa: E402
     parse_case_list,
     parse_waiting,
     qualified_rerun,
+    should_prune_fix,
     wait_for_gpu,
 )
 
@@ -138,3 +139,82 @@ def test_wait_for_gpu_allow_concurrent_bypasses_gate(tmp_path, monkeypatch):
     monkeypatch.setattr(run_rlfv_batch, "run", _boom)
     assert wait_for_gpu(tmp_path / "state.json", "django__django-1",
                         allow_concurrent=True) is True
+
+
+# --- should_prune_fix (flag --prune-localize-miss) -------------------------
+# Keputusan ORKESTRASI hemat-compute (batch runner, DI LUAR loop model): SKIP
+# FIX bila gold_eval.json LOCALIZE menandai file_match=false. Gate produk tetap
+# gold-blind; case yang di-skip tetap dihitung gagal. Empat cabang diuji.
+
+def _write_gold_eval(tmp_path: Path, file_match) -> Path:
+    payload = {"case": "x", "rerun": 1}
+    if file_match is not None:
+        payload["file_match"] = file_match
+    p = tmp_path / "gold_eval.json"
+    p.write_text(json.dumps(payload), encoding="utf-8")
+    return p
+
+
+def test_should_prune_fix_disabled_always_false(tmp_path):
+    """enabled=False → tak pernah prune, apa pun isi gold_eval (perilaku lama)."""
+    p = _write_gold_eval(tmp_path, file_match=False)
+    assert should_prune_fix(p, enabled=False) is False
+    assert should_prune_fix({"file_match": False}, enabled=False) is False
+
+
+def test_should_prune_fix_file_match_false_prunes(tmp_path):
+    """localize meleset gold → prune (True)."""
+    p = _write_gold_eval(tmp_path, file_match=False)
+    assert should_prune_fix(p, enabled=True) is True
+    assert should_prune_fix({"file_match": False}, enabled=True) is True
+
+
+def test_should_prune_fix_file_match_true_keeps(tmp_path):
+    """localize benar → jangan prune (jalankan FIX)."""
+    p = _write_gold_eval(tmp_path, file_match=True)
+    assert should_prune_fix(p, enabled=True) is False
+    assert should_prune_fix({"file_match": True}, enabled=True) is False
+
+
+def test_should_prune_fix_none_or_missing_is_failsafe(tmp_path):
+    """file_match None / field hilang / file tak ada → JANGAN prune (fail-safe)."""
+    p_none = _write_gold_eval(tmp_path, file_match=None)  # field tak ditulis
+    assert should_prune_fix(p_none, enabled=True) is False
+    assert should_prune_fix({"file_match": None}, enabled=True) is False
+    assert should_prune_fix({}, enabled=True) is False
+    missing = tmp_path / "tidak-ada.json"
+    assert should_prune_fix(missing, enabled=True) is False
+
+
+# --- validasi dunia-nyata (read-only, artifacts nyata) ---------------------
+# Dilewati kalau dir artifacts sudah tidak ada (repo bersih / dir dihapus).
+
+_ARTIFACTS_LDEV = (Path(__file__).resolve().parent.parent.parent
+                   / "artifacts" / "l-dev")
+
+
+def test_should_prune_fix_real_localize_miss_13925():
+    """django__django-13925 r1: file_match=false nyata → prune True (enabled)."""
+    p = _ARTIFACTS_LDEV / "l-dev--django__django-13925--r1" / "gold_eval.json"
+    if not p.is_file():
+        import pytest
+        pytest.skip("artifacts 13925 tidak ada")
+    assert should_prune_fix(p, enabled=True) is True
+    assert should_prune_fix(p, enabled=False) is False
+
+
+def test_should_prune_fix_real_localize_hit_keeps():
+    """Satu run l-dev dgn file_match=true → prune False (jalankan FIX)."""
+    import pytest
+    hit = None
+    if _ARTIFACTS_LDEV.is_dir():
+        for p in _ARTIFACTS_LDEV.glob("l-dev--*--r*/gold_eval.json"):
+            try:
+                if json.loads(p.read_text(encoding="utf-8")).get("file_match") is True:
+                    hit = p
+                    break
+            except Exception:
+                continue
+    if hit is None:
+        pytest.skip("tak ada run l-dev dgn file_match=true")
+    assert should_prune_fix(hit, enabled=True) is False
