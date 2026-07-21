@@ -4165,3 +4165,39 @@ grup-4 (semua parse clean; 15202 ter-repair), + grep LV-09 **5/5 console FIX**.
 
 **Status: BELUM DITERAPKAN** (NOL lever mekanis baru; menguatkan KL-G3-1/KL-G3-2 + koreksi F-5;
 default disiplin lever: catat, jangan terapkan).
+
+---
+
+## Follow-up false-prune (bot-03, 2026-07-22) — KL-G3-2 TERVALIDASI (solve-recovery) + scan corpus
+
+Re-run `13033`/`13964` TANPA prune (approval Mirza) + scan seluruh signature false-prune
+(l-dev `file_match=false` ∧ `qualified=true`, **6 case**). Bukti disimpan di
+`..\artifacts\batch-bot03-rerun-falseprune.json` + f-dev run dirs.
+
+**Bukti KONKRET KL-G3-2:**
+- **`13033` = SOLVE DIPULIHKAN** — resolved=true, FIX `gold_eval file_match=TRUE + line_overlap=TRUE`
+  (patch di file gold `sql/compiler.py`, baris gold), **0 P2P regresi**. Case ini di-prune atas
+  `file_match` primer salah (pointed `sql/query.py`), padahal gold ADA di candidate-2 shortlist;
+  begitu FIX diberi kesempatan (tanpa prune), model menulis patch di **file gold yang benar → solve**.
+  Ini **bukan teori** — false-prune (KH-17) beneran mengorbankan solve nyata.
+- `13964` = resolved=false (reached FIX, patch belum benar; F2P kurang 1).
+
+**Scan 6 case signature false-prune + disposisi FIX (fix_file_match = patch AKHIR vs gold):**
+- `13033`: resolved=true, fix_file_match=TRUE → 🟢 GENUINE solve (recovered).
+- `11964`: resolved=true, fix_file_match=TRUE → 🟢 GENUINE solve. **KOREKSI:** audit-integritas
+  (`audit-integritas-cases-selesai.md`) menandai 11964 "lulus-palsu kandidat" berbasis *l-dev*
+  file_match=false — TAPI FIX patch-nya di file gold (fix_file_match=true) → **SEJATI, bukan lulus-palsu**.
+- `11620`: resolved=true, fix_file_match=FALSE → ⚠️ lulus-palsu kandidat SEJATI (FIX di file non-gold,
+  0 regresi = condong valid-alt-location; tetap perlu §3b sabotase).
+- `11742`: resolved=false (FIX gagal, 43 P2P regres). `13964`: resolved=false. `12184`: resolved=None (FIX no-diff).
+
+Semua 6 sudah punya f-dev run → **tak ada case pruned-untested tersisa**; `13033` satu-satunya recovery bersih.
+
+**Pelajaran §3a (refine):** deteksi lulus-palsu HARUS pakai **FIX gold_eval file_match** (patch akhir),
+BUKAN l-dev file_match (localize). `11964` = localize-file-match=false TAPI fix-file-match=true = SEJATI.
+Audit label lulus-palsu berbasis-localize OVER-FLAG (over-count). Denominator lulus-palsu-kandidat sejati
+turun dari 2 (11620/11964) → **1 (11620)**.
+
+**KL-G3-2 (prune keying `qualified`, bukan `file_match`)** kini punya **bukti solve-recovery konkret
+(13033)** → prioritas naik. **Status: BELUM DITERAPKAN** (disiplin lever: catat, jangan terapkan tanpa
+instruksi Mirza).
