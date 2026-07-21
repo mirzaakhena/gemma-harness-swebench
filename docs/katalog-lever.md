@@ -3806,3 +3806,151 @@ Komplementer dgn watcher (watcher = intra-run; a/b = antar-run).
 Eksperimen (izin Mirza, konsekuensi diterima): `--allow-concurrent` (bypass gate GPU) + `--prune`. **Durasi per-case (menit):** serial grup-1 = 2.8–25.9 (mayoritas <15); concurrent 3-lane = 18–**98** (case rerun-berat `13265`=88.9, `12470`=97.6, ~4-6× lebih lambat; case ringan 2-3×). **Akar fisika:** GPU owner `derry-gemma4-31b-dp` sudah 100% util (saturated) — vLLM continuous-batching hanya untung bila ADA kapasitas nganggur; di sini 3 stream cuma **bagi-bagi compute** → tiap case melambat, throughput agregat break-even/rugi. **Bukan** "sistem tak mampu paralel" (mekanis berhasil, no deadlock). **Keputusan Mirza: serial ke depan; max-2 concurrent akan DITES** (hipotesis: 2-way isi idle-GPU saat lane lain di step CPU/docker gate — belum terukur). Baseline serial bersih tersedia utk pembanding tes max-2.
 
 **Status: DEFERRED (bukan lever)** — §3b sabotase 11620 + autopsi per-case merah + investigasi 12470/15388 + tes max-2 + run serial 11564/12113/REPRODUCE-wall reruns = pekerjaan lanjutan (kandidat estafet, konteks bot-02 tinggi).
+
+---
+
+## Autopsi batch-A undone (bot-03, 2026-07-21) — django-11564 + django-12113
+
+**Korpus.** Dua case "undone" grup-2 (handoff bot-02, baris 3808) dijalankan SERIAL:
+`django__django-11564` (REPRODUCE, r1–r3 habis; run dibedah = r3) dan `django__django-12113`
+(LOCALIZE r1; REPRODUCE r1 qualified, FIX di-SKIP `--prune-localize-miss`). Autopsi read-only,
+izin membantah pemanggil (SOP §6a). **Katalog jenuh → ini pengukuran FREKUENSI + reinforcement,
+NOL lever baru.** Verifikasi ke artefak **memperdalam** framing awal pemanggil pada 11564 (bukan
+akar-MODEL murni; wall sebenarnya rantai judge→orkestrasi) dan **menguatkan** Case-2 sebagai
+Kelas-A. Satu koreksi klasifikasi bot-02 → KH-15.
+
+### Papan skor yang membedakan (bukan angka agregat)
+
+- **REPRODUCE-wall, akar BERLAPIS (harness/judge primer + model sekunder) — 1:** `11564` r3.
+  Bukan vacuous-repro spontan: **judge (LV-05) menolak checkpoint in-process yang plausibel-flip
+  lalu memaksa orkestrasi WSGI** → model menulis peluncur `python3 -c` yang SyntaxError → repro
+  always-FAIL (base DAN gold) → flip gagal → `wrong-logic`. **Flip gate BEKERJA BENAR** (nol
+  hijau-palsu); yang cacat hanya label-reason ("gold-unsatisfiable predicate" — gold satisfiable,
+  repro-nya yang crash → observability (B)).
+- **LOCALIZE-miss, akar-LOCALIZE (Kelas-A) — 1:** `12113`. `file_match=false`, `line_overlap=null`
+  (BUKAN false — KH-13/14: tak-terhitung karena file beda). Model bangun teori mekanisme
+  plausibel-tapi-salah (koneksi tak ditutup di `setup_databases`) → tunjuk 2 file generic-layer,
+  **tak pernah mempertimbangkan** file gold sqlite3-specific. `--prune-localize-miss` men-skip FIX
+  dengan benar (`skipped-fix: localize-miss`).
+- **Hijau / lulus-palsu: 0.** (Tak ada yang mencapai VERIFY.)
+
+### Per-case (ringkas; bukti di run dir yang disebut)
+
+- **11564** (`r-dev--…--r3`, REPRODUCE tidak qualified, `wrong-logic`, `pass_l1=false`,
+  `wall=reproduce`; r1 juga `wrong-logic`, r2 tak tuntas/tanpa `verdict.json`). **Rantai kausal
+  (dari `console.log` r3):**
+  1. **t~7 (baris 483):** checkpoint `files/repro-first-fail.py` disimpan — **in-process**:
+     `RequestFactory` + `request.META['SCRIPT_NAME']='/myapp'` + `render_to_string`, cek
+     `'/myapp/static/test.txt' in output`, `except→FAIL`. Observed-FAIL di base; **plausibel flip**
+     (base `/static/…` → gold `/myapp/static/…`) walau tak sempat gate-verified.
+  2. **t7–t15 (6× DONE-rejected, baris 668–1556):** friksi kontrak **PASS_OBSERVABLE** — driver
+     menolak karena observable (`/myapp/static/test.txt`) tak dicetak script sendiri / tak ada di
+     source. Model butuh 7 turn memahami "observable harus marker yang dicetak script". Akar-MODEL
+     (contract comprehension); rejection driver BENAR (cegah observable halusinasi).
+  3. **t~17 (baris 1718–1728): JUDGE menolak (LV-05).** `[judge]`: `RequestFactory` "does not fully
+     simulate the WSGI environment … contract requires … spawns that launch as a real child process
+     … run a real Django instance (runserver/WSGI server)". → `DONE deferred: judge review found
+     issues`.
+  4. **t18 (baris 1873+):** model patuh → "Spawning a real WSGI server" via
+     `App(cmd=["python3","-c", <one-liner>])`. One-liner **inline `try:`/`except` dgn `;`** →
+     `SyntaxError: invalid syntax` (baris 1) → app never READY → `Connection refused` →
+     `REPRO_STATUS: FAIL` **selalu** (`gate_runs.json` dua run identik; `flip_run.json`
+     base=FAIL/patched=FAIL/flip_ok=false).
+  - **Churn App-API (BUKAN KH-10 subprocess):** `__init__() got an unexpected keyword argument
+    'env'` ×3 (r3) / `'env'`+`'text'` (r1) — semua di **`__init__` (konstruktor App)**, halusinasi
+    signature App, BUKAN `subprocess.run(text=/capture_output=)` Python-3.6. Lihat **KH-15**.
+  - **Akar:** **LV-05 primer** (judge memaksa buang checkpoint in-process plausibel-flip →
+    orkestrasi), **LV-12** (orkestrasi WSGI menyeret titik gagal fatal), **LV-08/LV-01** (checkpoint
+    known-good dibuang → bentuk beku strictly-worse), **akar-MODEL sekunder** (peluncur one-liner
+    rusak). Paralel nyaris-identik **14752** (judge in-process→admin-HTTP → run mati) dan
+    12915/13230/11039.
+  - **K-class moot:** repro beku K3 (`from pipe_runtime import App`, baris 5) + K4 (nol kontrol
+    positif), TAPI predikat **tak pernah dieksekusi** (crash di child) → polaritas fallback
+    `except→FAIL` = arah AMAN "run dihancurkan di gerbang" (sejajar 14382 r1), bukan false-PASS.
+    **Instans ke-3+ kelas won't-flip/"gold-unsatisfiable"** (setelah 11039 r1, 14382 r1; bandingkan
+    10924/15789/14752) — sub-sebab BARU: **scaffolding subprocess repro SENDIRI SyntaxError →
+    crash-FAIL dua-dunia**. Per aturan main #3: bukti-penguat, bukan entri baru.
+
+- **12113** (`l-dev--…--r1`, `verdict.json` localize=pass / `pass_l1=true` [gate MEKANIS lolos:
+  `candidates.md` ada, shortlist-v2], `gold_eval.json` `qualified=false` / `file_match=false` /
+  `line_overlap=null`). Gold = `django/db/backends/sqlite3/creation.py::test_db_signature`
+  (`+ else: sig.append(test_database_name)` — 1 hunk; bikin signature test-DB unik per DB persisten
+  agar `default`/`other` tak berbagi koneksi/lock). Model shortlist 2 file **generic-layer**:
+  `django/test/utils.py` (`setup_databases`) + `django/db/backends/base/creation.py`.
+  **`localize.md`/`candidates.md` NOL menyebut `sqlite3`/`creation`/`test_db_signature`** — file
+  gold **tak pernah dipertimbangkan**. Mekanisme model juga **salah-halus**: "koneksi tak ditutup
+  setelah migrate menahan lock", padahal bug sebenarnya = **kolisi signature** (dua DB persisten
+  dapat signature sama), bukan koneksi menganggur.
+  - **Guessability gold: RENDAH.** Problem statement = traceback murni generic-layer berakhir di
+    `sqlite3/base.py:391 execute` (tempat lock MUNCUL), **tak menyebut `creation.py`/
+    `test_db_signature`**. Butuh domain-knowledge cara Django menghitung test-DB signature. Jadi
+    Kelas-A ini **recall-miss SULIT (gold-blind difficulty)**, bukan localize ceroboh /
+    terpotong-shortlist.
+  - **Akar:** **akar-LOCALIZE recall** (Kelas-A). Bukan akar-repro (REPRODUCE r1 qualified), bukan
+    akar-model-FIX (FIX tak jalan). `--prune-localize-miss` (kandidat orkestrasi bot-02, baris 3782)
+    memvonis benar: skip FIX, label `skipped-fix: localize-miss`; papan skor end-to-end WAJIB tetap
+    menghitungnya sbg VERIFY-fail (fix takkan pernah di file benar).
+
+### Bukti penguat yang ditambahkan ke entri lever (per case)
+
+- **LV-05 (judge menahan bukti yang sudah disaksikan):** +11564 r3 — judge `rule:app-runtime`/
+  action-path menolak checkpoint in-process (`RequestFactory`+`SCRIPT_NAME`, observed-FAIL di base,
+  plausibel-flip) menuntut "real WSGI server". Model pivot → repro beku crash SyntaxError → wall.
+  **Instans paling bersih setelah 14752** dari "judge memindahkan run dari desain-plausibel-lolos
+  ke orkestrasi-yang-mati". **LV-05(b) mekanika-saja TIDAK menyelamatkan** (keberatan judge =
+  action-path/`rule:app-runtime`, kategori — sejajar 14752 r1) → menguatkan LV-13(a).
+- **LV-12 (preferensikan repro in-process):** +11564 r3 — checkpoint in-process (nol subprocess) →
+  dipaksa ke WSGI-server-subprocess → titik gagal fatal (`python3 -c` one-liner SyntaxError).
+  Sub-flavor: titik-gagal-tak-terkait-bug = **peluncur subprocess malformed**, bukan CSRF (14752) /
+  URLconf (12915) / migrasi. Bukti langsung tesis LV-12: orkestrasi bukan cuma bakar-turn (LV-06),
+  ia **mematikan repro sepenuhnya**.
+- **LV-08 / LV-01 (checkpoint known-good dibuang → beku lebih buruk):** +11564 r3 —
+  `repro-first-fail.py` (in-process, exception-guarded) → `repro.py` (subprocess crash-FAIL).
+  Kejadian ke-N "yardstick beku lebih buruk dari yang disaksikan driver" (setelah 13230, 11039); di
+  sini bahkan **strictly-broken**, bukan sekadar longgar.
+- **LV-01 (polaritas / won't-flip):** +11564 r3 — fallback `except→REPRO_STATUS: FAIL` = polaritas
+  AMAN (14382-style: dihancurkan di gerbang, no false-green). Instans ke-3+ "flip tidak flip →
+  wrong-logic". K3+K4 pada bentuk beku (predikat tak tereksekusi).
+- **LV Kelas-A / akar-LOCALIZE (kandidat bot-02 baris 3774/3782):** +12113 — instans **ke-5**
+  terkatalog (11797, 13158, 13925, 11742, **+12113**). Memvalidasi `--prune-localize-miss` menyala
+  benar. Sub-nuansa BARU: sebagian Kelas-A = **gold-unguessable** (traceback generic, gold di file
+  spesifik-backend yang tak-tersebut) → recall-miss karena KESULITAN, bukan kelalaian.
+
+### Reinforcement observability (B) — verdict/reason bucket catch-all, 1 data-point baru
+
+- **11564 r3** — `flip_run.json`/console reason `"predicate not satisfied by the gold fix (patched
+  run still FAIL) — likely gold-unsatisfiable predicate"` **MENYESATKAN**: gold 11564 **satisfiable**
+  (checkpoint in-process plausibel flip); `REPRO_STATUS: FAIL` di kedua dunia lahir dari
+  **SyntaxError di child `python3 -c` repro sendiri**, bukan predikat gold-unsatisfiable. Sejajar
+  10924 (reason misleading, gold satisfiable) & 14752 (CSRF-403 dibaca predikat-salah). **Sub-sebab
+  ke-N bucket `wrong-logic`/"gold-unsatisfiable": scaffolding subprocess repro SyntaxError →
+  crash-FAIL dua-dunia.** Menguatkan kandidat #1 temuan (B): split reason via `flip_run.json` per
+  sub-sebab.
+
+### Kandidat-ditolak (dicatat + syarat naik)
+
+- **"PASS_OBSERVABLE grounding friction" (dari 11564 r3, 7 turn t7–t15 DONE-rejected).** Aturan
+  "observable harus marker yang dicetak script sendiri / ada di source" memicu 6 rejection beruntun;
+  model salah-paham berulang (mengira harus quote string dari source). **DITOLAK sbg lever** —
+  akar-MODEL (contract comprehension), rejection driver BENAR (cegah observable halusinasi), n=1 di
+  batch ini, **tak mengikat vonis** (wall sebenarnya di judge/orkestrasi hilir). Syarat naik: ≥3
+  case DISTINCT dengan ≥5 turn terbakar khusus di grounding-gate DAN bentuk mekanis (mis. driver
+  contohkan marker sintetis, bukan hanya menolak) — kalau tidak = tambah-kalimat-prompt (prioritas
+  rendah aturan #7).
+
+### Pembaruan Tabel frekuensi (bot-03, 2026-07-21 batch-A undone)
+
+**Denominator.** Kedua case **TIDAK menambah sampel Tabel A** (K1–K5): 11564 tak pernah
+repro-qualified; 12113 repro-qualified di REPRODUCE r1 tapi run itu **di luar remit autopsi ini**
+(tak dibedah manual) — sengaja tak dihitung agar tak mengekstrapolasi. Sampel Tabel A tetap **44
+case** (per bot-04).
+
+- **Kelas-A (akar-LOCALIZE, `file_match=false`):** kini **5 instans terkatalog** — 11797, 13158,
+  13925, 11742, **+12113**. Lintas-batch (denominator tunggal tak berlaku); dalam grup-2 undone yang
+  kuperiksa = **1/1** (hanya 12113 dijalankan sampai LOCALIZE gold-eval). +12113 = kasus pertama
+  Kelas-A yang ditandai eksplisit **gold-unguessable dari problem statement**.
+- **REPRODUCE-wall:** `11564` tetap terhitung (sudah di papan grup-1 bot-02, baris 3802, ≥6/17).
+  **Sub-klasifikasi DIPERBARUI**: dari "KH-10 Python 3.6 (`subprocess.run text=`)" → **won't-flip /
+  vacuous-always-FAIL akibat judge-forced orkestrasi (LV-05→LV-12) + peluncur SyntaxError**,
+  ditangkap flip gate. Churn = App-API hallucination (`__init__ env/text`), bukan `subprocess.run`
+  Python-3.6 (**KH-15**). **Tak menambah count baru**; hanya refine sub-signature.

@@ -333,3 +333,34 @@ batas gold-blind (F2P brittle exact-string, unguessable). **2 (15320, 15400)** a
 `fix.diff` dibuka per case. **Pelajaran metodologi:** verdict "FIX gagal" adalah GEJALA; klasifikasi
 lever HARUS by-AKAR (LOCALIZE-recall / repro-K4 / gate-P2P / model), bukan by-gejala — kalau tidak,
 lever salah-arah di ~3 dari 4 case.
+
+---
+
+## KH-15 — "django-11564 REPRODUCE-wall = KH-10 Python 3.6 (`subprocess.run(text=)`)"
+
+- **Yang dinyatakan (bot-02, papan grup-1, `katalog-lever.md` baris 3802):** `11564` = REPRODUCE-wall
+  kelas **KH-10 Python 3.6** — *"`subprocess.run(text=...)` TypeError berulang, exec JALAN tapi
+  crash API-version"*.
+- **Derajat: DIPERSEMPIT** (plus salah-atribusi mekanisme churn).
+- **Yang benar (dari rerun serial bot-03, artefak `r-dev--django__django-11564--r1` & `--r3`):**
+  1. **TypeError-nya di `__init__`, bukan `subprocess.run`.** Semua `unexpected keyword argument` di
+     r1/r3 berbentuk `__init__() got an unexpected keyword argument 'env'/'text'` = konstruktor
+     **`pipe_runtime.App`** (halusinasi signature App), BUKAN `subprocess.run(text=/capture_output=)`.
+     Per distingsi KH-10 sendiri, ini flavor **App-API-hallucination**, bukan flavor
+     genuine-Python-3.6-subprocess. (`subprocess.run` akan berbunyi `run() got …`, bukan `__init__()`.)
+  2. **API-churn BUKAN yang mem-wall r3.** Model pulih dari churn App-`env` dan mencapai DONE (turn
+     18). Wall r3 = **judge (LV-05) memaksa checkpoint in-process (`RequestFactory`+`SCRIPT_NAME`,
+     plausibel-flip) dibuang → orkestrasi WSGI-server**; peluncur `python3 -c` model **inline
+     `try:`/`except` dgn `;`** → `SyntaxError` → repro always-FAIL (base DAN gold) → flip gagal →
+     `wrong-logic`. Ditangkap flip gate (harness BENAR); gold **satisfiable**.
+- **Bukti pembantah:** `console.log` r3 baris 483 (checkpoint in-process `repro-first-fail.py`),
+  1718–1728 (judge deferral menuntut real WSGI server), 1873+ (pivot ke WSGI subprocess);
+  `flip_run.json`/`gate_runs.json` r3 (base=FAIL/patched=FAIL, output = `SyntaxError` di child
+  `python3 -c`); `grep "__init__.*unexpected keyword"` r1/r3 = semua di konstruktor App, **nol** `run(`.
+- **Ruang lingkup:** bot-02 mengamati 11564 di grup-1 (konteks run berbeda); narrowing ini berbasis
+  artefak rerun serial r1/r2/r3 bot-03. Mungkin grup-1 melihat run lain — karena itu **DIPERSEMPIT,
+  bukan TERBANTAH**.
+- **Pelajaran:** (i) kelompokkan REPRODUCE-wall **by-AKAR** bukan by-teks-error (addendum bot-04); satu
+  case bisa berganti akar antar-rerun. (ii) `__init__(...)` vs `run(...)` di TypeError memisahkan
+  App-hallucination dari Python-3.6-subprocess — jangan digabung (instansi bias "percaya label/teks
+  error tanpa buka artefak", bersama KH-10/KH-12).
