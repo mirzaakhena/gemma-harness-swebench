@@ -4031,3 +4031,137 @@ resolved **0/10** (3 sampai VERIFY, ketiganya merah; 7 wall/prune di hulu). **Lu
 Tabel A (K1–K5) **tak bertambah**: 3 reached-VERIFY grup-3 repro-nya qualified tapi **di luar remit autopsi-repro manual ini** (fokus = vonis FIX/flip, bukan skoring K1–K5 repro) — sengaja tak dihitung agar tak mengekstrapolasi (SOP §5). Sampel Tabel A tetap **44** (per bot-04). Yang benar-benar kuperiksa artefaknya di batch ini: **10/10 case** (verdict/gold_eval/swebench_eval/fix.diff/flip_run/console dibuka), + scan `git apply --check` **97/97 gold.patch**, + scan false-prune-signature **seluruh l-dev**.
 
 **Status: BELUM DITERAPKAN** (KL-G3-1, KL-G3-2 = kandidat catat-only; default disiplin lever).
+
+---
+
+## Autopsi batch grup-4 (bot-03, 2026-07-21) — 11 case, resolved 2/11
+
+**Korpus.** 11 case grup-4 (serial + `--prune-localize-miss`, bot-03). reached-VERIFY:
+13315/13757 (🟢 resolved=true) + 13448/14730/15202 (🔴 resolved=false); LOCALIZE-miss/prune:
+13964/14997/14999; REPRODUCE-wall: 13933/15695/15738. Autopsi read-only, izin membantah
+pemanggil (SOP §6a). **Katalog jenuh + taksonomi bot-04 mapan → target = ukur frekuensi +
+reinforcement + validasi fix (KH-16 corrupt-gold).** Nama kelas mengikuti taksonomi
+(`taksonomi-kegagalan-per-fase.md` §R/§L/§F/§H) — **tak diduplikasi, hanya ditunjuk**. NOL lever
+mekanis baru; **satu koreksi hipotesis** (F-5 "punah oleh prune" DIPERSEMPIT — 13448 counterexample).
+
+### Papan skor PEMBEDA (11 case per sub-mode SEBENARNYA, bukan label mentah — SOP §4)
+
+- **🟢 Hijau-ASLI (2):** `13315` (§H, setara-fungsional, mekanisme beda: `.distinct()` vs gold
+  `Exists(OuterRef)`), `13757` (§H, sqlite-EKUIVALEN pada backend teruji; catatan subset di oracle
+  yang tak diukur SWE-bench).
+- **🔴 VERIFY resolved=false / F-3 subset·wrong-mechanism (akar-MODEL, file benar) — 2:** `14730`
+  (hard `ValueError` di `__init__` vs gold soft `checks.Warning W345` di `_check_ignored_options`;
+  line_overlap=false), `15202` (drops guard `hostname is None`; **memvalidasi KH-16 corrupt→fixed**).
+- **🔴 VERIFY resolved=false / F-5 varian: wrong-file di FIX MESKI LOCALIZE-hit (akar-MODEL FIX,
+  prune-immune) — 1:** `13448` (localize `file_match=true qualified=true`, gold `base/creation.py`
+  = pointed_file primer; FIX malah patch `test/utils.py` → fix `file_match=FALSE`). **Bukan hilir
+  L-A; bukan Kelas-A.**
+- **⚠️ LOCALIZE Kelas-A recall-miss sejati, prune BENAR (akar-LOCALIZE, L-A) — 2:** `14997`
+  (gold `ddl_references.py` ∉ shortlist), `14999` (gold `migrations/operations/models.py` ∉ shortlist).
+- **⚠️ LOCALIZE FALSE-PRUNE: gold ADA di shortlist (`qualified=true`) tapi di-skip atas `file_match`
+  (akar-HARNESS prune-logic, KL-G3-2/KH-17) — 1:** `13964` (candidate-2 `base.py` = GOLD; recall
+  SUKSES). **Bukan Kelas-A.**
+- **🧱 REPRODUCE-wall / won't-flip akar-MODEL, gold CLEAN-PARSE, gate BENAR (R-4) — 3:** `13933`
+  (repro target method salah), `15738` (repro bypass autodetector yang gold fix), `15695`
+  (repro scaffolding crash: `Options` bukan `ModelState`).
+
+resolved **2/11** (2 hijau-asli, 5 reached-VERIFY, 3 LOCALIZE-halt, 3 wall). **Lulus-palsu: 0/11**
+(kedua hijau `file_match=true` + F2P asli lolos; §3b tuntas di bawah). **Corrupt-gold: 0 tersisa di
+grup-4** — 15202 (dulu 1 dari 5 korup KH-16) kini VALIDASI: flip PASS, adjudikasi adil.
+
+### §3b / §H — vonis dua hijau (patch-vs-gold semantik)
+
+- **13315** (`f-dev--…--r1`, resolved=true, `file_match=true line_overlap=true`, f2p `test_limit_choices_to_no_duplicates`✓, **P2P 146/0**). Gold me-rewrite `apply_limit_choices_to_to_formfield` → `Exists(OuterRef('pk'))` subquery utk hindari duplikat (dan `if limit_choices_to:` gantikan `is not None`). Model: tambah **`.distinct()`** ke `queryset.complex_filter(limit_choices_to)`. **Mekanisme BEDA, tujuan sama** (dedup choices dari join limit_choices_to). `.distinct()` = fix dedup yang sah & lazim; gold pilih `Exists` (hindari join, lebih robust perf/ordering). Utk perilaku terukur = **setara** (nol P2P regresi). Nuansa: `.distinct()` sedikit lebih longgar (dedup seluruh row-set) tapi tak ada input teruji yang memisahkannya. **Vonis: hijau-ASLI (§H-1-ish, mekanisme-divergen tanpa test-divergen).** Bukan lulus-palsu.
+- **13757** (`f-dev--…--r1`, resolved=true, `file_match=true line_overlap=true`, f2p `test_isnull_key`✓, **P2P 76/0**). Gold rewrite `KeyTransformIsNull.as_oracle/as_sqlite` utk `key__isnull=True`. Model utk cabang `self.rhs` (isnull=True) return `"NOT (" + HasKey_sql + ")"` di kedua backend. **Di SQLITE (backend yang SWE-bench jalankan) model EKUIVALEN gold:** `NOT (JSON_TYPE(…) IS NOT NULL)` ≡ `JSON_TYPE(…) IS NULL` (three-valued logic identik utk key-hadir & key-hilang). F2P lolos BUKAN kebetulan/repro-longgar — jalur teruji memang benar. **Di ORACLE model = SUBSET ketat gold**: gold tambah disjungsi `OR lhs IS NULL` (kolom itu sendiri SQL-NULL) yang model HILANGKAN; SWE-bench tak jalankan oracle → tak terukur. **Vonis: hijau-ASLI pada permukaan teruji (hijau terkuat grup-4), catatan §H-4→subset-oracle** (sejajar batas-metodologi 12286/12747: divergensi di konfigurasi yang tak dibangun test mana pun). Bukan lulus-palsu.
+
+### Per-case ringkas (bukti di run-dir + field yang dibuka)
+
+**F-3 (VERIFY subset/wrong-mechanism, file benar):**
+- **14730** (`f-dev--…--r1`, `file_match=true line_overlap=FALSE`). `f2p_failed=['test_many_to_many_with_useless_related_name']`, **P2P 119/0**. Gold: `+checks.Warning('…W345', 'related_name has no effect on ManyToManyField with a symmetrical relationship…')` di `_check_ignored_options` (line ~1258) — peringatan LUNAK lewat checks framework. Model: `raise ValueError("related_name cannot be used with symmetrical=True")` di `ManyToManyField.__init__` (line ~1180) — error KERAS saat konstruksi. Test menuntut W345 dari checks; model bikin konstruksi model gagal → warning tak pernah terkumpul → F2P gagal. **Mekanisme salah, lokasi salah dalam file benar** (`line_overlap=false` konsisten). akar-MODEL (F-3). +2 file sampah `repro_app/__init__.py`, `repro_app/models.py` (kosong; sejajar 12747/14730-diff-noise).
+- **15202** (`f-dev--…--r1`, `file_match=true line_overlap=TRUE`). `f2p_failed=['test_urlfield_clean_invalid','test_urlfield_clean_not_required']`, **P2P 6/0**. Gold `validators.py` `URLValidator.__call__`: bungkus `urlsplit` sekali (`splitted_url`), reuse, **DAN** ganti `len(urlsplit(value).hostname) > 253` → `splitted_url.hostname is None or len(…) > 253` (tangani hostname None). Model: perkenalkan helper `_safe_urlsplit` (tangkap `ValueError`→ValidationError) di semua situs urlsplit — **TAPI tetap `len(self._safe_urlsplit(value).hostname) > 253` tanpa guard `is None`** → `TypeError: object of type 'NoneType' has no len()` saat hostname None, bukan ValidationError. **Model = SUBSET gold** (tangani ValueError, LEWATKAN hunk hostname-None). akar-MODEL (F-3). **VALIDASI KH-16:** `git apply --numstat 15202/gold.patch` = `7 6 …validators.py` (parse BERSIH, tak lagi "corrupt patch"); `r-dev--15202--r1` `verdict=pass pass_l1=true`, flip_run `Caught expected ValidationError / REPRO_STATUS: PASS` → gold FLIP benar → case ini kini adjudikasi ADIL (bukan lagi false-wall vacuous). resolved=false = akar-MODEL SEJATI.
+
+**F-5 varian (wrong-file di FIX meski LOCALIZE-hit — akar-MODEL FIX, prune-immune):**
+- **13448** (`f-dev--…--r1`, FIX `gold_eval.file_match=FALSE line_overlap=null`, `f2p_failed=['test_migrate_test_setting_false']`, **P2P 7/0**). **LOCALIZE r1 sukses:** `l-dev gold_eval` = `file_match=true qualified=true`, `pointed_file=django/db/backends/base/creation.py` = GOLD (primer!), `candidate_files=[base/creation.py, test/utils.py]`. **FIX malah patch `django/test/utils.py`** (candidate-2): ubah arg `serialize=` jadi False saat MIGRATE False. Gold sebenarnya di `base/creation.py::create_test_db` (disable `MIGRATION_MODULES` saat `TEST['MIGRATE'] is False`, `try/finally`). Model menyerang GEJALA (serialize) di file salah, bukan MEKANISME (migrate-disable). **`--prune-localize-miss` TAK men-skip** (localize `file_match=true` → benar tak di-prune); wrong-file lahir di FASE FIX. **Bukan hilir L-A, bukan Kelas-A** — recall LOCALIZE sempurna; FIX yang salah pilih candidate utk di-patch. Lihat koreksi F-5 di bawah.
+
+**L-A (Kelas-A recall-miss sejati, prune BENAR):**
+- **14997** (`l-dev--…--r1`, `file_match=false qualified=FALSE line_overlap=null`). gold=`django/db/backends/ddl_references.py`; shortlist=[`sqlite3/schema.py`, `base/schema.py`] → gold ∉ shortlist. Recall gagal; prune benar (`skipped-fix: localize-miss`).
+- **14999** (`l-dev--…--r1`, `file_match=false qualified=FALSE line_overlap=null`). gold=`django/db/migrations/operations/models.py`; shortlist=[`base/operations.py`, `sqlite3/operations.py`] → gold ∉ shortlist. Recall gagal; prune benar.
+
+**FALSE-PRUNE (KL-G3-2 / KH-17 — akar-HARNESS prune-logic, BUKAN Kelas-A):**
+- **13964** (`l-dev--…--r1`, `qualified=TRUE` tapi `file_match=false line_overlap=null`). `pointed_file=related_descriptors.py` (candidate-1) → `file_match=FALSE`; **candidate-2 `django/db/models/base.py` = GOLD → `qualified=TRUE`**. Recall LOCALIZE **SUKSES** (gold di shortlist, FIX akan mengiterasinya). TAPI `should_prune_fix` (`run_rlfv_batch.py:113`) keying `file_match is False` → **13964 di-skip** (no f-dev dir). **Instans false-prune ke-2 setelah 13033** (grup-3). Menguatkan KL-G3-2: prune harus keying `qualified is False`, bukan `file_match`.
+
+**R-4 (REPRODUCE-wall won't-flip, akar-MODEL, gold CLEAN-parse, gate BENAR):**
+- **13933** (`r-dev--…--r3`, `wrong-logic` 3/3 rerun; files/ lengkap `repro.py`+`repro.md` → BUKAN R-1/R-2). `gate_runs` base=FAIL **DAN** gold=FAIL (kedua `REPRO_STATUS: FAIL`) → won't-flip. **Sebab:** repro panggil `field.validate("999")` dan cek `"999" in error_msg`; gold interpolasi `%(value)s` di jalur `to_python`/`clean` ModelChoiceField, **BUKAN** `validate()` → pesan yang repro amati tak berubah oleh gold → tak flip. **Repro menguji SITE/method yang salah**; gold satisfiable via jalur benar. akar-MODEL (R-4, sejajar 15252 grup-3). gold.patch `numstat 5 1` clean.
+- **15738** (`r-dev--…--r3`, `wrong-logic` 3/3; orkestrasi `App(["bash","run_migrate.sh"])`). base=FAIL benar (`ValueError: Found wrong number (0) of constraints for repro_app_authors(...)` = gejala asli); gold=FAIL juga → won't-flip. **Sebab:** gold fix `db/migrations/autodetector.py` (urutan operasi saat **makemigrations**); repro **hand-author migration** dgn urutan buruk hardcoded → autodetector tak pernah dipanggil → jalur yang gold ubah tak tereksekusi → tak flip. **Repro BYPASS kode yang gold perbaiki.** akar-MODEL (R-4). Orkestrasi subprocess = sekunder (LV-12 territory, bukan akar dominan). gold `numstat 3 2` clean.
+- **15695** (`r-dev--…--r3`, r1/r2=`fail` [scaffolding], r3=`wrong-logic`). base=FAIL DAN gold=FAIL, kedua-nya `AttributeError: 'Options' object has no attribute 'get_index_by_name'` (`operations/models.py:962`, RenameIndex.database_forwards). **Sebab:** repro bikin `MockState` yang serahkan `model_class._meta` (**Options**) sebagai `from_model_state`, padahal kode nyata mengharap **ModelState** (yang punya `get_index_by_name`) → crash identik dua-dunia → predikat tak pernah dievaluasi → vacuous FAIL. **Repro scaffolding buggy (mock salah-tipe / API-hallucination pada objek salah)**. akar-MODEL (R-4 sub-sebab: mock-type-mismatch, melengkapi "scaffolding SyntaxError" 11564). gold `numstat 3 0` clean.
+
+### Koreksi hipotesis (derajat + bukti; pemanggil yang tulis ke koreksi-hipotesis.md)
+
+**"F-5 wrong-file = kelas yang akan PUNAH oleh `--prune-localize-miss`" (taksonomi §F-5) — DIPERSEMPIT.**
+- **Yang benar:** prune hanya memunahkan F-5 **hilir L-A** (localize MISS, `file_match=false` di
+  LOCALIZE). **13448** = F-5 **prune-immune**: fix `gold_eval.file_match=false` + `resolved=false`
+  (signature F-5) TAPI LOCALIZE `file_match=TRUE`+`qualified=TRUE` dgn `pointed_file`=gold →
+  prune (keyed LOCALIZE file_match) TIDAK men-skip → F-5 lolos ke VERIFY & gagal. Akar = **akar-MODEL
+  FASE-FIX** (model pilih candidate salah utk di-patch: `test/utils.py` alih-alih gold
+  `base/creation.py`), BUKAN hilir Kelas-A. **Perbaikan recall LOCALIZE pun takkan menyembuhkan**
+  (recall sudah sempurna). F-5 karena itu = union DUA sub-akar: (a) hilir-L-A recall-miss (punah
+  oleh prune) + (b) FIX-wrong-file-selection dari shortlist-benar (prune-immune, akar-MODEL).
+- **Bukti pembantah:** `l-dev--13448--r1/gold_eval.json` (`file_match=true, qualified=true,
+  pointed_file=base/creation.py, candidate_files=[base/creation.py, test/utils.py]`) vs
+  `f-dev--13448--r1/gold_eval.json` (`touched_files=[test/utils.py], file_match=false`);
+  `swebench_eval.json` (`f2p_failed=[test_migrate_test_setting_false]`, p2p 7/0);
+  `files/fix.diff` (patch di `django/test/utils.py` arg `serialize=`).
+- **Konsekuensi:** papan skor "F-5 akan punah" menyesatkan; sel F-5 perlu split sub-akar (a)/(b).
+  13448 = instans pertama (b) terkatalog.
+
+### Bukti-penguat + frekuensi kelas terkatalog (denominator disebut)
+
+- **§H hijau-asli:** +2 (13315 mekanisme-divergen-setara; 13757 sqlite-ekuivalen + oracle-subset).
+  Keduanya §3b TUNTAS (bukan §H-4 deferred). 13757 = kandidat §H-4→subset (oracle tak-teruji),
+  bukan §H-3 longgar penuh.
+- **F-3 (subset/wrong-mechanism, file_match=true):** +**14730, 15202** → total terkonfirmasi lintas-batch
+  **7** (14365, 15320, 13590, 15061, 14534, +14730, +15202). Sub-sebab baru: hard-error-vs-soft-warning
+  (14730); drop-guard-hostname-None (15202).
+- **F-5 (wrong-file di FIX):** +**13448** (sub-akar-(b) BARU: FIX-wrong-file-selection meski LOCALIZE-hit,
+  prune-immune). Total F-5 terkatalog = 3 (11742, 13158 = sub-akar-(a) hilir-L-A; +13448 = sub-akar-(b)).
+- **L-A / Kelas-A (akar-LOCALIZE, qualified=false):** +**2** (14997, 14999) → total lintas-batch **9**
+  (11797, 13158, 13925, 11742, 12113, 15213, 12589, +14997, +14999). Prune benar 2/2.
+- **FALSE-PRUNE (KL-G3-2 / KH-17):** +**13964** → instans ke-2 setelah 13033. Yang benar-benar
+  di-prune-salah oleh flag di grup-4 = **1** (13964). Menguatkan KL-G3-2 (keying `qualified`).
+- **R-4 (won't-flip, akar-MODEL, gold satisfiable):** +**3** (13933 wrong-site-method; 15738
+  bypass-autodetector; 15695 mock-type-mismatch-crash). Semua gold clean-parse (bukan corrupt-gold
+  KH-16), semua tulis repro.py (bukan R-1/R-2 no-fence), gate BENAR (nol hijau-palsu). Sub-sebab R-4
+  bertambah: repro-target-method-salah, repro-bypass-fixed-path, repro-mock-type-mismatch.
+- **KH-16 corrupt-gold (KL-G3-1):** **15202 = validasi fix** (1 dari 5 korup — 12184/12856/13321/14155/15202
+  — kini di-repair; `git apply --numstat` clean, flip PASS, VERIFY adil). Sisa korup korpus = **4**
+  (12184, 12856, 13321, 14155) masih vacuous-wall sampai di-repair (per grup-3).
+- **LV-09 (pipe_runtime di dunia kerja FIX):** grup-4 reached-FIX 5 case, exposure = **1/5** (`13448`
+  console FIX = **13** `No module named 'pipe_runtime'`; repro.py final tak impor — dari repro varian
+  work-loop). **Non-blocking** (13448 tetap flip & reached VERIFY; jauh di bawah 232–588 di F-4).
+  4 lainnya (13315/13757/14730/15202) = 0. Konsisten era-baru (repro in-process dominan).
+- **F-6 lulus-palsu:** **0/11** (kedua hijau `file_match=true` + F2P asli lolos; §3b tuntas).
+
+### Kandidat-DITOLAK (dicatat + syarat naik)
+
+- **"13448 = kelas-BARU FIX-wrong-file yang butuh lever sendiri".** DITOLAK sbg entri/lever baru —
+  ia varian F-5 (sub-akar-(b)) + akar-MODEL murni (pilih candidate salah dari shortlist benar). Aturan
+  katalog #3 (satu mekanisme=satu lever) + #6 (lever ke akar-MODEL = termahal). Dicatat sbg sub-akar
+  F-5 + koreksi taksonomi. **Syarat naik jadi kelas/lever:** ≥3 case DISTINCT "LOCALIZE `file_match=true`
+  tapi FIX patch candidate non-gold" DAN ada sinyal MEKANIS blind (bukan gold) yang bisa mengarahkan FIX
+  ke candidate benar (mis. cross-check file yang repro sentuh) — kalau tidak = akar-model, tambah-prompt
+  (prioritas rendah #7). n=1 kini.
+- **"orkestrasi App 15738 = LV-12/R-3 wall".** DITOLAK sbg atribusi primer — akar dominan =
+  **repro-bypass-autodetector** (base sudah FAIL benar; gold tak flip karena jalur tak tereksekusi, bukan
+  karena orkestrasi mati). Tak ada penolakan judge (beda 11564/14752). Syarat naik: judge `[judge]`
+  menolak checkpoint plausibel lalu paksa orkestrasi. n=0 pola R-3 di sini.
+
+### Catatan denominator
+Tabel A (K1–K5) **tak bertambah**: reached-VERIFY grup-4 repro-nya qualified tapi **di luar remit
+autopsi-repro manual ini** (fokus = vonis FIX/flip/localize, bukan skoring K1–K5 repro) — sengaja tak
+dihitung agar tak mengekstrapolasi (SOP §5). Sampel Tabel A tetap **44** (per bot-04). Yang benar-benar
+kuperiksa artefaknya di batch ini: **11/11 case** (verdict/gold_eval[l-dev & f-dev]/swebench_eval/
+fix.diff/gate_runs/flip_run/repro.py+repro.md/console dibuka), + `git apply --numstat` **11/11 gold.patch**
+grup-4 (semua parse clean; 15202 ter-repair), + grep LV-09 **5/5 console FIX**.
+
+**Status: BELUM DITERAPKAN** (NOL lever mekanis baru; menguatkan KL-G3-1/KL-G3-2 + koreksi F-5;
+default disiplin lever: catat, jangan terapkan).
