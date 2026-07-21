@@ -148,7 +148,8 @@ def test_page_index_fdev_runs_listed_under_fix_tab(tmp_path):
         "pass_l1": True, "started": "2026-07-20T09:00:00+07:00",
         "finished": "2026-07-20T09:05:00+07:00"}), encoding="utf-8")
     out = page_index(tmp_path, tab="f-dev")
-    assert "<td>django__django-11910</td>" in out   # kolom case
+    # kolom case: nama case diikuti tombol copy (markup kolom berubah 07-21)
+    assert "<td>django__django-11910 <button" in out
     assert ">r1</a>" in out                         # kolom run ber-link
     assert "2026-07-20 09:00" in out                # kolom mulai
     assert "✅" in out                              # ikon pass
@@ -329,7 +330,8 @@ def test_page_index_splits_case_and_run_columns(tmp_path):
     run.mkdir(parents=True)
     out = page_index(tmp_path)
     assert "<th>case</th><th>run</th>" in out
-    assert "<td>django__django-13220</td>" in out          # case polos
+    # case diikuti tombol copy (markup kolom case berubah 2026-07-21)
+    assert "<td>django__django-13220 <button" in out
     assert ">r6</a>" in out                                # rN ber-link
     assert "r-dev--django__django-13220--r6</a>" not in out  # run_id penuh hilang
 

@@ -110,6 +110,30 @@ def campaign_label(name: str) -> str:
     return _CAMPAIGN_LABELS.get(name, name)
 
 
+def campaign_phase(campaign: str) -> str:
+    """Kode fase utk tombol 'copy to clipboard' di tabel utama (permintaan
+    Mirza 2026-07-21): r-dev (REPRODUCE) -> "R", l-dev (LOCALIZE) -> "L",
+    f-dev (FIX/VERIFY) -> "FV". Prefix-based supaya konsisten dgn konvensi
+    kampanye lain di file ini (startswith 'l-'/'f-'). Tak dikenal -> ""."""
+    if campaign.startswith("r-"):
+        return "R"
+    if campaign.startswith("l-"):
+        return "L"
+    if campaign.startswith("f-"):
+        return "FV"
+    return ""
+
+
+def copy_case_json(case_id: str, campaign: str, rerun: str = "") -> str:
+    """String JSON yang disalin tombol clipboard, format PERSIS
+    {"case": "<id>", "phase": "<R|L|FV>", "run": "<rN>"} (spasi setelah titik
+    dua/koma, double-quote, urutan case->phase->run) — dibangun server-side
+    lalu ditempel ke atribut data. rerun = bagian rN run_id baris (mis. "r1");
+    format run_id tak dikenal -> "run": "" (fail-soft)."""
+    return json.dumps({"case": case_id, "phase": campaign_phase(campaign),
+                       "run": rerun or ""})
+
+
 def with_stage_tabs(campaigns: list[str]) -> list[str]:
     """Tambahkan stage pipeline yang belum punya direktori artifacts —
     tabnya tetap tampil (kosong) supaya pipeline terlihat utuh."""
@@ -662,6 +686,10 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
 .xbtn{background:none;border:none;color:inherit;font:inherit;cursor:pointer;
       padding:0}
 .xbtn:hover{filter:brightness(1.35)}
+.copybtn{background:none;border:none;color:#7bf;font:inherit;cursor:pointer;
+      padding:0 .35em;opacity:.55}
+.copybtn:hover{opacity:1}
+.copybtn.ok{color:#4caf50;opacity:1}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
     z-index:50;align-items:center;justify-content:center}
 .modal-box{background:#181818;border:1px solid #555;border-radius:6px;
@@ -706,6 +734,43 @@ function filterRows(v){
   for(var i=0;i<rows.length;i++){
     var s=rows[i].getAttribute('data-status');
     rows[i].style.display=((v==='All')||(v===s))?'':'none';
+  }
+}
+function _copyFeedback(btn){
+  var prev=btn.textContent;
+  btn.textContent='✓';
+  btn.classList.add('ok');
+  setTimeout(function(){btn.textContent=prev;btn.classList.remove('ok');},1000);
+}
+function _fallbackCopy(text){
+  // insecure context (HTTP ke IP LAN non-localhost): clipboard API undefined,
+  // pakai textarea sementara + execCommand('copy').
+  try{
+    var ta=document.createElement('textarea');
+    ta.value=text;
+    ta.setAttribute('readonly','');
+    ta.style.position='fixed';
+    ta.style.left='-9999px';
+    ta.style.top='0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  }catch(e){return false;}
+}
+function copyCaseJSON(btn){
+  var text=btn.getAttribute('data-copy')||'';
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(
+        function(){_copyFeedback(btn);},
+        function(){if(_fallbackCopy(text))_copyFeedback(btn);});
+    } else {
+      if(_fallbackCopy(text))_copyFeedback(btn);
+    }
+  }catch(e){
+    if(_fallbackCopy(text))_copyFeedback(btn);
   }
 }
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
@@ -884,9 +949,17 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
                 f"onclick='showReason(this)'>{icon}</button>")
         else:
             icon_cell = icon
+        # tombol copy-to-clipboard di sebelah nama case: menyalin string JSON
+        # {"case": "<id>", "phase": "<R|L|FV>", "run": "<rN>"} — phase dari
+        # kampanye aktif, run = rerun baris ini (split_run_id di atas).
+        copy_json = copy_case_json(case_id, active, rerun)
+        copy_btn = (
+            "<button type='button' class='copybtn' title='copy JSON' "
+            f"data-copy=\"{html.escape(copy_json, quote=True)}\" "
+            "onclick='copyCaseJSON(this)'>📋</button>")
         rows.append(
             f"<tr data-status=\"{html.escape(row_status, quote=True)}\">"
-            f"<td>{html.escape(case_id)}</td>"
+            f"<td>{html.escape(case_id)} {copy_btn}</td>"
             f"<td><a href='{href}'>{html.escape(rerun or rid)}</a></td>"
             f"<td>{icon_cell}</td>"
             f"<td>{html.escape(vtext)}</td>"
