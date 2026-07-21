@@ -134,6 +134,20 @@ def qualified_rerun(campaign_dir: Path, campaign: str, case: str) -> int | None:
     return best
 
 
+def dedup_results(results):
+    """R6: papan skor batch tahan-resume. State di-append lintas resume
+    (main() :350-370), jadi satu `case` bisa muncul >1 kali di list akumulasi
+    (mis. crash lalu jalankan ulang). Kembalikan satu entri per case supaya
+    ringkasan (:379-380) tak menggelembung. Entri TERAKHIR yang di-append untuk
+    sebuah case yang menang (paling mutakhir/lengkap); urutan mengikuti
+    kemunculan-pertama tiap case. Semantik prune tak berubah: case self-pruned
+    tetap tanpa `swebench_eval` → tetap dihitung gagal oleh pemanggil."""
+    deduped: dict = {}
+    for r in results:
+        deduped[r.get("case")] = r
+    return list(deduped.values())
+
+
 # --------------------------------------------------------------------------
 # eksekusi
 # --------------------------------------------------------------------------
@@ -376,8 +390,9 @@ def main(argv=None) -> int:
                         f"resolved={sw.get('resolved')} error={res.get('error')}")
 
     log(state_path, "=== BATCH SELESAI ===")
-    ok = sum(1 for r in results if (r.get("swebench_eval") or {}).get("resolved"))
-    log(state_path, f"resolved={ok} dari {len(results)} case yang dijalankan")
+    board = dedup_results(results)  # R6: tiap case dihitung sekali lintas resume
+    ok = sum(1 for r in board if (r.get("swebench_eval") or {}).get("resolved"))
+    log(state_path, f"resolved={ok} dari {len(board)} case yang dijalankan")
     return 0
 
 

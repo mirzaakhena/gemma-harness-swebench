@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import run_rlfv_batch  # noqa: E402
 from run_rlfv_batch import (  # noqa: E402
+    dedup_results,
     next_free_rerun,
     parse_case_list,
     parse_waiting,
@@ -127,6 +128,65 @@ def test_qualified_rerun_none_when_all_failed(tmp_path):
     _mk_run(tmp_path, "r-dev", "django__django-1", 1, False)
     _mk_run(tmp_path, "r-dev", "django__django-1", 2, None)
     assert qualified_rerun(tmp_path, "r-dev", "django__django-1") is None
+
+
+# --- dedup_results (R6: papan skor batch tahan-resume) ---------------------
+# Resume meng-append `results` ke state lama (run_rlfv_batch.py:350-370), jadi
+# satu case bisa muncul >1 kali di list akumulasi (mis. crash lalu jalankan
+# ulang). Ringkasan (:379-380) tak boleh menggelembung: tiap case dihitung
+# SEKALI, entri TERAKHIR yang di-append untuk case itu yang menang.
+
+def test_dedup_results_counts_each_case_once_across_resume():
+    """Case yang sama muncul dua kali (resume rerun); dedup menyisakan satu
+    entri per case dan entri terbaru menang."""
+    results = [
+        {"case": "django__django-1", "swebench_eval": {"resolved": False}},
+        {"case": "astropy__astropy-2", "swebench_eval": {"resolved": True}},
+        # resume: django-1 dijalankan ulang, kini resolved → entri terbaru menang
+        {"case": "django__django-1", "swebench_eval": {"resolved": True}},
+    ]
+    deduped = dedup_results(results)
+    assert len(deduped) == 2
+    by_case = {r["case"]: r for r in deduped}
+    assert by_case["django__django-1"]["swebench_eval"]["resolved"] is True
+    # papan skor: resolved=2 dari 2 (bukan 2 dari 3 yang menggelembung)
+    ok = sum(1 for r in deduped if (r.get("swebench_eval") or {}).get("resolved"))
+    assert ok == 2
+    assert len(deduped) == 2
+
+
+def test_dedup_results_pruned_case_still_counts_as_failure():
+    """Case self-pruned (skipped-fix-localize-miss, tanpa swebench_eval) TETAP
+    gagal — dedup tak boleh mengubah semantik prune (fail-safe :86-117)."""
+    results = [
+        {"case": "django__django-1", "error": "skipped-fix-localize-miss",
+         "localize_gold_miss": True},
+        {"case": "astropy__astropy-2", "swebench_eval": {"resolved": True}},
+    ]
+    deduped = dedup_results(results)
+    assert len(deduped) == 2
+    ok = sum(1 for r in deduped if (r.get("swebench_eval") or {}).get("resolved"))
+    assert ok == 1  # case ter-prune tidak dihitung resolved
+
+
+def test_dedup_results_preserves_first_seen_order():
+    """Urutan papan skor mengikuti kemunculan-pertama tiap case; rerun resume
+    memutakhirkan nilai tanpa menggeser posisi."""
+    results = [
+        {"case": "a", "swebench_eval": {"resolved": True}},
+        {"case": "b", "swebench_eval": {"resolved": False}},
+        {"case": "a", "swebench_eval": {"resolved": False}},  # resume rerun a
+    ]
+    deduped = dedup_results(results)
+    assert [r["case"] for r in deduped] == ["a", "b"]
+    assert {r["case"]: r["swebench_eval"]["resolved"] for r in deduped} == {
+        "a": False, "b": False}
+
+
+def test_dedup_results_empty_and_no_dupes():
+    assert dedup_results([]) == []
+    single = [{"case": "x", "swebench_eval": {"resolved": True}}]
+    assert dedup_results(single) == single
 
 
 # --- wait_for_gpu (flag --allow-concurrent) --------------------------------
