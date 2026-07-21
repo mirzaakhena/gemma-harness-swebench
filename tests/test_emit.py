@@ -94,6 +94,17 @@ def test_verdict_enum_closed_per_phase(em: Emitter):
         em.event(phase="reproduce", event="exit", verdict="flip")
 
 
+def test_reproduce_r2_split_verdict_labels_whitelisted(em: Emitter):
+    # R2 split-verdict: every new symptom-identifying REPRODUCE label must be
+    # accepted by the emitter (otherwise write raises ValueError at runtime).
+    for lbl in ("repro-missing", "vacuous-repro", "syntax-error",
+                "gold-wont-flip", "gold-flip-crash"):
+        em.event(phase="reproduce", event="exit", verdict=lbl)
+    verdicts = [l["verdict"] for l in read_jsonl(em.run_dir / "events.jsonl")]
+    assert verdicts == ["repro-missing", "vacuous-repro", "syntax-error",
+                        "gold-wont-flip", "gold-flip-crash"]
+
+
 def test_event_counters_and_budget_standard_keys(em: Emitter):
     em.event(
         phase="fix",

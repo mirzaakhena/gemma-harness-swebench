@@ -85,21 +85,36 @@ def test_all_gates_pass():
     assert r.failures == []
 
 
-def test_gate_anti_vacuous_pass_at_base_rejected():
+def test_gate_anti_vacuous_pass_at_base_labeled_vacuous_repro():
+    # R2 split-verdict: PASS-at-base gets its own symptom label, not catch-all.
     r = evaluate_gates(**_ok_kwargs(
         fresh_run1_output="REPRO_STATUS: PASS\n", fresh_run1_exit=0,
         fresh_run2_output="REPRO_STATUS: PASS\n", fresh_run2_exit=0,
     ))
-    assert r.verdict == "fail"
+    assert r.verdict == "vacuous-repro"
     assert any("vacuous" in f for f in r.failures)
 
 
 def test_gate_status_token_missing_is_syntax_fail():
+    # No token AND no SyntaxError → generic syntax-fail (unchanged).
     r = evaluate_gates(**_ok_kwargs(
         fresh_run1_output="tanpa token\n",
         fresh_run2_output="tanpa token\n",
     ))
     assert r.verdict == "syntax-fail"
+
+
+def test_gate_actual_syntaxerror_labeled_syntax_error():
+    # R2 split-verdict: a REAL SyntaxError in the fresh-run output is derived by
+    # grepping the captured output (py_compile is unavailable; host/container
+    # Python differ), NOT collapsed into syntax-fail.
+    out = ('  File "/testbed/.pipe/repro.py", line 3\n'
+           '    def f(:\n           ^\nSyntaxError: invalid syntax\n')
+    r = evaluate_gates(**_ok_kwargs(
+        fresh_run1_output=out, fresh_run1_exit=1,
+        fresh_run2_output=out, fresh_run2_exit=1,
+    ))
+    assert r.verdict == "syntax-error"
 
 
 def test_gate_runner_timeout_is_timeout_verdict():
@@ -193,6 +208,34 @@ def test_flip_not_ok_when_patched_output_has_no_token():
     r = evaluate_flip(base_status="FAIL", patched_status=None)
     assert r.flip_ok is False
     assert "token" in r.reason
+
+
+# --- R2 split-verdict: flip-failure classification (gold-blind grep) --------
+
+def test_flip_failure_crash_labeled_gold_flip_crash():
+    from harness.stages.reproduce_gates import flip_failure_verdict
+    assert flip_failure_verdict(
+        "Traceback (most recent call last):\n  ...\nValueError: x\n"
+    ) == "gold-flip-crash"
+    assert flip_failure_verdict(
+        '  File "x.py", line 1\nSyntaxError: bad\n'
+    ) == "gold-flip-crash"
+
+
+def test_flip_failure_clean_labeled_gold_wont_flip():
+    from harness.stages.reproduce_gates import flip_failure_verdict
+    # Patched world finished cleanly but predicate still did not become PASS.
+    assert flip_failure_verdict("REPRO_STATUS: FAIL\n") == "gold-wont-flip"
+    assert flip_failure_verdict("") == "gold-wont-flip"
+
+
+def test_flip_reason_does_not_overclaim_gold_unsatisfiable():
+    from harness.stages.reproduce_gates import evaluate_flip
+    r = evaluate_flip(base_status="FAIL", patched_status="FAIL")
+    assert r.flip_ok is False
+    assert "gold" in r.reason
+    # R2: the misleading "gold-unsatisfiable predicate" claim is gone.
+    assert "unsatisfiable" not in r.reason
 
 
 def test_compose_replaces_model_written_mechanical_slots():

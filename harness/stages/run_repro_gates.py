@@ -18,6 +18,7 @@ from pathlib import Path
 
 from harness.emit import Emitter
 from harness.stages.reproduce_gates import (evaluate_flip, evaluate_gates,
+                                            flip_failure_verdict,
                                             parse_repro_status)
 
 
@@ -64,7 +65,10 @@ def main() -> int:
 
     if not repro_py.is_file() or not repro_md_path.is_file():
         missing = [p.name for p in (repro_py, repro_md_path) if not p.is_file()]
-        return finish("syntax-fail", [f"required artifacts missing: {missing}"],
+        # R2 split-verdict: required artifacts never produced is its own
+        # symptom (repro-missing), not a spurious SyntaxError bucket.
+        return finish("repro-missing",
+                      [f"required artifacts missing: {missing}"],
                       pass_l1=False)
 
     runner = Path(__file__).with_name("repro_sandbox_runner.py")
@@ -102,7 +106,11 @@ def main() -> int:
             "flip_ok": fr.flip_ok, "reason": fr.reason}
     if fr.flip_ok:
         return finish("pass", [], pass_l1=True, flip=flip)
-    return finish("wrong-logic", [f"flip test failed: {fr.reason}"],
+    # R2 split-verdict: distinguish a patched-world crash (gold-flip-crash)
+    # from a clean non-flip (gold-wont-flip) by grepping the patched run
+    # output — see flip_failure_verdict (py_compile unavailable here).
+    verdict = flip_failure_verdict(patched.get("output", ""))
+    return finish(verdict, [f"flip test failed: {fr.reason}"],
                   pass_l1=False, flip=flip)
 
 

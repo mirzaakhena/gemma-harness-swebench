@@ -39,8 +39,14 @@ def test_verdict_icon_mapping():
     assert verdict_icon("flip").startswith("✅")
     assert verdict_icon("wrong-logic").startswith("❌")
     assert verdict_icon("syntax-fail").startswith("❌")
+    # R2 split-verdict: each new symptom-identifying REPRODUCE label has a ❌.
+    for lbl in ("repro-missing", "vacuous-repro", "syntax-error",
+                "gold-wont-flip", "gold-flip-crash"):
+        assert verdict_icon(lbl).startswith("❌"), lbl
     assert verdict_icon("abort") == ""   # keputusan Mirza: abort polos
     assert verdict_icon(None) == ""
+    # fail-soft: unknown label must not crash, renders plain.
+    assert verdict_icon("some-future-label") == ""
 
 
 # --- kolom ikon terpisah & verdict tanpa prefix (masukan Mirza) -------------

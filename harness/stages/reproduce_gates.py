@@ -85,14 +85,31 @@ def evaluate_flip(base_status: str | None, patched_status: str | None) -> FlipRe
     if patched_status != "PASS":
         return FlipResult(
             False,
-            "predicate not satisfied by the gold fix (patched run still "
-            f"{patched_status}) — likely gold-unsatisfiable predicate")
+            "gold patch applied but the patched run is still "
+            f"{patched_status} (expected PASS) — repro did not flip")
     return FlipResult(True, None)
+
+
+def flip_failure_verdict(patched_output: str) -> str:
+    """Classify a failed L2 flip into a symptom-identifying verdict (R2).
+
+    Distinguishes a patched-world CRASH (``gold-flip-crash``) from a clean
+    non-flip where the gold-patched run finished but the predicate still did
+    not become PASS (``gold-wont-flip``). Derived by grepping the patched
+    run output — ``py_compile`` is unavailable in this harness and host vs
+    container Python differ, so a crash is recognised from ``Traceback`` /
+    ``SyntaxError`` markers rather than by re-compiling."""
+    if "Traceback" in patched_output or "SyntaxError" in patched_output:
+        return "gold-flip-crash"
+    return "gold-wont-flip"
 
 
 @dataclass
 class GateResult:
-    verdict: str  # pass | fail | syntax-fail
+    # R2 split-verdict: pass | fail | timeout | syntax-fail (repro.md format
+    # or token-missing-without-SyntaxError) | syntax-error (real SyntaxError
+    # in fresh-run output) | vacuous-repro (PASS at base)
+    verdict: str
     failures: list[str] = field(default_factory=list)
 
 
@@ -123,12 +140,21 @@ def evaluate_gates(repro_md_text: str,
     status1 = parse_repro_status(fresh_run1_output)
     status2 = parse_repro_status(fresh_run2_output)
     if status1 is None or status2 is None:
+        # R2 split-verdict: a real SyntaxError (script never compiled) is
+        # derived by grepping the captured fresh-run output, NOT py_compile
+        # (unavailable here; host vs container Python differ). Absent that
+        # marker, keep the generic token-missing bucket.
+        if "SyntaxError" in fresh_run1_output or "SyntaxError" in fresh_run2_output:
+            return GateResult(verdict="syntax-error", failures=[
+                "SyntaxError in fresh-sandbox run output — the repro script does not compile"])
         return GateResult(verdict="syntax-fail",
                           failures=["REPRO_STATUS token not found in fresh-sandbox run output"])
 
     if status1 == "PASS":
-        failures.append(
-            "anti-vacuous: REPRO_STATUS PASS at base commit — the script does not exhibit the bug")
+        # R2 split-verdict: PASS-at-base is its own symptom (vacuous repro),
+        # not a generic fail — the script does not exhibit the bug at base.
+        return GateResult(verdict="vacuous-repro", failures=[
+            "anti-vacuous: REPRO_STATUS PASS at base commit — the script does not exhibit the bug"])
 
     if status1 != status2:
         failures.append(

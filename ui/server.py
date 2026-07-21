@@ -259,7 +259,10 @@ def verdict_icon(v) -> str:
     if v in ("pass", "flip"):
         return "✅ "
     if v in ("fail", "syntax-fail", "wrong-logic", "timeout",
-             "no-flip", "empty-patch"):
+             "no-flip", "empty-patch",
+             # R2 split-verdict: symptom-identifying REPRODUCE labels
+             "repro-missing", "vacuous-repro", "syntax-error",
+             "gold-wont-flip", "gold-flip-crash"):
         return "❌ "
     return ""
 

@@ -17,7 +17,13 @@ SCHEMA_VERSION = "1.0.0"
 PHASES = ("reproduce", "localize", "fix", "verify")
 EVENTS = ("enter", "exit", "retry", "skip", "abort")
 VERDICTS = {
-    "reproduce": ("pass", "fail", "syntax-fail", "wrong-logic", "timeout", "abort"),
+    # R2 split-verdict: symptom-identifying REPRODUCE labels
+    # (repro-missing/vacuous-repro/syntax-error/gold-wont-flip/gold-flip-crash)
+    # supplement the legacy catch-all buckets. Any verdict emitted MUST be
+    # listed here or event() raises ValueError.
+    "reproduce": ("pass", "fail", "syntax-fail", "wrong-logic", "timeout", "abort",
+                  "repro-missing", "vacuous-repro", "syntax-error",
+                  "gold-wont-flip", "gold-flip-crash"),
     "localize": ("pass", "fail", "syntax-fail", "wrong-logic", "timeout", "abort"),
     "verify": ("pass", "fail", "syntax-fail", "wrong-logic", "timeout", "abort"),
     "fix": ("flip", "no-flip", "empty-patch", "timeout", "abort"),
