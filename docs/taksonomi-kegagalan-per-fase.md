@@ -64,8 +64,10 @@ data L/F/V sama sekali.
 **20 case tak pernah qualified:** 10924, 11564, 11630, 11905, 12125, 12856, 13265,
 13933, 14411, 14608, 14667, 14752, 14855, 15252, 15695, 15738, 15781, 15789, 15851,
 15902. **Catatan KH-16:** 12184/13321/14155 KELUAR dari daftar wall — gold.patch-nya
-korup (R-8); pasca-repair ketiganya qualified R dan lanjut ke L/F. 12856 masih wall
-(6 run `wrong-logic`; status pasca-repair perlu konfirmasi bot-03).
+korup (R-8); pasca-repair ketiganya qualified R dan lanjut ke L/F. **12856: repair
+CONFIRMED bersih (bot-02, 2026-07-22, `git apply --numstat` clean)** — 6 run
+`wrong-logic`-nya semua PRA-repair (flip vacuous); status sesungguhnya menunggu
+re-run pasca-repair, jangan hitung sebagai wall akar-model.
 
 ### R-1 — Token-loop tanpa fence: repro TAK PERNAH ditulis (keluarga KH-12 "no-fence")
 
@@ -317,8 +319,8 @@ resolved=false target-fail-murni (f2p>0,p2p=0) **8** · resolved=false campuran
 - **Frekuensi:** terkonfirmasi autopsi **6 case**: `7746`, `12308`, `13220`, `13401`
   (Kelas-B backlog + cand=N) + era-awal `13660`, `14017`. **⏳ kandidat belum-diautopsi
   dari sel merah mekanis:** 13551, 15819, `astropy-14182`, 11019, 11283 (papan grup-1+2,
-  autopsi §3 DEFERRED — bisa F-1 atau F-3), 11583 (era-lama, f2p=2 p2p=50, tak pernah
-  diautopsi).
+  autopsi §3 DEFERRED — bisa F-1 atau F-3). (11583 sudah diautopsi bot-02
+  2026-07-22 → ternyata **F-2** rewrite-destruktif, bukan F-1.)
 - **Anggota (terkonfirmasi):** 7746, 12308, 13220, 13401, 13660, 14017.
 
 ### F-2 — Patch over-broad / rewrite destruktif (akar-MODEL scope; superset)
@@ -341,7 +343,12 @@ resolved=false target-fail-murni (f2p>0,p2p=0) **8** · resolved=false campuran
   guard-dihapus vs guard-dipersempit; jumlah region hunk gold==model → detektor
   mismatch-region LV-14 dua-arah TIDAK menangkapnya — blind-spot LV-14 tercatat).**
   Sel mekanis F2P-lulus-P2P-regresi juga memuat 13660×3 & 13590 (akar berbeda — F-1/F-3).
-- **Anggota:** 11999, 12907, 15400, 11910, 12284.
+  **+2026-07-22 (autopsi bot-02):** `11583` — rewrite SELURUH `autoreload.py`
+  (297→75 baris), hapus simbol publik `autoreload_started` → ImportError saat
+  collection → 0 test collected (semua F2P + ~50 P2P fail). Sekelas 12907/15400
+  (rewrite→collection-collapse); `file_match=true`+`line_overlap=true` karena
+  rewrite mencakup region gold.
+- **Anggota:** 11999, 12907, 15400, 11910, 12284, 11583.
 
 ### F-3 — Patch subset / under-general / mekanisme salah (akar-MODEL kelengkapan)
 

@@ -54,7 +54,7 @@ efeknya segera; lever juga bisa lahir dari PASS-yang-tak-efisien.
 | **R1** LV-09 pipe_runtime→FIX (+L) | F-4: `11422, 11910, 15388, 12184` (pipe_err 441/588/232/260) | **UNLOCK** | no-flip hilang? `pipe_err=0`? resolved? (patch tetap tugas model — bisa saja FAIL jujur) |
 | (idem, sisi efficiency) | `12286, 13660, 11283, 13448` (terpapar tapi lolos/berjalan) | EFFICIENCY | turn terbuang ke ImportError → 0 |
 | **R19** KL-G3-2 prune keying `qualified` | `13964` (re-run manual sudah ada: FIX jalan, resolved=false); 13033 = bukti historis | UNLOCK (terbukti 13033) + INTEGRITAS | tidak ada lagi `skipped-fix-localize-miss` pada `qualified=true` |
-| **R18** KL-G3-1 `git apply --check` saat setup | `12856` (cek status repair!); historis 12184/13321/14155/15202 | OBSERVABILITY (fail-fast) | setup gagal-keras utk patch korup; nol R-8 baru |
+| **R18** KL-G3-1 `git apply --check` saat setup | `12856` (repair CONFIRMED bersih 2026-07-22 — tinggal re-run utk status real); historis 12184/13321/14155/15202 | OBSERVABILITY (fail-fast) | setup gagal-keras utk patch korup; nol R-8 baru |
 | **R2** split verdict bucket | mislabel keluarga: `15851, 14411, 13265, 14855, 15902, 11815(r1)` + eks-korup | OBSERVABILITY | label baru (`repro-missing`/`vacuous-repro`/`gold-wont-flip`/`gold-flip-crash`) benar per artefak |
 | **R3** format_reminder generalisasi (+port F/L) | R-1/R-2: `15851, 14411, 13265, 14855, 15902` | EFFICIENCY → mungkin unlock | reply berubah? repro.py ter-persist? turn hemat |
 | **R5** watcher no-progress (putus-dini+inject) | sama dgn R3 + `12125` (trigger #8 observed_fail-never) | EFFICIENCY + mungkin unlock | turn hemat (≥35/run pada fixed-point); fixed-point pecah? |
@@ -130,12 +130,13 @@ hentikan gelombang, autopsi dulu.
 | 12907 | F-2 rewrite | (akar-model scope) | RENDAH |
 | 14365 | F-3 subset | (akar-model) | RENDAH |
 | 13590 | F-3 | (akar-model) | RENDAH |
-| 11583 | ⏳ belum-diautopsi | autopsi dulu! | ? |
+| 11583 | F-2 rewrite-destruktif (autopsi bot-02 2026-07-22: 297→75 baris, hapus `autoreload_started` → collection collapse) | (akar-model; LV-14 hanya bisa FLAG = observability) | RENDAH |
 
 **Bacaan strategis:** 5-6 dari 13 regresi punya lever harness yang menjanjikan;
 sisanya akar-model (gap kompetensi yang v1 "menangkan" lewat rezim lebih mudah —
-baseline tak menuntut menulis yardstick sendiri). `11583` = satu-satunya yang belum
-pernah diautopsi → murah, kerjakan dulu.
+baseline tak menuntut menulis yardstick sendiri). Payoff map kini LENGKAP — 13/13
+terklasifikasi (11583 tuntas 2026-07-22: F-2, realisme RENDAH). Kelas akar-model
+kini 5 dari 13 (12907, 14365, 13590, 11999†R14-parsial, 11583).
 
 ## §5 — Protokol pencatatan hasil retest (per run)
 
