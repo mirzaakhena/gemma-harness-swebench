@@ -143,13 +143,15 @@ def test_wait_for_gpu_allow_concurrent_bypasses_gate(tmp_path, monkeypatch):
 
 # --- should_prune_fix (flag --prune-localize-miss) -------------------------
 # Keputusan ORKESTRASI hemat-compute (batch runner, DI LUAR loop model): SKIP
-# FIX bila gold_eval.json LOCALIZE menandai file_match=false. Gate produk tetap
-# gold-blind; case yang di-skip tetap dihitung gagal. Empat cabang diuji.
+# FIX bila gold_eval.json LOCALIZE menandai qualified=false (gold tak ada DI MANA
+# PUN di shortlist). KL-G3-2/KH-17: keying `file_match` (pointed primer) terbukti
+# false-prune — 13033 punya gold di candidate-2 (qualified=true), di-skip, dan
+# saat di-re-run tanpa prune malah resolved=true. FIX mengiterasi SELURUH
+# shortlist, jadi kriteria prune harus konsisten dengan itu: `qualified`.
 
-def _write_gold_eval(tmp_path: Path, file_match) -> Path:
+def _write_gold_eval(tmp_path: Path, **fields) -> Path:
     payload = {"case": "x", "rerun": 1}
-    if file_match is not None:
-        payload["file_match"] = file_match
+    payload.update({k: v for k, v in fields.items() if v is not ...})
     p = tmp_path / "gold_eval.json"
     p.write_text(json.dumps(payload), encoding="utf-8")
     return p
@@ -157,31 +159,40 @@ def _write_gold_eval(tmp_path: Path, file_match) -> Path:
 
 def test_should_prune_fix_disabled_always_false(tmp_path):
     """enabled=False → tak pernah prune, apa pun isi gold_eval (perilaku lama)."""
-    p = _write_gold_eval(tmp_path, file_match=False)
+    p = _write_gold_eval(tmp_path, file_match=False, qualified=False)
     assert should_prune_fix(p, enabled=False) is False
-    assert should_prune_fix({"file_match": False}, enabled=False) is False
+    assert should_prune_fix({"qualified": False}, enabled=False) is False
 
 
-def test_should_prune_fix_file_match_false_prunes(tmp_path):
-    """localize meleset gold → prune (True)."""
-    p = _write_gold_eval(tmp_path, file_match=False)
+def test_should_prune_fix_qualified_false_prunes(tmp_path):
+    """gold tak ada di shortlist mana pun → prune (True)."""
+    p = _write_gold_eval(tmp_path, file_match=False, qualified=False)
     assert should_prune_fix(p, enabled=True) is True
-    assert should_prune_fix({"file_match": False}, enabled=True) is True
+    assert should_prune_fix({"file_match": False, "qualified": False}, enabled=True) is True
 
 
-def test_should_prune_fix_file_match_true_keeps(tmp_path):
-    """localize benar → jangan prune (jalankan FIX)."""
-    p = _write_gold_eval(tmp_path, file_match=True)
+def test_should_prune_fix_qualified_true_keeps_even_if_file_match_false(tmp_path):
+    """KL-G3-2: pointed primer salah TAPI gold ada di candidate lain → JANGAN
+    prune (FIX mengiterasi shortlist; signature 13033/13964)."""
+    p = _write_gold_eval(tmp_path, file_match=False, qualified=True)
     assert should_prune_fix(p, enabled=True) is False
-    assert should_prune_fix({"file_match": True}, enabled=True) is False
+    assert should_prune_fix({"file_match": False, "qualified": True}, enabled=True) is False
+
+
+def test_should_prune_fix_localize_hit_keeps(tmp_path):
+    """localize benar (file_match=true, qualified=true) → jangan prune."""
+    p = _write_gold_eval(tmp_path, file_match=True, qualified=True)
+    assert should_prune_fix(p, enabled=True) is False
 
 
 def test_should_prune_fix_none_or_missing_is_failsafe(tmp_path):
-    """file_match None / field hilang / file tak ada → JANGAN prune (fail-safe)."""
-    p_none = _write_gold_eval(tmp_path, file_match=None)  # field tak ditulis
+    """qualified None / field hilang / file tak ada → JANGAN prune (fail-safe).
+    Termasuk gold_eval era-lama yang hanya punya file_match tanpa qualified."""
+    p_none = _write_gold_eval(tmp_path)  # tanpa field sama sekali
     assert should_prune_fix(p_none, enabled=True) is False
-    assert should_prune_fix({"file_match": None}, enabled=True) is False
+    assert should_prune_fix({"qualified": None}, enabled=True) is False
     assert should_prune_fix({}, enabled=True) is False
+    assert should_prune_fix({"file_match": False}, enabled=True) is False  # era-lama
     missing = tmp_path / "tidak-ada.json"
     assert should_prune_fix(missing, enabled=True) is False
 
@@ -194,13 +205,24 @@ _ARTIFACTS_LDEV = (Path(__file__).resolve().parent.parent.parent
 
 
 def test_should_prune_fix_real_localize_miss_13925():
-    """django__django-13925 r1: file_match=false nyata → prune True (enabled)."""
+    """django__django-13925 r1: qualified=false nyata (Kelas-A sejati) → prune True."""
     p = _ARTIFACTS_LDEV / "l-dev--django__django-13925--r1" / "gold_eval.json"
     if not p.is_file():
         import pytest
         pytest.skip("artifacts 13925 tidak ada")
     assert should_prune_fix(p, enabled=True) is True
     assert should_prune_fix(p, enabled=False) is False
+
+
+def test_should_prune_fix_real_false_prune_13033_now_keeps():
+    """django__django-13033 r1: file_match=false TAPI qualified=true (gold di
+    candidate-2) → TIDAK di-prune lagi (regresi KH-17; dulu case ini di-skip
+    salah dan terbukti solvable saat FIX diberi kesempatan)."""
+    p = _ARTIFACTS_LDEV / "l-dev--django__django-13033--r1" / "gold_eval.json"
+    if not p.is_file():
+        import pytest
+        pytest.skip("artifacts 13033 tidak ada")
+    assert should_prune_fix(p, enabled=True) is False
 
 
 def test_should_prune_fix_real_localize_hit_keeps():

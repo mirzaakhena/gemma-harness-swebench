@@ -99,9 +99,13 @@ def should_prune_fix(gold_eval, enabled: bool) -> bool:
 
     Argumen `gold_eval` boleh berupa path ke `gold_eval.json` (l-dev run dir)
     atau dict yang sudah di-parse. Kembalikan True HANYA saat `enabled` dan
-    `file_match` eksplisit False. Semua kondisi lain (flag off, file hilang /
-    tak terbaca, `file_match` None/tak ada) → False = GAGAL-AMAN ke perilaku
-    lama (tetap jalankan FIX)."""
+    `qualified` eksplisit False — BUKAN `file_match` (KL-G3-2/KH-17): FIX
+    mengiterasi SELURUH shortlist, jadi selama gold ada di salah satu kandidat
+    (`qualified=true`) FIX masih bisa menang walau pointed primer meleset
+    (terbukti: 13033 di-prune atas file_match lalu resolved=true saat re-run).
+    Semua kondisi lain (flag off, file hilang / tak terbaca, `qualified`
+    None/tak ada — termasuk gold_eval era-lama tanpa field ini) → False =
+    GAGAL-AMAN (tetap jalankan FIX)."""
     if not enabled:
         return False
     data = gold_eval
@@ -110,7 +114,7 @@ def should_prune_fix(gold_eval, enabled: bool) -> bool:
             data = json.loads(Path(gold_eval).read_text(encoding="utf-8"))
         except Exception:
             return False  # tak terbaca → jangan prune (fail-safe)
-    return data.get("file_match") is False
+    return data.get("qualified") is False
 
 
 def qualified_rerun(campaign_dir: Path, campaign: str, case: str) -> int | None:
