@@ -364,3 +364,19 @@ lever salah-arah di ~3 dari 4 case.
   case bisa berganti akar antar-rerun. (ii) `__init__(...)` vs `run(...)` di TypeError memisahkan
   App-hallucination dari Python-3.6-subprocess — jangan digabung (instansi bias "percaya label/teks
   error tanpa buka artefak", bersama KH-10/KH-12).
+
+## KH-16 — "14155/12856/12184/13321/15202 REPRODUCE-wall = akar-MODEL (repro tak qualified)"
+
+- **Yang dinyatakan (bot-03, papan skor grup-3 awal; bot-04, taksonomi §R-4 menaruh 14155/12184/13321 sbg kandidat akar-MODEL):** case-case ini mentok di REPRODUCE (`wrong-logic`/tak-qualified) karena repro model / model gagal.
+- **Derajat: TERBANTAH** (reklasifikasi akar) untuk **5 case**, + sub-sebab BARU.
+- **Yang benar:** `cases/gold/<id>/gold.patch` **MALFORMED di level PARSE** (body hunk kurang ≥1 baris konteks trailing vs header `@@ -a,b +c,d @@`). Flip runner (`repro_sandbox_runner.py:29`) menjalankan `git apply /patch-in/gold.patch && python repro.py`; `git apply` GAGAL "corrupt patch" → `&&` short-circuit → repro **tak pernah jalan** di gold-world → gate melihat "no REPRO_STATUS token in gold-patched run output" → verdict `wrong-logic`. **Base-world repro JALAN & `REPRO_STATUS: FAIL` benar.** Akar = **DATA-setup korup**, BUKAN akar-MODEL/repro. Scan seluruh korpus (`git apply --numstat` per patch): **5/97 django gold.patch korup — 12184, 12856, 13321, 14155, 15202** (15202 ada di grup-4).
+- **Bukti pembantah (independen, bisa diulang):** `git apply --numstat cases/gold/django__django-14155/gold.patch` → `error: corrupt patch at line 22` (error PARSE, sebelum menyentuh tree apa pun; sama utk 12856@15, 12184@14, 13321@19, 15202@41). `flip_run.json` = `{"output":"error: corrupt patch at line N","exit":128}`. `gate_runs.json` base = repro bekerja.
+- **Pelajaran:** verdict `wrong-logic` bisa lahir dari **gold-data-corrupt**, bukan hanya model/repro salah. Instansi ke-N bias-3 ("percaya label verdict") dengan **sub-sebab BARU**: data-setup korup. Kandidat lever KL-G3-1 = **validasi `git apply --check gold.patch` saat prepare_cases** (fail-fast). **Konsekuensi:** taksonomi bot-04 §R-4 perlu revisi — 5 case ini KELUAR dari tally akar-MODEL; wall-nya vacuous sampai gold diperbaiki.
+
+## KH-17 — "`skipped-fix-localize-miss` = LOCALIZE-recall gagal (salah-file, Kelas-A)"
+
+- **Yang dinyatakan (bot-03, papan skor grup-3 awal):** semua case ber-`error=skipped-fix-localize-miss` = Kelas-A akar-LOCALIZE (model gagal me-localize file gold).
+- **Derajat: DIPERSEMPIT.**
+- **Yang benar:** kriteria prune (`should_prune_fix`, `run_rlfv_batch.py:113`) me-return `gold_eval["file_match"] is False` — di-key ke **`file_match`** (apakah *pointed_file primer* == gold). Tapi kriteria qualify/FIX-iterasi di-key ke **`qualified`** (apakah *ada* file di shortlist ∈ gold; FIX mengiterasi seluruh shortlist). Dua kriteria INKONSISTEN. **13033:** `pointed_file=sql/query.py` (`file_match=false`) TAPI candidate-2 `sql/compiler.py` = **GOLD** → `qualified=true`. Recall LOCALIZE **SUKSES** (gold tersedia utk FIX), tapi tetap di-skip. Jadi `skipped-fix-localize-miss` **mencampur** (a) recall-miss sejati (15213/12589) DAN (b) **false-prune** (recall sukses, prune over-agresif) — bukan homogen Kelas-A.
+- **Bukti pembantah:** 13033 `l-dev/.../gold_eval.json` = `file_match=false ∧ qualified=true`; `should_prune_fix` keys `file_match`. **Bukti bahaya:** `11620` bersignature `file_match=false ∧ qualified=true` **DAN `resolved=true`** — prune (bila dipakai saat itu) akan meng-skip case yang justru RESOLVED.
+- **Pelajaran:** label `error` batch ≠ diagnosa akar. Papan skor "Kelas-A" tercemar false-prune. Kandidat lever KL-G3-2 = **prune keying `qualified` (bukan `file_match`)**, konsisten dgn kriteria FIX-iterasi.
