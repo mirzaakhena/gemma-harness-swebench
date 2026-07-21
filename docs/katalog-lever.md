@@ -3749,5 +3749,6 @@ Dari 7 fail: **1/7 (7746)** diperbaiki ketatkan-repro (LV-01+K4); **2/7 (11797,1
 - **(a) temperature-di-rerun** (r1 greedy + gate deterministik; r2/r3 temp>0 + **seed dipin** per-rerun → reproducible-given-seed);
 - **(b) feedback-injection deterministik** (inject kegagalan rerun sebelumnya sebagai konteks r2/r3 — tetap temp 0.0, tanpa flakiness).
 Komplementer dgn watcher (watcher = intra-run; a/b = antar-run).
+- **KEPUTUSAN Mirza (2026-07-21):** pilih **(b) feedback-injection deterministik** — utamakan reproducibility bit-for-bit seluruh pipeline; **(a) seeded-temperature DITOLAK** (mengembalikan flakiness pengukuran/vonis). Saat di-elevate nanti: rancang isi feedback yang di-inject ke r2/r3 (kandidat: parse-failure eksplisit / verdict reason rerun sebelumnya / output repro terakhir) — konten feedback = keputusan desain berikutnya.
 
 **Status: BELUM DITERAPKAN** (default catat-only).
