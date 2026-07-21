@@ -8,6 +8,8 @@ Lever: mirror vonis gate di jalur DONE acceptance (standar tunggal dengan
 localize_gates), panjang file via docker `wc -l`, fail-closed bila file
 tak terbaca.
 """
+import subprocess
+
 import harness.stages.run_localize_gemma as drv
 
 MD = """chosen: 1
@@ -89,6 +91,23 @@ def test_malformed_localize_md_rejected_before_docker(monkeypatch):
     err = drv.localize_range_error("c1", "chosen: 1\nfile: x.py\n")
     assert err is not None and "localize.md" in err
     assert not calls  # tanpa slot lengkap tidak ada yang bisa diukur
+
+
+def test_docker_write_file_sends_lf_only_bytes(monkeypatch):
+    # R7: port fix CRLF dari driver R/F. text=True di Windows menerjemahkan
+    # \n -> \r\n saat menulis ke pipe docker; file tulisan model rusak
+    # retroaktif (kontrak §2: byte \r di file adalah BUG).
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["input"] = kwargs.get("input")
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    drv.docker_write_file("c1", "/tmp/x", "line1\nline2\r\nline3\n")
+    assert isinstance(captured["input"], bytes)
+    assert b"\r" not in captured["input"]
+    assert captured["input"] == b"line1\nline2\nline3\n"
 
 
 def test_tool_call_marker_triggers_strong_reminder():
