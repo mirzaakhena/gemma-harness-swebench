@@ -39,6 +39,7 @@ from harness.stages.gemma_protocol import (done_rejection_reason,
                                            parse_review,
                                            repeated_error_note,
                                            retry_reason, review_feedback)
+from harness.stages.no_progress import no_progress_decision
 from harness.stages.repro_sandbox_runner import run_once
 from harness.stages.reproduce_gates import compose_repro_md
 
@@ -318,6 +319,12 @@ def main() -> int:
     last_retry_why: str | None = None
     judge_prompted = False
     done = False
+    # R5 no-progress watcher: sinyal base-world yang disaksikan driver
+    # (gold-blind). recent_* paralel per turn; np_injected menandai trigger
+    # yang sudah di-inject (untuk deteksi PERSISTS -> break).
+    recent_replies: list[str] = []
+    recent_action_counts: list[int] = []
+    np_injected: set[str] = set()
     try:
         for turn in range(1, args.max_turns + 1):
             try:
@@ -485,6 +492,27 @@ def main() -> int:
                 feedback_parts.append(
                     no_action_feedback(reply, _ACTION_FORMS,
                                        fence_reminder=format_reminder()))
+
+            # R5 watcher: deteksi no-progress dari sinyal base-world.
+            recent_replies.append(reply)
+            recent_action_counts.append(len(actions))
+            np = no_progress_decision(recent_replies, recent_action_counts,
+                                      turn_idx=turn, observed_fail=observed_fail,
+                                      already_injected=np_injected)
+            if np.action == "inject":
+                np_injected.add(np.trigger)
+                log(f"[driver] no-progress watcher: inject ({np.trigger}) "
+                    f"at turn {turn}")
+                feedback_parts.append(np.message)
+            elif np.action == "break":
+                # PUTUS-DINI dengan break (BUKAN emit_abort): biar salinan
+                # artefak akhir jalan & gate memvonis — hindari dua-penulis-
+                # verdict (prinsip §5; driver tak pernah menulis verdict).
+                log(f"[driver] no-progress watcher: break ({np.trigger}) at "
+                    f"turn {turn} — still stuck after injection; ending run so "
+                    "the gate renders the verdict")
+                break
+
             messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
     except Exception as e:
         import traceback
