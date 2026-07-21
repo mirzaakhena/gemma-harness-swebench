@@ -492,10 +492,24 @@ def _pct(x: int, n: int) -> str:
     return f"{round(100 * x / n)}%" if n else "0%"
 
 
+def _stage_legend(s: dict) -> str:
+    """Teks legenda status (dipindah dari tampilan langsung ke modal '[info]',
+    permintaan Mirza 2026-07-21). Baris WAIT/ANOMALY hanya bila relevan."""
+    return ("PASS = pernah qualified (&ge;1 run); "
+            "FAIL = tak pernah qualified, alasan dari run terbaru"
+            + ("; ⏳ WAIT = product-pass, menunggu VERIFY"
+               if s.get("wait") else "")
+            + ("; ⚠️ ANOMALY = product FAIL tapi SWE-bench resolved "
+               "(kontradiksi sinyal, autopsi manual)"
+               if s.get("anomaly") else ""))
+
+
 def render_stage_summary(s: dict) -> str:
-    """Panel infografik: angka+persen, bar bertumpuk CSS, rincian
-    FAIL/ANOMALY/? dan daftar WAIT (menunggu VERIFY) collapsible
-    (details/summary). Tanpa case -> string kosong."""
+    """Panel infografik: angka+persen berikut label "[info]" (klik -> modal
+    legenda) dan bar bertumpuk CSS. Rincian FAIL/ANOMALY per case sekarang
+    dibuka lewat modal saat ikon di tabel utama diklik (bukan lagi di panel);
+    daftar WAIT (menunggu VERIFY) tetap collapsible. Tanpa case -> "".
+    """
     n = s["total"]
     if n == 0:
         return ""
@@ -510,6 +524,8 @@ def render_stage_summary(s: dict) -> str:
                  f"({_pct(s['anomaly'], n)})")
     if s["unknown"]:
         head += f" &middot; ? {s['unknown']} ({_pct(s['unknown'], n)})"
+    # label "[info]" di paling akhir head -> buka modal legenda
+    head += " <a class='info-link' onclick='showInfo()'>[info]</a>"
     segs = []
     for cnt, cls in ((s["pass"], "sp"), (s["fail"], "sf"),
                      (s.get("wait", 0), "sw"), (s.get("anomaly", 0), "sa"),
@@ -518,33 +534,11 @@ def render_stage_summary(s: dict) -> str:
             segs.append(f"<span class='{cls}' "
                         f"style='width:{_pct(cnt, n)}'></span>")
     parts = ["<div class='summary'><p>", head, "</p>",
-             "<p class='dim'>PASS = pernah qualified (&ge;1 run); "
-             "FAIL = tak pernah qualified, alasan dari run terbaru"
-             + ("; ⏳ WAIT = product-pass, menunggu VERIFY"
-                if s.get("wait") else "")
-             + ("; ⚠️ ANOMALY = product FAIL tapi SWE-bench resolved "
-                "(kontradiksi sinyal, autopsi manual)"
-                if s.get("anomaly") else "")
-             + "</p>",
+             # legenda tersembunyi; isinya disalin JS ke modal saat "[info]"
+             "<div id='legendBody' style='display:none'>"
+             + _stage_legend(s) + "</div>",
              "<div class='sbar'>", "".join(segs), "</div>"]
 
-    problems = [i for i in s["items"] if i["status"] in ("FAIL", "ANOMALY", "?")]
-    if problems:
-        rows = []
-        for i in problems:
-            reasons = "; ".join(r[:200] for r in i["reasons"][:3]) \
-                      or "(detail tidak terekam)"
-            rows.append(f"<tr><td>{html.escape(i['case'])}</td>"
-                        f"<td class='dim'>{html.escape(i['rerun'])}</td>"
-                        f"<td class='dim'>"
-                        f"{html.escape(i.get('started', '?'))}</td>"
-                        f"<td>{html.escape(i['category'])}</td>"
-                        f"<td>{html.escape(reasons)}</td></tr>")
-        parts.append(f"<details><summary>rincian FAIL/ANOMALY "
-                     f"({len(problems)})"
-                     "</summary><table><tr><th>case</th><th>run</th>"
-                     "<th>mulai</th><th>kategori</th><th>alasan</th></tr>"
-                     + "".join(rows) + "</table></details>")
     waiting = [i for i in s["items"] if i["status"] == "WAIT"]
     if waiting:
         rows = [f"<tr><td>{html.escape(i['case'])}</td>"
@@ -555,18 +549,16 @@ def render_stage_summary(s: dict) -> str:
                      "</summary><table><tr><th>case</th><th>run</th>"
                      "<th>mulai</th></tr>" + "".join(rows)
                      + "</table></details>")
-    passes = [i for i in s["items"] if i["status"] == "PASS"]
-    if passes:
-        rows = [f"<tr><td>{html.escape(i['case'])}</td>"
-                f"<td class='dim'>{html.escape(i['rerun'])}</td>"
-                f"<td class='dim'>{html.escape(i.get('started', '?'))}</td>"
-                "</tr>" for i in passes]
-        parts.append(f"<details><summary>daftar PASS ({len(passes)})"
-                     "</summary><table><tr><th>case</th>"
-                     "<th>run qualified</th><th>mulai</th></tr>"
-                     + "".join(rows) + "</table></details>")
     parts.append("</div>")
     return "".join(parts)
+
+
+def _fail_reason_text(item: dict) -> str:
+    """Teks alasan per-case utk modal ikon FAIL/ANOMALY (kategori + hingga 3
+    reason dipotong 200 char, sama seperti rincian tabel lama)."""
+    reasons = "; ".join(r[:200] for r in item.get("reasons", [])[:3]) \
+        or "(detail tidak terekam)"
+    return f"kategori: {item.get('category', '?')}\nalasan: {reasons}"
 
 
 def run_duration_seconds(run_dir: Path) -> float | None:
@@ -664,14 +656,68 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
     margin-left:.3em}
 .search button:hover{background:#262626}
 .search .clear{margin-left:.8em;color:#888;text-decoration:none}
+.rfilter{margin:.5em 0;color:#aaa}
+.rfilter label{margin-right:.9em;cursor:pointer}
+.info-link{color:#7bf;cursor:pointer;text-decoration:underline;margin-left:.4em}
+.xbtn{background:none;border:none;color:inherit;font:inherit;cursor:pointer;
+      padding:0}
+.xbtn:hover{filter:brightness(1.35)}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
+    z-index:50;align-items:center;justify-content:center}
+.modal-box{background:#181818;border:1px solid #555;border-radius:6px;
+    padding:1em 1.4em 1em 1.2em;max-width:560px;max-height:80vh;overflow:auto;
+    position:relative}
+.modal-x{position:absolute;top:.3em;right:.45em;background:none;border:none;
+    color:#aaa;font-size:1.3em;cursor:pointer;line-height:1}
+.modal-title{font-weight:bold;color:#fff;margin:0 1.5em .5em 0}
+.modal-body{white-space:pre-wrap;color:#ddd;line-height:1.4}
 </style>"""
+
+
+# Modal + JS inline global (dashboard lokal, JS-on diasumsikan): satu overlay
+# reusable diisi JS untuk (a) legenda "[info]" dan (b) alasan FAIL/ANOMALY saat
+# ikon diklik; plus radio filter baris tabel utama. Tanpa library eksternal.
+_MODAL_JS = """
+<div id="uiModal" class="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <button type="button" class="modal-x" onclick="closeModal()">&times;</button>
+    <div id="uiModalTitle" class="modal-title"></div>
+    <div id="uiModalBody" class="modal-body"></div>
+  </div>
+</div>
+<script>
+function closeModal(){document.getElementById('uiModal').style.display='none';}
+function _openModal(){document.getElementById('uiModal').style.display='flex';}
+function showReason(el){
+  document.getElementById('uiModalTitle').textContent=
+      'alasan: '+(el.getAttribute('data-case')||'');
+  document.getElementById('uiModalBody').textContent=
+      el.getAttribute('data-reason')||'(detail tidak terekam)';
+  _openModal();
+}
+function showInfo(){
+  document.getElementById('uiModalTitle').textContent='legenda status';
+  var b=document.getElementById('legendBody');
+  document.getElementById('uiModalBody').innerHTML=b?b.innerHTML:'';
+  _openModal();
+}
+function filterRows(v){
+  var rows=document.querySelectorAll('tr[data-status]');
+  for(var i=0;i<rows.length;i++){
+    var s=rows[i].getAttribute('data-status');
+    rows[i].style.display=((v==='All')||(v===s))?'':'none';
+  }
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+</script>
+"""
 
 
 def _page(title: str, body: str, refresh: bool = False) -> str:
     meta = '<meta http-equiv="refresh" content="3">' if refresh else ""
     return (f"<!doctype html><html><head><meta charset='utf-8'>{meta}"
             f"<title>{html.escape(title)}</title>{_STYLE}</head>"
-            f"<body>{body}</body></html>")
+            f"<body>{body}{_MODAL_JS}</body></html>")
 
 
 def index_row_verdict(phases: dict, wall) -> tuple[str, str]:
@@ -723,6 +769,22 @@ def _search_box(active: str, q: str | None) -> str:
             + clear + "</form>")
 
 
+def _row_status_from_icon(icon: str) -> str:
+    """Status baris tabel utama utk data-status (radio filter) dari IKON baris
+    (permintaan Mirza 2026-07-21): ✅->PASS, ❌->FAIL, ⏳->WAIT, ⚠️->ANOMALY,
+    selain itu "?". Konsisten dgn ikon yg menentukan baris (utk f-* ikon sudah
+    = status_icon(case_status), utk r/l diturunkan dari verdict/ikon baris)."""
+    if icon.startswith("✅"):
+        return "PASS"
+    if icon.startswith("❌"):
+        return "FAIL"
+    if icon.startswith("⏳"):
+        return "WAIT"
+    if icon.startswith("⚠"):
+        return "ANOMALY"
+    return "?"
+
+
 def page_index(root: Path, tab: str | None = None, page: int = 1,
                q: str | None = None) -> str:
     parts = ["<h1>gemma-harness log viewer</h1>",
@@ -762,8 +824,22 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
 
     # panel ringkasan per tahapan: dihitung dari run (ter)filter, bukan
     # halaman ini — konsisten dgn tabel di bawahnya
-    parts.append(render_stage_summary(
-        stage_summary(root / active, active, runs)))
+    summary = stage_summary(root / active, active, runs)
+    parts.append(render_stage_summary(summary))
+    # alasan per-CASE (kategori+reasons dari run yang dipilih summary) ->
+    # dipakai modal saat ikon FAIL/ANOMALY di tabel utama diklik
+    reason_by_case = {i["case"]: i for i in summary["items"]}
+
+    # radio filter baris tabel utama (All/PASS/FAIL) — client-side JS
+    # (filterRows) berlaku otomatis di ketiga tab (permintaan Mirza 2026-07-21)
+    parts.append(
+        "<div class='rfilter'>filter: "
+        "<label><input type='radio' name='rowfilter' value='All' checked "
+        "onchange=\"filterRows('All')\"> All</label>"
+        "<label><input type='radio' name='rowfilter' value='PASS' "
+        "onchange=\"filterRows('PASS')\"> PASS</label>"
+        "<label><input type='radio' name='rowfilter' value='FAIL' "
+        "onchange=\"filterRows('FAIL')\"> FAIL</label></div>")
 
     page_runs, total_pages = paginate(runs, page, PAGE_SIZE)
     rows = []
@@ -794,17 +870,32 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
             dur += " (live)"
         turns = run_turns(root / active / rid)
         case_id, rerun = split_run_id(rid)
+        # status baris utk data-status (radio filter) & modal alasan: dari
+        # ikon baris itu sendiri (✅->PASS, ❌->FAIL, ⏳->WAIT, ⚠️->ANOMALY);
+        # utk f-* ikon sudah = status_icon(case_status), jadi konsisten.
+        row_status = _row_status_from_icon(icon)
+        if row_status in ("FAIL", "ANOMALY"):
+            item = reason_by_case.get(case_id)
+            rtext = _fail_reason_text(item) if item else "(detail tidak terekam)"
+            icon_cell = (
+                "<button type='button' class='xbtn' "
+                f"data-case=\"{html.escape(case_id, quote=True)}\" "
+                f"data-reason=\"{html.escape(rtext, quote=True)}\" "
+                f"onclick='showReason(this)'>{icon}</button>")
+        else:
+            icon_cell = icon
         rows.append(
-            f"<tr><td>{html.escape(case_id)}</td>"
+            f"<tr data-status=\"{html.escape(row_status, quote=True)}\">"
+            f"<td>{html.escape(case_id)}</td>"
             f"<td><a href='{href}'>{html.escape(rerun or rid)}</a></td>"
-            f"<td>{icon}</td>"
+            f"<td>{icon_cell}</td>"
             f"<td>{html.escape(vtext)}</td>"
-            f"<td class='dim'>"
-            f"{html.escape(run_started_str(root / active / rid))}</td>"
             f"<td class='dim'>{html.escape(dur)}</td>"
-            f"<td class='dim'>{turns if turns is not None else '-'}</td></tr>")
+            f"<td class='dim'>{turns if turns is not None else '-'}</td>"
+            f"<td class='dim'>"
+            f"{html.escape(run_started_str(root / active / rid))}</td></tr>")
     parts.append("<table><tr><th>case</th><th>run</th><th></th><th>verdict</th>"
-                 "<th>mulai</th><th>durasi</th><th>turns</th></tr>"
+                 "<th>durasi</th><th>turns</th><th>mulai</th></tr>"
                  + "".join(rows) + "</table>")
 
     if total_pages > 1:

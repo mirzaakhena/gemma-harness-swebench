@@ -332,7 +332,7 @@ def test_stage_summary_item_started_missing_is_question(tmp_path):
     assert s["items"][0]["started"] == "?"
 
 
-def test_render_stage_summary_text_bar_and_details():
+def test_render_stage_summary_text_bar_and_info():
     s = {"total": 4, "pass": 3, "fail": 1, "unknown": 0,
          "items": [
              {"case": "case-a", "rerun": "r2", "status": "PASS",
@@ -345,9 +345,10 @@ def test_render_stage_summary_text_bar_and_details():
     assert "4 cases" in out
     assert "PASS 3 (75%)" in out and "FAIL 1 (25%)" in out
     assert "class='sbar'" in out and "width:75%" in out  # bar bertumpuk CSS
-    assert "<details>" in out and "case-b" in out
-    assert "wrong-logic" in out and "predicate" in out
-    assert "case-a" not in out.split("<details>")[1]  # PASS tak ikut rincian
+    # rincian FAIL/ANOMALY tak lagi di panel (pindah ke modal ikon tabel utama)
+    assert "rincian FAIL" not in out
+    # label [info] -> buka modal legenda (permintaan Mirza 2026-07-21)
+    assert "[info]" in out and "showInfo()" in out
 
 
 def test_render_stage_summary_labels_ever_qualified_definition():
@@ -362,17 +363,21 @@ def test_render_stage_summary_labels_ever_qualified_definition():
     assert "pernah qualified" in out  # definisi terbaca di panel
 
 
-def test_render_stage_summary_fail_details_show_started():
+def test_render_stage_summary_no_fail_details_table_in_panel():
+    # rincian FAIL pindah ke modal ikon tabel utama; panel hanya head+bar+info
     s = {"total": 1, "pass": 0, "fail": 1, "unknown": 0,
          "items": [{"case": "case-b", "rerun": "r2", "status": "FAIL",
                     "category": "wrong-logic", "reasons": [],
                     "started": "2026-07-19 11:30"}]}
     out = render_stage_summary(s)
-    assert "<th>mulai</th>" in out
-    assert "2026-07-19 11:30" in out
+    assert "FAIL 1 (100%)" in out
+    assert "rincian FAIL" not in out
+    assert "<th>kategori</th>" not in out
 
 
-def test_render_stage_summary_pass_list_with_started():
+def test_render_stage_summary_no_pass_list_block():
+    # blok "daftar PASS" dihapus (permintaan Mirza 2026-07-21) — diganti
+    # radio filter di tabel utama; panel hanya menyisakan head+bar+info
     s = {"total": 2, "pass": 1, "fail": 1, "unknown": 0,
          "items": [
              {"case": "case-a", "rerun": "r1", "status": "PASS",
@@ -383,10 +388,8 @@ def test_render_stage_summary_pass_list_with_started():
               "started": "2026-07-19 11:30"},
          ]}
     out = render_stage_summary(s)
-    assert "daftar PASS (1)" in out
-    # tanggal run qualified case-a tampil di daftar PASS
-    pass_block = out.split("daftar PASS")[1]
-    assert "case-a" in pass_block and "2026-07-18 10:00" in pass_block
+    assert "daftar PASS" not in out
+    assert "PASS 1 (50%)" in out
 
 
 def test_render_stage_summary_no_pass_no_pass_list():
@@ -403,13 +406,16 @@ def test_render_stage_summary_empty_returns_empty():
         {"total": 0, "pass": 0, "fail": 0, "unknown": 0, "items": []}) == ""
 
 
-def test_render_stage_summary_escapes_html_in_reasons():
-    s = {"total": 1, "pass": 0, "fail": 1, "unknown": 0,
-         "items": [{"case": "c", "rerun": "r1", "status": "FAIL",
-                    "category": "fail",
-                    "reasons": ["<script>alert(1)</script>"]}]}
-    out = render_stage_summary(s)
-    assert "<script>" not in out and "&lt;script&gt;" in out
+def test_page_index_escapes_html_in_reason_attribute(tmp_path):
+    # alasan pindah ke atribut data-reason tombol ❌ di tabel utama; tetap
+    # di-escape (permintaan Mirza: tanpa dependency, aman dari injeksi)
+    run_b = _mk_run(tmp_path, "r-dev", "case-b", 1,
+                    {"reproduce": "wrong-logic"}, wall="reproduce",
+                    pass_l1=False)
+    _write_event(run_b, "exit", {"failures": ["<script>alert(1)</script>"]})
+    out = page_index(tmp_path, tab="r-dev")
+    assert "<script>alert(1)</script>" not in out
+    assert "&lt;script&gt;" in out
 
 
 # --- integrasi page_index ----------------------------------------------------
@@ -448,3 +454,46 @@ def test_page_index_no_runs_no_panel(tmp_path):
     (tmp_path / "r-dev").mkdir()
     out = page_index(tmp_path, tab="r-dev")
     assert "cases" not in out  # tanpa run: tanpa panel, tanpa crash
+
+
+# --- perilaku baru: radio filter, kolom mulai dipindah, [info], modal ❌ ------
+
+def test_page_index_mulai_column_moved_after_turns(tmp_path):
+    # urutan kolom baru: case|run|(ikon)|verdict|durasi|turns|mulai
+    _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "pass"},
+            pass_l1=True, started="2026-07-19T21:42:54+07:00")
+    out = page_index(tmp_path, tab="r-dev")
+    header = ("<th>case</th><th>run</th><th></th><th>verdict</th>"
+              "<th>durasi</th><th>turns</th><th>mulai</th>")
+    assert header in out
+
+
+def test_page_index_has_row_radio_filter(tmp_path):
+    _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "pass"},
+            pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev")
+    # tiga radio All/PASS/FAIL + JS filterRows + data-status di baris
+    assert "value='All'" in out and "value='PASS'" in out \
+        and "value='FAIL'" in out
+    assert "filterRows(" in out
+    assert 'data-status="PASS"' in out
+
+
+def test_page_index_info_label_opens_legend_modal(tmp_path):
+    _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "pass"},
+            pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev")
+    # [info] clickable + legenda tersembunyi (isi lama) tersedia utk modal
+    assert "[info]" in out and "showInfo()" in out
+    assert "legendBody" in out and "pernah qualified" in out
+
+
+def test_page_index_fail_icon_carries_case_reason(tmp_path):
+    run_b = _mk_run(tmp_path, "r-dev", "case-b", 1,
+                    {"reproduce": "wrong-logic"}, wall="reproduce",
+                    pass_l1=False)
+    _write_event(run_b, "exit", {"failures": ["flip gagal total"]})
+    out = page_index(tmp_path, tab="r-dev")
+    # ikon ❌ jadi tombol pembuka modal, membawa alasan case via data-reason
+    assert "showReason(this)" in out
+    assert "data-reason=" in out and "flip gagal total" in out

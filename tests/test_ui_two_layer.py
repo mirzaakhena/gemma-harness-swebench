@@ -108,8 +108,11 @@ def test_page_index_row_icon_reflects_verify_fail(tmp_path):
         "f2p_failed": [], "p2p_failed": []})
     out = server.page_index(tmp_path, tab="f-dev")
     assert ">flip<" in out
-    assert "<td>❌ </td>" in out
-    assert "<td>✅ </td>" not in out
+    # ikon ❌ kini elemen clickable (button) pembuka modal alasan, bukan
+    # <td>❌</td> polos; baris tetap data-status FAIL, tak ada ✅
+    assert "❌" in out and "<button" in out
+    assert 'data-status="FAIL"' in out
+    assert "✅" not in out
 
 
 def test_page_index_row_icon_wait_shows_hourglass(tmp_path):
