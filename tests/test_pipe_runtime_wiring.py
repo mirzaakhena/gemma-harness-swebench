@@ -59,3 +59,43 @@ def test_driver_ships_runtime_source_exists():
     assert driver.RUNTIME_PATH.is_file()
     src = driver.RUNTIME_PATH.read_text(encoding="utf-8")
     assert "class App" in src
+
+
+# --- LV-09: dunia KERJA FIX & LOCALIZE juga wajib menerima pipe_runtime -----
+# (R1 Gelombang 1). Sebelumnya hanya dunia segar gate yang benar; container
+# kerja FIX bolong (588x ImportError di f-dev--11910--r1) dan L idem.
+
+def test_fix_ship_repro_includes_pipe_runtime_when_present(monkeypatch, tmp_path):
+    from harness.stages import run_fix_gemma as fixd
+    written = {}
+    monkeypatch.setattr(fixd, "docker_write_file",
+                        lambda c, path, body: written.setdefault(path, body))
+    (tmp_path / "repro.py").write_text("from pipe_runtime import App\n",
+                                       encoding="utf-8")
+    (tmp_path / "pipe_runtime.py").write_text("class App: pass\n",
+                                              encoding="utf-8")
+    shipped = fixd.ship_repro_to_container("c", tmp_path)
+    assert shipped == ["repro.py", "pipe_runtime.py"]
+    assert "/testbed/.pipe/repro.py" in written
+    assert "/testbed/.pipe/pipe_runtime.py" in written
+
+
+def test_fix_ship_repro_without_pipe_runtime(monkeypatch, tmp_path):
+    from harness.stages import run_fix_gemma as fixd
+    written = {}
+    monkeypatch.setattr(fixd, "docker_write_file",
+                        lambda c, path, body: written.setdefault(path, body))
+    (tmp_path / "repro.py").write_text("print('x')\n", encoding="utf-8")
+    shipped = fixd.ship_repro_to_container("c", tmp_path)
+    assert shipped == ["repro.py"]
+    assert "/testbed/.pipe/pipe_runtime.py" not in written
+
+
+def test_localize_driver_ships_pipe_runtime_source_line():
+    # Guard statis: driver L menulis pipe_runtime kondisional dari input_dir
+    # (jalur main() butuh docker; cukup pastikan wiring-nya ada & benar arah).
+    import inspect
+    from harness.stages import run_localize_gemma as locd
+    src = inspect.getsource(locd.main)
+    assert '/testbed/.pipe/pipe_runtime.py' in src
+    assert 'input_dir / "pipe_runtime.py"' in src

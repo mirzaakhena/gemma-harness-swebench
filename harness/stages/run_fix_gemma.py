@@ -137,6 +137,23 @@ def docker_write_file(container: str, path: str, body: str) -> None:
     )
 
 
+def ship_repro_to_container(container: str, repro_dir: Path) -> list[str]:
+    """Tulis repro beku ke dunia kerja — TERMASUK `pipe_runtime.py` bila ada
+    (LV-09): repro qualified yang ber-`from pipe_runtime import App` sebelumnya
+    mati ImportError di container kerja FIX (dunia segar gate sudah benar via
+    repro_sandbox_runner; dunia kerja bolong — 588 kejadian di 11910 r1).
+    Kembalikan daftar nama file yang dikirim (untuk log/test)."""
+    docker_write_file(container, "/testbed/.pipe/repro.py",
+                      (repro_dir / "repro.py").read_text(encoding="utf-8"))
+    shipped = ["repro.py"]
+    rt = repro_dir / "pipe_runtime.py"
+    if rt.is_file():
+        docker_write_file(container, "/testbed/.pipe/pipe_runtime.py",
+                          rt.read_text(encoding="utf-8"))
+        shipped.append("pipe_runtime.py")
+    return shipped
+
+
 def tail(s: str, n: int = 4000) -> str:
     return s if len(s) <= n else "[...dipotong...]\n" + s[-n:]
 
@@ -228,10 +245,10 @@ def main() -> int:
             subprocess.run(["docker", "run", "-d", "--name", container,
                             args.image, "sleep", "infinity"],
                            check=True, capture_output=True)
-            docker_write_file(container, "/testbed/.pipe/repro.py",
-                              inputs.repro_py)
+            shipped = ship_repro_to_container(container, repro_dir)
             log(f"[driver] attempt {k}/{len(inputs.candidates)}: container "
-                f"{container} started; candidate {cand['file']}")
+                f"{container} started; candidate {cand['file']}; "
+                f"repro inputs shipped: {', '.join(shipped)}")
 
             messages = [
                 {"role": "system", "content": contract + PROTOCOL_NOTE},

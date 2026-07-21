@@ -178,6 +178,12 @@ def main() -> int:
     subprocess.run(["docker", "run", "-d", "--name", container, args.image,
                     "sleep", "infinity"], check=True, capture_output=True)
     docker_write_file(container, "/testbed/.pipe/repro.py", repro_py)
+    # LV-09 (gap kembar sisi L): repro ber-`from pipe_runtime import App` harus
+    # bisa dijalankan model di dunia kerja L juga — kirim runtime-nya bila ada.
+    rt_path = input_dir / "pipe_runtime.py"
+    if rt_path.is_file():
+        docker_write_file(container, "/testbed/.pipe/pipe_runtime.py",
+                          rt_path.read_text(encoding="utf-8"))
     # Lever L#4 (helper probe, autopsi 11964): boilerplate framework utk
     # probe ber-Model dipindah ke modul yang di-ship — kelas probe-crash
     # app-registry mati by construction.
