@@ -17,6 +17,7 @@ komponen teruji dari `workspace-shared\smartm2m-bench`).
 | [`docs/prinsip-pengembangan.md`](docs/prinsip-pengembangan.md) | Arah & keputusan Mirza; definisi "qualified setara"; aturan bahasa; higiene prompt. |
 | [`docs/katalog-lever.md`](docs/katalog-lever.md) | Backlog perbaikan harness ber-ID (LV-01…LV-14) + tabel frekuensi kelas kegagalan. **Semua berstatus BELUM DITERAPKAN** — rekomendasi, bukan instruksi kerja. |
 | [`docs/koreksi-hipotesis.md`](docs/koreksi-hipotesis.md) | Klaim yang pernah kami pegang lalu dibantah (KH-01…KH-14), beserta buktinya. Baca supaya tidak mengulang klaim yang sudah mati. |
+| [`docs/rlfv-papan-skor-grup12-dan-retest.md`](docs/rlfv-papan-skor-grup12-dan-retest.md) | **Koleksi durable grup-1+2 (41-belum-tersentuh).** Papan skor pembeda 17 case + daftar case menarik untuk re-test setelah 103 tuntas + state + flag baru (`--prune-localize-miss`, `--allow-concurrent`) + temuan throughput paralel. Baca saat melanjutkan run 41/103. |
 
 **Peringatan yang paling sering salah dibaca:** `resolved=true` dari `swebench_checker`
 berarti "tidak ada test resmi yang gagal", **bukan** "patch benar". Sudah terbukti tiga
