@@ -334,6 +334,35 @@ status semua lever try-then-drop.
 
 ---
 
+## Addendum 2026-07-22 — integrasi temuan grup-3/4 bot-03 (KH-16/17/18)
+
+Dua kandidat lever bot-03 yang layak MASUK Gelombang 1 (Tier-1; detail di ekor
+`katalog-lever.md`):
+
+- **R18 = KL-G3-1 — `git apply --check gold.patch` saat setup case, gagal-KERAS.**
+  Menyerang kelas baru R-8 (5/97 gold korup → flip vacuous, mislabel `wrong-logic`,
+  salah-atribusi akar-MODEL). Akar prepare_cases `patch.rstrip()` sudah di-fix
+  (`471cb6d`); lever ini mencegah kambuh dari jalur setup mana pun. Kompleksitas: kecil.
+- **R19 = KL-G3-2 — `should_prune_fix` keying `qualified is False`, BUKAN
+  `file_match is False`** (`run_rlfv_batch.py:113`). Menyelaraskan prune dgn semantik
+  shortlist (FIX mengiterasi seluruh kandidat). **Bukti solve-recovery konkret:**
+  13033 di-prune salah → re-run tanpa prune → resolved=true di file gold, 0 regresi.
+  Kompleksitas: kecil.
+
+Koreksi/caveat atas rekomendasi yang sudah ada:
+
+- **R15 (detektor hunk dua-arah) dapat blind-spot terukur:** 12284 = over-broad DI
+  DALAM satu hunk region-gold (jumlah region gold==model) — mismatch-region tak
+  menangkapnya. R15 tetap layak (menangkap subset 14365 & superset 11999), tapi jangan
+  diklaim menutup seluruh F-2/F-3; divergensi intra-hunk tetap butuh §3b bacaan diff.
+- **Aturan §3a untuk semua tooling papan skor:** deteksi lulus-palsu pakai **FIX
+  `gold_eval.file_match`** (patch akhir), BUKAN l-dev/localize file_match (over-flag —
+  kasus 11964). Relevan untuk siapa pun yang menulis detektor/dashboard.
+- **R6 (dedup papan batch) makin relevan:** re-run pasca-repair gold + re-run
+  tanpa-prune menambah entri ganda per case di state batch.
+
+---
+
 *TDD wajib untuk semua perubahan harness (`python -m pytest` hijau sebelum commit);
 tests yang tersentuh minimal: test_reproduce_gates, test_pipe_runtime*, test_ui_*.
 Trailer `Agent: <bot>`.*

@@ -42,26 +42,30 @@ Mirza (keputusan brainstorming handoff). Dokumen ini bahan mentahnya.
   Label `syntax-fail`/`wrong-logic` di bawah selalu diberi tanda kutip karena keduanya
   bucket catch-all (lihat R-1/R-2 dan temuan observability (B) di katalog).
 
-**Funnel per-case (mekanis, per 2026-07-21):** 84 case masuk REPRODUCE → **67** punya ≥1
-repro qualified (**17 wall di R**) → **66** lolos LOCALIZE (**1 wall di L**: 14580) →
-**63** punya run f-dev (66 − 12113 di-prune localize-miss − 13925 dihapus atas perintah
-Mirza − 11797 artefak f-dev tak ditemukan, lihat §6.5) → dari 62 f-dev tuntas:
-**37 resolved=true** (35 `file_match=true` + 2 `file_match=false`), **21 resolved=false**,
-**4 no-flip tanpa eval** (dihitung per-run; 11910 & 13660 punya run ganda).
+**Funnel per-case (mekanis — REFRESH 2026-07-22, pasca grup-3/4 + repair gold KH-16;
+board 103 kini tersentuh penuh):** **103 case** masuk REPRODUCE (261 run) → **83** punya
+≥1 repro qualified (**20 wall di R**) → **82** lolos LOCALIZE (**1 wall di L**: 14580) →
+**75 case** punya run f-dev (sisanya: prune localize-miss + 13925 dihapus + 11797 f-dev
+dihapus, §6.5) → **40 run resolved=true** (38 `file_match=true` + 2 `file_match=false`),
+**26 run resolved=false**, **5 no-flip tanpa eval** (per-run; 11910 & 13660 run ganda).
+Verdict r-dev per-run: `pass` 127 · `wrong-logic` 88 · `syntax-fail` 27 · `fail` 10 ·
+tanpa-verdict 9. (Funnel 2026-07-21 pra-grup-3/4 tersimpan di git history dokumen ini.)
 
 ---
 
 ## §R — Fase REPRODUCE
 
-REPRODUCE-wall = mode kegagalan **dominan** untuk case belum-tersentuh (papan grup-1+2:
-≥6/17; sweep: 17 dari 84 case tak pernah qualified). Wall R menghentikan seluruh pipeline
-— case-case ini tak menyumbang data L/F/V sama sekali.
+REPRODUCE-wall = mode kegagalan **dominan** (sweep 2026-07-22: 20 dari 103 case tak
+pernah qualified). Wall R menghentikan seluruh pipeline — case-case ini tak menyumbang
+data L/F/V sama sekali.
 
-**Denominator R:** 220 run / 84 case, semuanya tersapu mekanis. Verdict per-run:
-`pass` 111 · `wrong-logic` 66 · `syntax-fail` 27 · `fail` 7 · tanpa-verdict 9.
+**Denominator R (refresh 2026-07-22):** 261 run / 103 case, semuanya tersapu mekanis.
 
-**17 case tak pernah qualified:** 10924, 11564, 11630, 11905, 12125, 12184, 13265,
-13321, 14155, 14411, 14608, 14667, 14752, 14855, 15789, 15851, 15902.
+**20 case tak pernah qualified:** 10924, 11564, 11630, 11905, 12125, 12856, 13265,
+13933, 14411, 14608, 14667, 14752, 14855, 15252, 15695, 15738, 15781, 15789, 15851,
+15902. **Catatan KH-16:** 12184/13321/14155 KELUAR dari daftar wall — gold.patch-nya
+korup (R-8); pasca-repair ketiganya qualified R dan lanjut ke L/F. 12856 masih wall
+(6 run `wrong-logic`; status pasca-repair perlu konfirmasi bot-03).
 
 ### R-1 — Token-loop tanpa fence: repro TAK PERNAH ditulis (keluarga KH-12 "no-fence")
 
@@ -125,21 +129,27 @@ REPRODUCE-wall = mode kegagalan **dominan** untuk case belum-tersentuh (papan gr
   **Wajib buka `flip_run.json` + `console.log`** untuk memisahkan sub-sebab — reason
   yang di-append harness ("likely gold-unsatisfiable predicate") beberapa kali terbukti
   menyesatkan (10924, 11564, 14752).
-- **Sub-sebab terkonfirmasi (masing-masing 1 case):** salah pemetaan argumen API
-  (`15789`: urutan argumen `json_script` tertukar, nol retry); precondition tak
-  ditegakkan (`10924`: callable menunjuk dir yang tak pernah dibuat); predikat
-  gold-unsatisfiable sungguhan (`11039` r1); setup tak lengkap (`14382` r1);
-  scaffolding subprocess repro sendiri SyntaxError (`11564` r3 — overlap R-3).
-- **Akar:** **MODEL** (kompetensi konstruksi repro); harness mengukur dengan benar.
+- **Sub-sebab terkonfirmasi:** salah pemetaan argumen API (`15789`); precondition tak
+  ditegakkan (`10924`); predikat gold-unsatisfiable sungguhan (`11039` r1); setup tak
+  lengkap (`14382` r1); scaffolding subprocess SyntaxError (`11564` r3 — overlap R-3);
+  **+grup-3/4 (autopsi bot-03):** repro menguji SITE yang salah (`15252` recorder vs
+  executor; `13933` validate() vs to_python); salah paham semantik fix (`15781`
+  newline-preservation yang gold tak janjikan); repro BYPASS jalur yang gold perbaiki
+  (`15738` hand-author migration, autodetector tak terpanggil); scaffolding mock
+  salah-tipe crash dua-dunia (`15695` Options vs ModelState).
+- **Akar:** **MODEL** (kompetensi konstruksi repro); harness/flip-gate mengukur benar.
+  **PRASYARAT klasifikasi (pelajaran KH-16): cek dulu `git apply --check gold.patch`
+  bersih — `wrong-logic` bisa lahir dari gold korup (R-8), bukan model.**
 - **Lever:** tidak ada lever tunggal — kandidat-ditolak tercatat (positive-branch
-  precondition, n=1; PASS_OBSERVABLE friction, n=1). Yang sah: split reason bucket
-  via `flip_run.json` ((B) #1).
-- **Frekuensi:** verdict `wrong-logic` = **66 run** (semua tersapu); **case wall
-  all-wrong-logic = 10** — terkonfirmasi akar: 15789, 10924 (+11564 di R-3);
-  **⏳ belum-diautopsi: 11630, 11905 (6 run), 12184, 13321, 14608, 14667, 14155
-  (grup-3, baru mendarat)** — 7 case ini kandidat R-4 tapi bisa saja R-3/lainnya;
-  jangan dikutip sebagai akar-model sebelum dibedah.
-- **Anggota (terkonfirmasi):** 15789, 10924. (⏳: 11630, 11905, 12184, 13321, 14608, 14667, 14155.)
+  precondition; PASS_OBSERVABLE friction). Yang sah: split reason bucket via
+  `flip_run.json` ((B) #1) — kini termasuk memisahkan sub-sebab `corrupt-gold`.
+- **Frekuensi (refresh 2026-07-22):** verdict `wrong-logic` = **88 run** (semua
+  tersapu). Terkonfirmasi akar-MODEL: **7 case** — 15789, 10924, 15252, 15781, 13933,
+  15738, 15695 (+11564 di R-3). **KH-16: 12184/13321/14155 DIKELUARKAN dari
+  kandidat R-4** (akar-DATA, kini R-8). **⏳ belum-diautopsi tersisa: 11630, 11905
+  (6 run), 14608, 14667, 12856 (gold pasca-repair perlu konfirmasi).**
+- **Anggota (terkonfirmasi):** 15789, 10924, 15252, 15781, 13933, 15738, 15695.
+  (⏳: 11630, 11905, 14608, 14667, 12856.)
 
 ### R-5 — Vacuous / PASS-at-base: gate anti-vacuous menolak (gate BEKERJA BENAR)
 
@@ -182,6 +192,27 @@ REPRODUCE-wall = mode kegagalan **dominan** untuk case belum-tersentuh (papan gr
   sisanya run era-lama (11422 r1/r7/r19/r28, 12453 r1, 13925 r1). Semua case-nya
   qualified di rerun berikutnya kecuali 11564/13925.
 
+### R-8 — Gold.patch KORUP → flip vacuous, mislabel `wrong-logic` (akar-DATA/setup; KH-16) — BARU 2026-07-22
+
+- **Signature (operasional):** `flip_run.json` = `{"output":"error: corrupt patch at
+  line N","exit":128}` — `git apply` gagal di level PARSE, `&&` short-circuit, repro
+  TAK PERNAH jalan di gold-world; `gate_runs.json` base menunjukkan repro JALAN dan
+  `REPRO_STATUS: FAIL` benar. Deteksi independen tanpa run: `git apply --check
+  cases/gold/<id>/gold.patch` → "corrupt patch". Verdict `wrong-logic` = MISLABEL.
+- **Akar:** **HARNESS/DATA-setup** — bug `prepare_cases` (`patch.rstrip()` menghapus
+  baris konteks trailing → body hunk < header). **BUKAN model, BUKAN repro.** Flip
+  gate sendiri aman (nol hijau-palsu); yang tercemar = atribusi kegagalan. Sudah
+  di-fix commit `471cb6d`.
+- **Lever:** **KL-G3-1** (validasi `git apply --check` saat setup, gagal-keras) —
+  katalog ekor grup-3.
+- **Frekuensi:** **5/97 gold.patch django korup** (scan penuh `git apply --numstat`):
+  12184, 12856, 13321, 14155, 15202. Pasca-repair: 15202 tervalidasi flip PASS
+  (adjudikasi adil, kini F-3); 12184/13321/14155 qualified R dan lanjut (12184 → F-4
+  no-flip; 13321/14155 → merah VERIFY target-fail, belum diautopsi); 12856 masih wall.
+- **Anggota (historis):** 12184, 12856, 13321, 14155, 15202. **Pelajaran taksonomi:
+  3 di antaranya sempat salah kutaruh sebagai kandidat ⏳ R-4 akar-MODEL — koreksi
+  KH-16 (bias-3 varian data-korup).**
+
 ---
 
 ## §L — Fase LOCALIZE
@@ -201,9 +232,19 @@ REPRODUCE-wall = mode kegagalan **dominan** untuk case belum-tersentuh (papan gr
   (orkestrasi, SUDAH terpasang `de43a91` — 12113 terbukti ter-skip benar) + (2) gate
   LOCALIZE blind cross-check kandidat-vs-file-yang-disentuh-repro (KANDIDAT, belum
   diterapkan). DILARANG cek-gold di gate produk (gold-blind).
-- **Frekuensi:** case-level terdokumentasi **5**: `11797`, `13158`, `13925`, `11742`,
-  `12113`. Sweep per-run: run L-qualified-terakhir ber-`file_match=false` = **7 case**,
-  dua tambahan yang WAJIB dibaca dengan nuansa:
+- **⚠ DEFINISI DIPERTAJAM (KH-17, 2026-07-22):** Kelas-A sejati = **`qualified=false`**
+  (gold tak ada DI MANA PUN di shortlist — recall benar-benar gagal). Signature
+  `file_match=false ∧ qualified=true` (pointed primer salah TAPI gold ada di
+  candidate lain) **BUKAN Kelas-A** — itu recall SUKSES; kalau di-skip prune, itu
+  **false-prune** (bug keying `should_prune_fix`, lever KL-G3-2 — terbukti
+  mengorbankan solve nyata: 13033 recovered jadi resolved=true saat re-run tanpa
+  prune). Kontaminasi terdeteksi: `11742` ternyata `qualified=true` → KELUAR dari
+  Kelas-A sejati (kegagalannya di FIX, bukan recall).
+- **Frekuensi (refresh 2026-07-22):** Kelas-A sejati ber-`qualified=false`
+  terkonfirmasi **6 case**: `13158`, `12113`, `15213`, `12589`, `14997`, `14999`.
+  Belum-dicek sumbu `qualified`-nya: `11797`, `13925` (era sebelum field ini
+  diperhatikan). Sweep per-run `file_match=false` pada L-qualified-terakhir = 14 case
+  — campuran Kelas-A sejati + false-prune-signature + nuansa di bawah:
   - `11620` — file_match=false di L DAN F, tapi **resolved=TRUE** (F2P + 66 P2P lolos,
     0 regresi). Kandidat "fix-alternatif-lokasi-valid" — butuh §3b sabotase (papan §3).
     Kelas-A tidak selalu berakhir merah.
@@ -211,13 +252,14 @@ REPRODUCE-wall = mode kegagalan **dominan** untuk case belum-tersentuh (papan gr
     memakai r1 yang file_match=true** → hijau-asli. **BUKAN Kelas-A end-to-end.**
     Pelajaran metodologi: heuristik "run qualified terakhir" menyesatkan pada case
     ber-kampanye; yang menentukan adalah run yang benar-benar jadi input FIX.
-- **Sub-split gold-unguessable vs kelalaian (permintaan handoff):** baru **1 case yang
-  dinilai eksplisit**: `12113` = **gold-unguessable** (problem statement = traceback
-  generic-layer; gold di `sqlite3/creation.py::test_db_signature` yang tak tersebut —
-  butuh domain-knowledge). 4 case lain (11797, 13158, 13925, 11742) **belum dinilai
-  per-kasus** pada sumbu ini — jangan diekstrapolasi. Menilainya murah (baca problem
-  statement vs file gold) dan layak masuk agenda re-test.
-- **Anggota:** 11797, 13158, 13925, 11742, 12113 (+nuansa: 11620, 11964).
+- **Sub-split gold-unguessable vs kelalaian:** dinilai eksplisit **2 case**:
+  `12113` (traceback generic-layer, gold di `sqlite3/creation.py` yang tak tersebut)
+  dan `15213` (model paham mekanisme benar di `WhereNode.as_sql`, gold fix di hook
+  `BooleanField.select_format` yang tak terduga). `12589` dinilai **near-miss**
+  (mekanisme teridentifikasi, meleset file sejengkal). Sisanya belum dinilai —
+  jangan diekstrapolasi; murah dinilai (problem statement vs file gold).
+- **Anggota (Kelas-A sejati):** 13158, 12113, 15213, 12589, 14997, 14999
+  (+belum-dicek-qualified: 11797, 13925; +nuansa: 11620, 11964; KELUAR: 11742).
 
 ### L-B — Trace-pool kosong: repro subprocess mematikan LOCALIZE sebelum LLM (akar-HARNESS)
 
@@ -292,12 +334,14 @@ resolved=false target-fail-murni (f2p>0,p2p=0) **8** · resolved=false campuran
 - **Lever:** **LV-14** (detektor murah: mismatch jumlah region hunk gold-vs-patch
   **DUA ARAH** subset∧superset); untuk sub-kelas 11910: kandidat "gate jalankan
   sebagian P2P".
-- **Frekuensi:** terkonfirmasi **4 case**: `11999` (9 P2P NameError), `12907`
-  (rewrite, 15 error collection), `15400` (catastrophic hallucination, 60+ P2P
-  collapse), `11910` (destruktif + batas desain gate; r1 no-flip, r2 F2P lulus 1 P2P
-  gagal). Sel mekanis F2P-lulus-P2P-regresi juga memuat 13660×3 & 13590 (akar berbeda —
-  F-1/F-3).
-- **Anggota:** 11999, 12907, 15400, 11910.
+- **Frekuensi (refresh 2026-07-22):** terkonfirmasi **5 case**: `11999` (9 P2P
+  NameError), `12907` (rewrite, 15 error collection), `15400` (catastrophic
+  hallucination, 60+ P2P collapse), `11910` (destruktif + batas desain gate),
+  **`12284` (grup-3 — varian BARU: over-broad DI DALAM satu hunk region-gold,
+  guard-dihapus vs guard-dipersempit; jumlah region hunk gold==model → detektor
+  mismatch-region LV-14 dua-arah TIDAK menangkapnya — blind-spot LV-14 tercatat).**
+  Sel mekanis F2P-lulus-P2P-regresi juga memuat 13660×3 & 13590 (akar berbeda — F-1/F-3).
+- **Anggota:** 11999, 12907, 15400, 11910, 12284.
 
 ### F-3 — Patch subset / under-general / mekanisme salah (akar-MODEL kelengkapan)
 
@@ -307,10 +351,14 @@ resolved=false target-fail-murni (f2p>0,p2p=0) **8** · resolved=false campuran
 - **Akar:** **MODEL** (kelengkapan/mekanisme), dengan kontribusi repro-under-coverage
   (repro tak menguji jalur hunk kedua — irisan dengan F-1).
 - **Lever:** **LV-14** (deteksi subset region-hunk), **LV-01** (§3c(a) cakupan).
-- **Frekuensi:** terkonfirmasi **3 case**: `14365` (1 dari 2 hunk gold), `15320`
-  (wrong/narrower mechanism, tak set `subquery=True`), `13590` (`type(value)(*gen)`
-  merusak tuple, 1 P2P).
-- **Anggota:** 14365, 15320, 13590.
+- **Frekuensi (refresh 2026-07-22):** terkonfirmasi **7 case**: `14365` (1 dari 2 hunk
+  gold), `15320` (wrong mechanism `subquery=True`), `13590` (`type(value)(*gen)`),
+  **+grup-3/4:** `15061` (metode DIHAPUS ≠ di-set `''`), `14534` (fallback `or`
+  over-defensif), `14730` (hard `ValueError` vs gold soft `checks.Warning`), `15202`
+  (drop guard `hostname is None`; case validasi repair KH-16 — kini adjudikasi adil).
+  **⏳ merah baru belum-diautopsi:** 13321 (f2p=18), 14155 (f2p=3) — pasca-repair gold,
+  reached VERIFY target-fail; bisa F-1/F-3.
+- **Anggota:** 14365, 15320, 13590, 15061, 14534, 14730, 15202. (⏳: 13321, 14155.)
 
 ### F-4 — FIX-no-flip: model tak menghasilkan patch yang lolos repro-nya sendiri
 
@@ -327,26 +375,42 @@ resolved=false target-fail-murni (f2p>0,p2p=0) **8** · resolved=false campuran
   di run yang gagal produksi patch adalah sinyal besar yang murah diverifikasi.
 - **Lever:** **LV-09** (kirim `pipe_runtime.py` ke dunia kerja FIX); observability:
   no-flip layak label verdict sendiri di papan (bukan "tak ada eval").
-- **Frekuensi:** **4 run / 4 case** (semua diperiksa): 11422, 11910(r1), 12470, 15388.
-- **Anggota:** 11422, 11910, 12470(⏳ akar), 15388.
+- **Frekuensi (refresh 2026-07-22):** **5 run / 5 case** (semua diperiksa): 11422,
+  11910(r1), 12470, 15388, **+12184** (pasca-repair gold KH-16: R qualified, FIX
+  no-flip "no-diff", `pipe_runtime` hilang **260** kejadian — pola LV-09 yang sama).
+- **Anggota:** 11422, 11910, 12470(⏳ akar), 15388, 12184.
 
-### F-5 — Wrong-file mendarat di FIX (hilir Kelas-A; kelas yang akan PUNAH oleh prune)
+### F-5 — Wrong-file mendarat di FIX — DIPERSEMPIT (KH-18): union DUA sub-akar, satu KEBAL prune
 
-- **Signature:** `f-dev` `gold_eval.file_match=false` + `resolved=false`. Hulu-nya L-A.
-- **Frekuensi:** **2 run** di korpus (`11742` f2p=2 p2p=43, `13158` f2p=1) — keduanya
-  pra-`--prune-localize-miss`; `12113` sudah ter-skip benar oleh prune. Papan skor
-  end-to-end WAJIB tetap menghitung yang di-prune sebagai gagal.
-- **Anggota:** 11742, 13158.
+- **Signature:** `f-dev` `gold_eval.file_match=false` + `resolved=false`. **Klaim lama
+  "akan punah oleh prune" DIPERSEMPIT** — wajib buka `l-dev gold_eval` untuk membelah:
+  - **Sub-akar (a) — hilir Kelas-A** (l-dev `file_match=false`): recall-miss hulu;
+    punah oleh `--prune-localize-miss` (dengan keying yang benar, KL-G3-2).
+  - **Sub-akar (b) — FIX-wrong-file-selection, PRUNE-IMMUNE** (l-dev `file_match=TRUE`
+    ∧ `qualified=true`, pointed=gold): model memilih file salah **saat menulis patch**
+    padahal localize sempurna. Perbaikan recall pun takkan menyembuhkan; akar-MODEL
+    fase-FIX. Counterexample: `13448` (localize tunjuk gold `base/creation.py`,
+    FIX malah patch `test/utils.py`).
+- **Frekuensi (refresh 2026-07-22):** **4 run** di sel mekanis: `11742` (qualified=true
+  — kegagalan FIX, bukan recall), `13158` (sub-akar (a)), `13448` (sub-akar (b)),
+  `13964` (re-run pasca-false-prune, FIX belum benar). Papan skor end-to-end WAJIB
+  tetap menghitung yang di-prune sebagai gagal.
+- **Anggota:** (a): 13158; (b): 13448; campuran/nuansa: 11742, 13964.
 
 ### F-6 — Lulus-palsu / `resolved=true` + `file_match=false`
 
 - **Signature:** `swebench_eval.resolved=true` DAN `gold_eval.file_match=false`
   (`line_overlap=null` — jangan dibulatkan). Recall detektor ini RENDAH (lulus-palsu
   di file benar tak tersentuh — 12915/12286).
-- **Frekuensi:** **2 dari 37 run resolved=true**: `13658` (TERKONFIRMASI lulus-palsu —
-  daya beda F2P crash-vs-tidak-crash + regresi diam, KH-06), `11620` (**belum
-  diputuskan**: 0 regresi dari 66 P2P → kandidat kuat fix-alternatif-lokasi-valid;
-  §3b sabotase = item re-test prioritas papan §3).
+- **Frekuensi (refresh 2026-07-22):** **2 dari 40 run resolved=true**: `13658`
+  (TERKONFIRMASI lulus-palsu — KH-06), `11620` (**belum diputuskan**: fix_file_match
+  =false tapi 0 regresi dari 66 P2P → kandidat fix-alternatif-valid; §3b sabotase =
+  prioritas re-test). **Koreksi 2026-07-22:** `11964` yang sempat di-flag audit
+  sebagai kandidat lulus-palsu = **SEJATI** (flag berbasis l-dev file_match; padahal
+  FIX patch-nya di file gold, fix_file_match=true).
+- **Aturan deteksi (pelajaran §3a, refine bot-03):** lulus-palsu WAJIB dideteksi dari
+  **FIX `gold_eval.file_match`** (patch akhir), BUKAN dari l-dev/localize file_match —
+  yang terakhir OVER-FLAG.
 - **Anggota:** 13658 (confirmed), 11620 (⏳ pending §3b).
 
 ### F-7 — Batas metodologi / gold-blind (bukan defek harness; JANGAN dipasangi lever)
@@ -375,9 +439,10 @@ Empat run tanpa `swebench_eval.json` semuanya verdict `no-flip` (11422, 11910 r1
 ### V-B — Spec hilang → `resolved=None` nyangkut WAIT diam-diam
 
 - **Signature:** `swebench_checker` exit-1 "spec not found"; dashboard WAIT tanpa error
-  keras. **3 case** terdampak (11797, 13158, 15320 — setup era-lama), sudah diperbaiki
-  (fetch spec + re-verify). Kandidat improvement: checker gagal-keras / validasi spec
-  saat setup. Akar: **HARNESS-setup**.
+  keras. **5 case** terdampak: 11797, 13158, 15320 (era-lama, sudah diperbaiki
+  fetch-spec) + **11905, 14667** (temuan audit-integritas bot-03; spec sudah
+  di-fetch commit `202ded2`). Kandidat improvement: checker gagal-keras / validasi
+  spec saat setup. Akar: **HARNESS-setup**.
 
 ### V-C — Crash encoding `charmap` (cp1252) checker di Windows atas output astropy
 
@@ -401,14 +466,17 @@ Kandidat graceful-shutdown (verdict `interrupted`). Komplementer fix dashboard m
 
 ## §H — Kelas "hijau-tapi-bisa-di-enhance" (permintaan Mirza; SOP §3b/§4)
 
-Denominator: **37 run resolved=true** (35 fm=true + 2 fm=false), semua tersapu mekanis;
+Denominator (refresh 2026-07-22): **40 run resolved=true** (38 fm=true + 2 fm=false), semua tersapu mekanis;
 klasifikasi semantik di bawah hanya untuk yang §3b-nya sudah dijalankan dan terdokumentasi.
 
 ### H-1 — Hijau-ASLI, §3b selesai: patch setara/verbatim gold (baseline pembanding; no action)
 
-- **16 case:** 11049, 15790, 12497 (verbatim/byte-identik); 14787, 15347, 14915, 14672
-  (†P2P-kosong, lihat V-D), 6938, 11964, 11001, 11133, 11815, 11848 (†divergensi
-  century tak-terjangkau), 11179, 14238, 13230 (setara-semantik).
+- **18 case (refresh 2026-07-22):** 11049, 15790, 12497 (verbatim/byte-identik);
+  14787, 15347, 14915, 14672 (†P2P-kosong, lihat V-D), 6938, 11964, 11001, 11133,
+  11815, 11848 (†divergensi century tak-terjangkau), 11179, 14238, 13230
+  (setara-semantik); **+grup-4 (§3b tuntas bot-03):** `13315` (mekanisme-divergen
+  setara — `.distinct()` vs gold `Exists(OuterRef)`, 0 regresi), `13757`
+  (sqlite-ekuivalen; †catatan subset-oracle tak-teruji, sejajar batas-metodologi).
 - **Nilai analitik:** mayoritas hijau-asli dicapai **TANPA bantuan yardstick** (repro
   tetap K4; fix-space kebetulan sempit) — hijau ≠ bukti gate menggigit (11099/13230,
   LV-01). Jangan hitung sebagai validasi yardstick.
@@ -443,9 +511,10 @@ LV-14). Per case + apa yang tak terukur:
 
 ### H-4 — Hijau BELUM diperiksa §3b (jangan dihitung ke H-1/H-3 dulu)
 
-- **7 case:** `12908`, `12983` (hijau grup-1+2, §3b deferred — papan §3), `12453`,
-  `10914`, `11039`, `14382`, plus **11620** (F-6, §3b sabotase pending), dan setiap
-  hijau grup-3/4 yang akan datang. Aksi murah: §3b patch-vs-gold semantik.
+- **8 case (refresh 2026-07-22):** `12908`, `12983` (hijau grup-1+2, §3b deferred —
+  papan §3), `12453`, `10914`, `11039`, `14382`, **11620** (F-6, §3b sabotase pending),
+  dan **`13033`** (solve-recovery pasca-false-prune — fix di file gold, 0 regresi,
+  tapi §3b patch-vs-gold semantik belum dijalankan). Aksi murah: §3b semantik.
 
 ---
 
@@ -485,6 +554,17 @@ Kandidat untuk dipindahkan ke katalog oleh penulis berikutnya:
    **52 case**, tetapi section batch-A undone (lebih akhir di file) menyebut "tetap
    **44**". Pembaca berikutnya jangan mengutip salah satu tanpa cek; angka K1–K5 di
    dokumen ini memakai 45/52 (klaim terakhir yang menghitung K4).
+7. **Integrasi grup-3/4 + KH-16/17/18 (2026-07-22, sumber bot-03; kelas-kelas di atas
+   sudah direvisi in-place):** (a) kelas BARU **R-8 corrupt-gold** — 5/97 gold.patch
+   korup, tiga di antaranya sempat salah kukandidatkan R-4 akar-MODEL (KH-16);
+   (b) **Kelas-A dipertajam ke `qualified=false`** + false-prune KL-G3-2 terbukti
+   mengorbankan solve nyata (13033 recovered → resolved=true) (KH-17); (c) **F-5
+   dipecah dua sub-akar**, sub-akar (b) FIX-wrong-file-selection KEBAL prune (13448,
+   KH-18); (d) **11964 = hijau sejati** (bukan lulus-palsu; aturan §3a: deteksi pakai
+   FIX gold_eval, bukan localize); (e) paparan LV-09 f-dev kini **12 run / 10 case**
+   (+12184: 260, +13448: 13 — metode grep identik); (f) blind-spot **LV-14**: 12284
+   over-broad DALAM hunk region-gold, tak tertangkap detektor mismatch-region;
+   (g) board 103 first-pass TUNTAS — solve genuine baru: 13757, 13315, 13033.
 
 ---
 
