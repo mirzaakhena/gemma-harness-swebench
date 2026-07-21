@@ -3634,3 +3634,57 @@ sumbu dominan (38/44, 86%)**, dan 11999 memberi **bukti kausal load-bearing pert
 membalik gate internal (bukan hanya "berpotensi"). Urutan pemasangan tak berubah: kontrol positif (K4) tetap
 kandidat isi konkret pertama LV-01. Tambahan konkret dari batch ini utk LV-14: **hitung mismatch region hunk
 DUA ARAH** (subset ∧ superset), karena `line_overlap=true` menyesatkan di keduanya.
+
+---
+
+## Autopsi batch A2 lanjutan (bot-04, 2026-07-21) — 10 case Papan 103 baris 36-45, full R→L→F→V dari nol
+
+**Konteks.** Lanjutan giliran bot-04 (case terakhir board = django-12125, baris 35). 10 case tier A2 (baseline✗ / harness-lama✓ = fix terbukti ada) di-setup fresh dari HF Lite via `scripts/prepare_cases.py`, dijalankan **penuh dari REPRODUCE** (keputusan Mirza: NO bypass R/L). Autopsi via 4 subagent read-only ber-izin-membantah, integrasi serial.
+
+### Papan skor: resolved=8/10; 8 mencapai VERIFY, 2 berhenti di REPRODUCE
+
+- **Hijau-ASLI (3)** — patch setara/verbatim gold:
+  - **12497** — patch = gold **verbatim** (hint E334/E335 → ManyToManyField, dua lokasi). Noise: dua file kosong `repro_app/` bocor ke patch (tak berbahaya, kotor).
+  - **15790** — patch **byte-identik** gold (`defaultdict(set)` + `sorted(items)`). Hijau paling bersih batch ini.
+  - **14787** — setara gold, diverifikasi via kesetaraan mesin `wraps(m)` ≡ `update_wrapper(x,m)` + log 21 test (`__name__` preserved).
+- **Hijau-DENGAN-CATATAN (5)** — memperbaiki bug teruji tapi **divergen/longgar** dari gold, lolos karena test/repro tak mengukur divergensi (bukti penguat **LV-14** + **LV-01**):
+  - **12708** — rewrite `_delete_composed_index` **membuang guard `exclude=meta_constraint_names|meta_index_names`** → regresi diam-diam pada model ber-`Meta.indexes`/`constraints`. Repro `except Exception → PASS` (katastrofik-mendarat-di-PASS, eksplisit).
+  - **14016** — `return self/other` (**aliasing**) vs gold reconstruct-copy; invarian copy pecah, tak terukur (test cek equality bukan identity). Repro terlemah: 1/2 cabang, assert "tak melempar", crash→PASS.
+  - **15498** — fix inti ≈setara TAPI rewrite blok import + redefinisi `safe_join` lokal tanpa cek containment → **regresi keamanan path-traversal** (`SuspiciousFileOperation` hilang), tak-terukur test. Repro tanpa assert-nilai.
+  - **13447** — core `'model': model` = gold, TAPI **rename tak diminta** `_build_app_dict`→`build_app_dict` (publik) + file kosong `apply_fix.py`. Repro tak menguji jalur view (`app_index`).
+  - **12700** — setara fungsional pada jalur teruji; divergensi minor subtipe (`type(value)(...)` vs plain tuple) + key rekursi `None` vs `''`, tak terukur.
+- **REPRODUCE-fail (2)** — tak mencapai FIX: **14855, 15902** (lihat sub-signature di bawah).
+
+**Cek lulus-palsu (§3a):** 8/8 resolved `file_match=true` + `line_overlap=true` (diverifikasi per case). **Nol lulus-palsu file-salah.** Peringatan recall-rendah tetap penuh: keempat "hijau-longgar" di atas ber-file_match=true dan **tak tersentuh** metrik eval — divergensi ketangkap HANYA lewat bacaan diff (dasar LV-14).
+
+**K4 (kontrol positif absen):** 7 dari 8 repro qualified. Satu-satunya **K4-PRESENT load-bearing = 13447** (repro mewajibkan DummyModel muncul di `app_list['admin']['models']` dengan metadata benar → build rusak = FAIL; setara contoh 14382 di SOP). Polaritas berbahaya (crash/except → PASS) terlihat eksplisit di **12708, 14016, 12497** (§3c poin c).
+
+### Pembaruan Tabel frekuensi (bot-04, 2026-07-21 batch-2) — 8 case A2 baru ber-repro-qualified
+
+**Denominator.** Tabel A naik **44 → 52 case** (+8: 12497, 12700, 12708, 13447, 14016, 14787, 15498, 15790). **14855 & 15902 TIDAK menambah** (REPRODUCE tak qualified — lihat sub-signature).
+
+- **K4: 45 dari 52** (87%). Naik tujuh (13447 punya kontrol positif → tidak dihitung absen). **Sumbu dominan makin kuat lintas-batch.** Daftar punya-kontrol-positif kini **7** (10914, 11422 r44, 13768 r4, 14017, 14382 r2, 14580, **+13447**).
+- **Catatan metodologi:** batch ini prioritas tagging **K4 + polaritas** (poros load-bearing), bukan enumerasi K1–K5 penuh per case — anti-fabrikasi, hanya yang subagent verifikasi eksplisit dicatat. Polaritas `symptom→FAIL / else→PASS` (K1-family) terkonfirmasi minimal di 12708/14016/12497.
+
+**Pembacaan searah, tidak membalik apa pun.** 8 repro A2 menegaskan **K4 sumbu dominan (45/52, 87%)**. Tambahan nyata: **empat "hijau-longgar"** (12708 buang guard, 14016 aliasing, 15498 regresi safe_join, 13447 rename API) = bukti penguat kuat **LV-14** — patch divergen dari gold lolos justru karena file_match=true menutupi perbedaan struktur; hanya bacaan diff yang menangkap.
+
+### Sub-signature REPRODUCE-wall BARU (14855, 15902) — reinforcement temuan (B) + KH-12
+
+**Instansi kedua & ketiga pola KH-12** (verdict `syntax-fail` = mislabel "artefak tak diproduksi"; **0 SyntaxError di 6 rerun**). **Sub-signature BARU, beda dari 15851:**
+
+- **KH-12/15851:** `<|tool_call|>` **tanpa fence** → `has_fences=False`, `format_reminder` **tak menyala**.
+- **14855/15902:** fence **ADA** tapi verb tulis-file salah-tag — model emit ` ```python ` alih-alih ` ```file:/path ` (by-design **bukan** aksi-tulis, `gemma_protocol.py`). `format_reminder` **menyala tapi tak efektif** (temp 0.0, model tak berpindah 40 turn ×3). Loop = **"rerun file-hantu"** (`python3 repro.py` atas file yang tak pernah ter-persist), bukan regen byte-identik.
+- **Akar-MODEL primer** (instruction-following: prompt + reminder sudah eksplisit menyuruh format `file:`). Akar-HARNESS sekunder (mislabel verdict + tak ada loop-breaker keras).
+- **3/6 run tembus produksi file** (via workaround heredoc-bash) → membongkar akar-MODEL laten kedua: repro buggy (phantom app `repro_app` di 14855, halusinasi API `get_admin_url`, **vacuous PASS-di-baseline** di 15902).
+- **BUKTI bahwa `format_reminder` saja TAK CUKUP:** reminder sudah menyala di kedua case, tetap gagal — ada **dinding kedua** (logika repro + `repro.md` tak ditulis 0/6). Wall REPRODUCE **berlapis**, akar dominan model.
+
+### Spec improvement (dipertajam, keputusan Mirza 2026-07-21) — verdict label identifikasi-gejala
+
+**Requirement Mirza:** label harus **mengidentifikasi gejala otomatis** (bukan bucket catch-all `syntax-fail`). Mempertajam kandidat #1 temuan (B). Usulan mapping (tiap label derivable dari sinyal yang gate SUDAH punya: `has_fences`, file-persisted?, `REPRO_STATUS` observed, baseline-flip):
+
+- `syntax-error` — repro.py gagal `py_compile` (yang ASLI).
+- `repro-missing` — artefak tak pernah ter-persist (protokol/loop). ← 15902 r2/r3, 14855 r3.
+- `vacuous-repro` — repro jalan tapi PASS-di-baseline (never-FAIL, tak buktikan bug). ← 15902 r1.
+- `gold-wont-flip` / `wrong-logic` — repro FAIL tapi alasan salah / gold tak flip.
+
+**Status: BELUM DITERAPKAN** (default catat-only; menunggu keputusan Mirza apakah di-elevate jadi lever pertama yang diterapkan).

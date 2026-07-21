@@ -308,3 +308,16 @@ yang sama bekerja — subagent dengan izin membantah + eksperimen atas klaim-ala
 ditambah satu aturan konkret: **verdict REPRODUCE (`syntax-fail`/`wrong-logic`) adalah bucket
 catch-all; perlakukan sebagai penunjuk, bukan sebab** (lihat temuan observability (B) di katalog
 batch bot-03).
+
+### Addendum 2026-07-21 (bot-04) — KH-12 dapat instansi ke-2 & ke-3 + sub-signature baru
+
+**14855 & 15902** (batch A2 lanjutan, REPRODUCE-fail) = instansi kedua & ketiga pola KH-12
+(`syntax-fail` = mislabel; 0 SyntaxError di 6 rerun; repro tak pernah ter-persist). **Sub-signature
+BARU** yang membedakan dari 15851: di 15851 model emit `<|tool_call|>` **tanpa fence** (`format_reminder`
+tak menyala); di 14855/15902 fence **ADA** tapi verb tulis-file salah-tag (` ```python ` alih-alih
+` ```file: `) → `format_reminder` **menyala tapi tak efektif**. Ini **membantah** dugaan bahwa
+`format_reminder` (calon fix yang diusulkan di KH-12) akan menyelamatkan: pesannya sudah terkirim,
+model tetap gagal 40 turn ×3. Wall REPRODUCE **berlapis** — akar-MODEL primer (instruction-following),
+dengan dinding kedua (repro logic buggy + `repro.md` tak ditulis 0/6). Detail + spec improvement label
+(requirement Mirza: label harus identifikasi-gejala; mapping `syntax-error`/`repro-missing`/`vacuous-repro`/`gold-wont-flip`,
+**BELUM DITERAPKAN**) di katalog batch A2 lanjutan.
