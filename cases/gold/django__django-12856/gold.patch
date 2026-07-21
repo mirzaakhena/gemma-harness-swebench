@@ -12,3 +12,5 @@ diff --git a/django/db/models/base.py b/django/db/models/base.py
 +            )
 +            errors.extend(cls._check_local_fields(fields, 'constraints'))
          return errors
+ 
+ 

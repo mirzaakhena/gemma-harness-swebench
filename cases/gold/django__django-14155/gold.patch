@@ -19,3 +19,5 @@ diff --git a/django/urls/resolvers.py b/django/urls/resolvers.py
 +                self.app_names, self.namespaces, self.route,
 +            )
          )
+ 
+ 

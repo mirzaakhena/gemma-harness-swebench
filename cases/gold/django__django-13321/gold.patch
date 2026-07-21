@@ -16,3 +16,4 @@ diff --git a/django/contrib/sessions/backends/base.py b/django/contrib/sessions/
 +                return {}
          except Exception:
              return self._legacy_decode(session_data)
+ 

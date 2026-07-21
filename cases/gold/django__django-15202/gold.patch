@@ -38,3 +38,5 @@ diff --git a/django/core/validators.py b/django/core/validators.py
 -        if len(urlsplit(value).hostname) > 253:
 +        if splitted_url.hostname is None or len(splitted_url.hostname) > 253:
              raise ValidationError(self.message, code=self.code, params={'value': value})
+ 
+ 

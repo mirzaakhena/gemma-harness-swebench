@@ -68,8 +68,15 @@ def main(argv: list[str] | None = None) -> int:
         gdir = gold_root / case
         gdir.mkdir(parents=True, exist_ok=True)
         patch = row["patch"]
-        (gdir / "gold.patch").write_bytes(
-            (patch.rstrip() + "\n").encode("utf-8"))
+        # JANGAN rstrip patch: patch SWE-bench sering berakhir dengan baris
+        # konteks whitespace-only (spasi tunggal = baris kosong di source) yang
+        # WAJIB dipertahankan. rstrip() menghapusnya -> body hunk kurang 1 baris
+        # dari header @@ -a,b +c,d @@ -> `git apply` gagal "corrupt patch"
+        # -> flip test short-circuit -> verdict wrong-logic MISLABEL (KH-16).
+        # Cukup pastikan tepat satu newline penutup.
+        if not patch.endswith("\n"):
+            patch += "\n"
+        (gdir / "gold.patch").write_bytes(patch.encode("utf-8"))
         files = gold_files_all(patch)
         (gdir / "gold.json").write_bytes(
             (json.dumps({"file": gold_file_from_patch(patch)},
