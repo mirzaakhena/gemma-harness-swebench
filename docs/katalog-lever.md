@@ -3716,3 +3716,11 @@ Dari 7 fail: **1/7 (7746)** diperbaiki ketatkan-repro (LV-01+K4); **2/7 (11797,1
 
 ### Temuan setup-robustness (tak-bernomor): spec hilang → WAIT diam-diam
 3 case backlog (11797, 13158, 15320) `swebench_spec.json` HILANG (setup era lama) → `swebench_checker` exit-1 "spec not found" → `resolved=None` → dashboard nyangkut status **WAIT** (product-pass, menunggu VERIFY) tanpa error keras. Diperbaiki: fetch spec + re-verify (commit `fix(cases)`). **Kandidat improvement:** checker gagal-keras / validasi kelengkapan spec saat setup, bukan diam nyangkut WAIT.
+
+### Addendum: 4 case cand=N (re-LOCALIZE paksa + FIX) — resolved=0/4
+
+4 case (`11422, 12308, 13220, 13401`) L era-lama qualified TAPI tanpa `candidates.md` → di-**paksa re-LOCALIZE** (rerun baru, `scripts/relocalize_candn.py`) sampai candidates.md terbentuk, lalu FIX+VERIFY. Re-localize berhasil (keempat qualified), FIX jalan. Hasil (frekuensi, katalog jenuh):
+- **11422** — FIX **no-flip** (pass_l1=false): model tak hasilkan patch yang lolos repro-nya sendiri; `ModuleNotFoundError: pipe_runtime` (LV-09) terpicu di loop kerja FIX. Tak ada `swebench_eval` (tak sampai vonis L2). Kelas: FIX-gagal-produksi-patch.
+- **12308, 13220, 13401** — FIX **flip**, `file_match=true`+`line_overlap=true`, **resolved=false** (F2P gagal, p2p_failed ~0). Patch di file benar lolos repro model tapi bukan F2P resmi → **Kelas B (repro longgar / LV-01)**, senada 7746. Menambah instans LV-01: 3.
+
+**Papan skor GABUNGAN 13 backlog: resolved 2/13** (11964 hijau-ASLI, 12747 hijau-catatan). Sebaran akar 11 fail: LOCALIZE-miss 2 (11797,13158) · LV-01/repro-longgar 4 (7746,12308,13220,13401) · destructive+gate-P2P 1 (11910) · FIX-no-flip 1 (11422) · gold-blind-brittle 1 (13768) · wrong-mechanism 1 (15320) · catastrophic-hallucination 1 (15400). **Kontras tajam vs 10 A2 (8/10):** both-fail/hard jauh lebih keras dari tier A2 yang fix-nya terbukti ada.
