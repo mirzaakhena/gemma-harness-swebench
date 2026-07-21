@@ -239,7 +239,7 @@ def run_case(state_path: Path, case: str,
 
     # --- FIX + VERIFY ---
     fn = next_free_rerun(ARTIFACTS / "f-dev", "f-dev", case)
-    if not wait_for_gpu(state_path, case):
+    if not wait_for_gpu(state_path, case, allow_concurrent):
         res["error"] = "gpu-timeout-fix"
         return res
     stage(state_path, f"FIX r{fn}", [
