@@ -321,3 +321,15 @@ model tetap gagal 40 turn ×3. Wall REPRODUCE **berlapis** — akar-MODEL primer
 dengan dinding kedua (repro logic buggy + `repro.md` tak ditulis 0/6). Detail + spec improvement label
 (requirement Mirza: label harus identifikasi-gejala; mapping `syntax-error`/`repro-missing`/`vacuous-repro`/`gold-wont-flip`,
 **BELUM DITERAPKAN**) di katalog batch A2 lanjutan.
+
+### Addendum 2026-07-21 (bot-04) — "FIX-wall" bukan kelas homogen (DIPERSEMPIT)
+
+Framing awal "7 backlog resolved=false = FIX-wall / yardstick longgar (LV-01)" **DIPERSEMPIT**.
+Autopsi 9 backlog membuktikan: dari 7 fail hanya **1 (7746)** benar akar-repro-longgar (LV-01).
+**2 (11797, 13158)** akar-LOCALIZE (file gold tak masuk kandidat, `file_match=false`) — bukan FIX
+sama sekali. **1 (11910)** akar-MODEL + gate tak jalankan P2P (batas desain gate). **1 (13768)**
+batas gold-blind (F2P brittle exact-string, unguessable). **2 (15320, 15400)** akar-MODEL murni
+(patch salah-mekanisme / hallucinated). Pembantah: `file_match` + `f2p_failed`/`p2p_failed` +
+`fix.diff` dibuka per case. **Pelajaran metodologi:** verdict "FIX gagal" adalah GEJALA; klasifikasi
+lever HARUS by-AKAR (LOCALIZE-recall / repro-K4 / gate-P2P / model), bukan by-gejala — kalau tidak,
+lever salah-arah di ~3 dari 4 case.

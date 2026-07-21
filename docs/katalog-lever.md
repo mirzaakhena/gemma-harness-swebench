@@ -3688,3 +3688,31 @@ DUA ARAH** (subset ∧ superset), karena `line_overlap=true` menyesatkan di kedu
 - `gold-wont-flip` / `wrong-logic` — repro FAIL tapi alasan salah / gold tak flip.
 
 **Status: BELUM DITERAPKAN** (default catat-only; menunggu keputusan Mirza apakah di-elevate jadi lever pertama yang diterapkan).
+
+---
+
+## Autopsi batch backlog jalur-1 (bot-04, 2026-07-21) — 9 case lolos-L, FIX+VERIFY (R+L qualified lama)
+
+**Konteks.** 9 case backlog (lolos LOCALIZE, FIX belum tuntas) dijalankan **jalur-1** (keputusan Mirza: terima R+L qualified, FIX+VERIFY saja). Semua both-fail/hard. Autopsi 3 subagent read-only ber-izin-membantah.
+
+### Papan skor: resolved=2/9
+
+- **resolved=True (2):** 11964 (**hijau-ASLI**, `__str__` Choices setara gold), 12747 (**hijau-DENGAN-CATATAN**: fix hanya 1/2 hunk gold — jalur `delete_batch` hilang; lolos karena repro DAN F2P resmi **sama-sama** tak menguji jalur kedua = batas metodologi; +2 file sampah kosong).
+- **resolved=False (7):** 7746, 11797, 11910, 13158, 13768, 15320, 15400.
+
+### KOREKSI: "FIX-wall" BUKAN kelas homogen — 3+ kelas, akar berbeda
+
+Mekanisme flip seragam (repro model = yardstick 1-simptom lolos gate, F2P resmi menuntut lebih), TAPI **akar berbeda**. Menamai semua "FIX-wall" salah-arah mayoritas lever:
+
+- **Kelas A — SALAH FILE (akar-LOCALIZE, menyamar FIX-wall): 11797, 13158.** `file_match=FALSE`. File gold **tak pernah masuk kandidat L** (11797: gold `lookups.py`, kandidat `compiler.py`+`query.py`; 13158: gold `sql/query.py`, kandidat `models/query.py`+`compiler.py`). FIX mustahil benar. **Lever = recall LOCALIZE, BUKAN FIX.**
+- **Kelas B — repro longgar meloloskan patch meregres (LV-01 murni): 7746.** Patch salah (`len()` vs gold `.size`; 1/2 hunk) meregres 8 P2P, tapi repro tanpa K4 & tak uji input skalar → flip. Di sini ketatkan-repro (K4) VALID.
+- **Kelas C — patch destruktif, regresi P2P (akar-MODEL + batas desain gate): 11910.** Model MENGHAPUS blok (arah berlawanan gold yang MENAMBAH). F2P lulus, gagal 1 P2P. **Gate secara desain TAK menjalankan P2P** → regresi P2P mustahil ditangkap gate seketat apapun repro. Perlu ubah kontrak eksekusi gate (jalankan sebagian P2P), bukan prompt/repro.
+- **Lain:** 13768 (**F2P brittle exact-string** wording pesan log, unguessable gold-blind — eval valid, batas gold-blind sejati); 15320 (**wrong/narrower mechanism**, tak set invariant `subquery=True`; akar-MODEL); 15400 (**catastrophic hallucination**: rewrite seluruh `functional.py`, hapus `cached_property` → Django tak bisa import → 60+ P2P collapse; **akar-MODEL murni, harness kerja SEMPURNA menangkapnya**).
+
+**Lulus-palsu: 0/9.** Semua 7 resolved=false BENAR. `file_match=false` (11797, 13158) = sinyal akar-LOCALIZE, bukan lulus-palsu.
+
+### Implikasi lever (frekuensi by-AKAR, bukan by-gejala)
+Dari 7 fail: **1/7 (7746)** diperbaiki ketatkan-repro (LV-01+K4); **2/7 (11797,13158)** perlu recall LOCALIZE; **1/7 (11910)** perlu gate jalankan P2P; **1/7 (13768)** batas gold-blind (tak bisa diperbaiki tanpa merusak SWE-bench); **2/7 (15320,15400)** akar-MODEL murni (bukan defek harness). **Pelajaran: klasifikasi lever HARUS by-akar; verdict "FIX gagal" cuma gejala.**
+
+### Temuan setup-robustness (tak-bernomor): spec hilang → WAIT diam-diam
+3 case backlog (11797, 13158, 15320) `swebench_spec.json` HILANG (setup era lama) → `swebench_checker` exit-1 "spec not found" → `resolved=None` → dashboard nyangkut status **WAIT** (product-pass, menunggu VERIFY) tanpa error keras. Diperbaiki: fetch spec + re-verify (commit `fix(cases)`). **Kandidat improvement:** checker gagal-keras / validasi kelengkapan spec saat setup, bukan diam nyangkut WAIT.
