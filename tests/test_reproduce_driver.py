@@ -143,3 +143,15 @@ def test_emit_abort_writes_event_verdict_and_run_end(tmp_path):
             (em.campaign_dir / "runs.jsonl").read_text(encoding="utf-8").splitlines()]
     assert runs[-1]["event"] == "end"
     assert runs[-1]["wall"] == "abort"
+
+
+def test_tool_call_marker_triggers_strong_reminder():
+    """R3/KH-12: reply memakai protokol tool-call native tanpa fence -> driver
+    REPRODUCE mengarahkan model ke fenced block yang sah (English)."""
+    from harness.stages.gemma_protocol import no_action_feedback
+    import harness.stages.run_reproduce_gemma as rdrv
+    reply = '<|tool_call|>\n{"name": "write_file", "path": "repro.py"}'
+    msg = no_action_feedback(reply, rdrv._ACTION_FORMS)
+    assert "```file:" in msg and "```bash" in msg
+    for w in ("kamu", "jalankan", "tulis", "berkas"):
+        assert w not in msg.lower()

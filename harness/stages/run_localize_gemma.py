@@ -19,7 +19,7 @@ from pathlib import Path
 
 from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_localize, has_done,
-                                           parse_actions)
+                                           no_action_feedback, parse_actions)
 from harness.stages.localize_gates import (MAX_SPAN, candidates_done_error,
                                            evaluate_localize_gates,
                                            parse_candidates_md,
@@ -27,6 +27,12 @@ from harness.stages.localize_gates import (MAX_SPAN, candidates_done_error,
 from harness.stages.localize_trace import (candidates_pool_error,
                                            format_trace_pool_message,
                                            run_trace)
+
+# Bentuk aksi sah untuk pengingat no-action (R3): dikonsumsi no_action_feedback.
+_ACTION_FORMS = (
+    "```bash                       -> run a shell command\n"
+    "```file:/testbed/.pipe/<path> -> write that file with the block's content\n"
+    "```localize.md                -> submit the localize.md artifact")
 
 PROTOCOL_NOTE = """
 ## How to work (action protocol — MANDATORY)
@@ -330,10 +336,7 @@ def main() -> int:
                 break
 
         if not actions and not feedback_parts:
-            feedback_parts.append(
-                "No action block detected. Use ```bash / "
-                "```file:/testbed/.pipe/... / ```localize.md, or close with "
-                "DONE.")
+            feedback_parts.append(no_action_feedback(reply, _ACTION_FORMS))
         messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
 
     files_dir = em.run_dir / "files"

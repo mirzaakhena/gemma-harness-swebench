@@ -229,3 +229,14 @@ def test_done_without_witnessed_pass_rejected(monkeypatch, tmp_path):
     assert rejected
     assert "REPRO_STATUS: PASS" in rejected[0]["detail"]["why"]
     assert not (loc_rep_run / "verdict.json").is_file()  # vonis milik gate
+
+
+def test_tool_call_marker_triggers_strong_reminder():
+    """R3/KH-12: driver FIX kini menangani mode gagal yang sama (native
+    tool-call tanpa fence) dengan pengingat bentuk KUAT (English)."""
+    from harness.stages.gemma_protocol import no_action_feedback
+    reply = '<|tool_call|>\n{"name": "edit", "path": "x.py"}'
+    msg = no_action_feedback(reply, drv._ACTION_FORMS)
+    assert "```file:" in msg and "```bash" in msg
+    for w in ("kamu", "jalankan", "tulis", "berkas"):
+        assert w not in msg.lower()

@@ -332,6 +332,48 @@ def format_reminder() -> str:
             "with a ```bash block.")
 
 
+def has_tool_call_marker(text: str) -> bool:
+    """Reply memakai protokol tool-call NATIVE model (mis. `<|tool_call|>`).
+
+    Keluarga KH-12 (R-1/R-2): model memancarkan protokolnya sendiri TANPA
+    fenced block, `parse_actions` menghasilkan NOL aksi, run membakar 40 turn.
+    Deteksi murah pada satu penanda; jadi pemicu pengingat bentuk yang lebih
+    spesifik lintas driver R/F/L."""
+    return "<|tool_call" in text
+
+
+def tool_call_format_reminder(action_forms: str) -> str:
+    """Pengingat bentuk KUAT — dikirim saat reply memakai protokol tool-call
+    native (`has_tool_call_marker`) tapi NOL aksi ter-parse. Mengoreksi
+    kesalahan tepat yang teramati: arahkan model menulis file lewat fenced
+    block yang sah. `action_forms` = daftar bentuk sah milik driver pemanggil.
+    Scope positif, action-oriented (higiene prompt §4b: tanpa narasi mekanisme
+    enforcement harness)."""
+    return ("To take an action, write fenced blocks directly in your reply. "
+            "The first line right after the opening triple backticks selects "
+            "what happens:\n"
+            f"{action_forms}\n"
+            "To create or change a file, put its full content inside a "
+            "```file:<path> block, then run it with a ```bash block. Write "
+            "your next step as fenced blocks now.")
+
+
+def no_action_feedback(reply: str, action_forms: str,
+                       fence_reminder: str | None = None) -> str:
+    """Pilih pesan feedback saat reply menghasilkan NOL aksi ter-parse.
+
+    Satu titik keputusan dipakai ketiga driver (R/F/L) — hindari divergensi:
+    - penanda tool-call native (KH-12) -> pengingat bentuk KUAT + koreksi tepat;
+    - ada fence tapi tak ter-parse jadi aksi (khusus R) -> `fence_reminder`;
+    - selain itu -> pengingat bentuk generik + jalan keluar DONE."""
+    if has_tool_call_marker(reply):
+        return tool_call_format_reminder(action_forms)
+    if fence_reminder is not None and has_fences(reply):
+        return fence_reminder
+    return ("No action block detected. Use one of these action forms, or close "
+            "with DONE:\n" + action_forms)
+
+
 def done_rejection_localize(has_localize_md: bool, ran_any_bash: bool,
                             candidates_error: str | None = None,
                             localize_error: str | None = None) -> str | None:

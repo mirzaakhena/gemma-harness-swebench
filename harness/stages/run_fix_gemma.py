@@ -30,9 +30,15 @@ from harness.stages.fix_gates import compose_fix_md, fix_rejection_message
 from harness.stages.fix_patch_runner import evaluate_patch_in_fresh_world
 from harness.stages.gemma_protocol import (done_rejection_fix, exact_status,
                                            has_done, is_repro_run,
-                                           parse_actions, retry_reason,
-                                           token_format_note)
+                                           no_action_feedback, parse_actions,
+                                           retry_reason, token_format_note)
 from harness.stages.localize_gates import parse_candidates_md
+
+# Bentuk aksi sah untuk pengingat no-action (R3): dikonsumsi no_action_feedback.
+_ACTION_FORMS = (
+    "```bash        -> run a shell command\n"
+    "```file:<path> -> write that file with the block's content\n"
+    "```fix.md      -> submit the fix.md artifact")
 
 PROTOCOL_NOTE = """
 ## How to work (action protocol — MANDATORY)
@@ -359,9 +365,7 @@ def main() -> int:
 
                 if not actions and not feedback_parts:
                     feedback_parts.append(
-                        "No action block detected. Use ```bash / "
-                        "```file:/testbed/... / ```fix.md per the protocol, "
-                        "or close with DONE.")
+                        no_action_feedback(reply, _ACTION_FORMS))
                 messages.append({"role": "user",
                                  "content": "\n\n".join(feedback_parts)})
 

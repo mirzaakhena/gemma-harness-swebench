@@ -26,7 +26,8 @@ from harness.stages.gemma_protocol import (done_rejection_reason,
                                            exact_status, format_reminder,
                                            fresh_pair_meta,
                                            fresh_pair_rejection, has_done,
-                                           has_fences, is_repro_run,
+                                           has_fences, has_tool_call_marker,
+                                           no_action_feedback, is_repro_run,
                                            literal_emitted_by_script,
                                            mixed_block_note,
                                            next_step_nudge,
@@ -45,6 +46,12 @@ from harness.stages.reproduce_gates import compose_repro_md
 # fresh pre-check, gate/flip via files/) — repro.py tetap self-contained
 # karena modul selalu hadir di sebelahnya (import lokal).
 RUNTIME_PATH = Path(__file__).with_name("pipe_runtime.py")
+
+# Bentuk aksi sah untuk pengingat no-action (R3): dikonsumsi no_action_feedback.
+_ACTION_FORMS = (
+    "```bash        -> run a shell command\n"
+    "```file:<path> -> write that file with the block's content\n"
+    "```repro.md    -> submit the repro.md artifact")
 
 PROTOCOL_NOTE = """
 ## How to work (action protocol — MANDATORY)
@@ -469,14 +476,15 @@ def main() -> int:
                     feedback_parts.append(rule_catalog.inject("early-draft"))
 
             if not actions and not feedback_parts:
-                if has_fences(reply):
+                if has_tool_call_marker(reply):
+                    log("[driver] native tool-call protocol without fenced "
+                        "action; strong format reminder sent")
+                elif has_fences(reply):
                     log("[driver] fenced block(s) present but none parsed as "
                         "action; format reminder sent")
-                    feedback_parts.append(format_reminder())
-                else:
-                    feedback_parts.append(
-                        "No action block detected. Use ```bash / ```file:<path> / "
-                        "```repro.md per the protocol, or close with DONE.")
+                feedback_parts.append(
+                    no_action_feedback(reply, _ACTION_FORMS,
+                                       fence_reminder=format_reminder()))
             messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
     except Exception as e:
         import traceback

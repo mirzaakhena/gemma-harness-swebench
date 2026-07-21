@@ -159,6 +159,58 @@ def test_format_reminder_names_valid_forms():
     assert "```python" in msg  # menyebut bentuk yang TIDAK dieksekusi
 
 
+# --- KH-12 (R-1/R-2): penanda tool-call native tanpa fence (R3) -------------
+
+_INDONESIAN = ("kamu", "jalankan", "tulis", "berkas", "silakan", "aksi",
+               "pengingat", "bentuk")
+
+
+def test_has_tool_call_marker_true_for_native_protocol():
+    from harness.stages.gemma_protocol import has_tool_call_marker
+    assert has_tool_call_marker("<|tool_call|>\n{\"name\": \"write\"}") is True
+    assert has_tool_call_marker("some prose then <|tool_call") is True
+
+
+def test_has_tool_call_marker_false_for_plain_and_fenced():
+    from harness.stages.gemma_protocol import has_tool_call_marker
+    assert has_tool_call_marker("```bash\nls\n```") is False
+    assert has_tool_call_marker("just prose, no marker") is False
+
+
+def test_tool_call_format_reminder_is_english_and_names_file_form():
+    from harness.stages.gemma_protocol import tool_call_format_reminder
+    forms = ("```bash        -> run a shell command\n"
+             "```file:<path> -> write that file\n"
+             "```repro.md    -> submit the artifact")
+    msg = tool_call_format_reminder(forms)
+    assert "```file:" in msg
+    assert "```bash" in msg
+    for word in _INDONESIAN:
+        assert word not in msg.lower(), f"non-English leaked: {word!r} in {msg!r}"
+
+
+def test_no_action_feedback_tool_call_marker_wins_over_fence():
+    from harness.stages.gemma_protocol import no_action_feedback
+    # reply carries BOTH the native marker and a (non-action) python fence
+    reply = "<|tool_call|>\n```python\nprint(1)\n```"
+    msg = no_action_feedback(reply, "```bash -> run", fence_reminder="FENCE")
+    assert msg != "FENCE"           # marker path takes precedence
+    assert "```file:" in msg        # strong reminder emitted
+
+
+def test_no_action_feedback_falls_back_to_fence_reminder():
+    from harness.stages.gemma_protocol import no_action_feedback
+    msg = no_action_feedback("```python\nx\n```", "```bash -> run",
+                             fence_reminder="FENCE")
+    assert msg == "FENCE"
+
+
+def test_no_action_feedback_generic_when_no_marker_no_fence():
+    from harness.stages.gemma_protocol import no_action_feedback
+    msg = no_action_feedback("hello there", "```bash -> run")
+    assert "DONE" in msg
+
+
 # --- next-step nudge (r13: loop degeneratif write-run-FAIL berulang) --------
 
 def test_next_step_nudge_fires_when_fail_seen_but_no_md():

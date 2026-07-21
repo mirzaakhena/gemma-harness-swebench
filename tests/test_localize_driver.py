@@ -89,3 +89,14 @@ def test_malformed_localize_md_rejected_before_docker(monkeypatch):
     err = drv.localize_range_error("c1", "chosen: 1\nfile: x.py\n")
     assert err is not None and "localize.md" in err
     assert not calls  # tanpa slot lengkap tidak ada yang bisa diukur
+
+
+def test_tool_call_marker_triggers_strong_reminder():
+    """R3/KH-12: driver LOCALIZE kini menangani mode gagal yang sama (native
+    tool-call tanpa fence) dengan pengingat bentuk KUAT (English)."""
+    from harness.stages.gemma_protocol import no_action_feedback
+    reply = '<|tool_call|>\n{"name": "open", "path": "x.py"}'
+    msg = no_action_feedback(reply, drv._ACTION_FORMS)
+    assert "```file:" in msg and "```bash" in msg
+    for w in ("kamu", "jalankan", "tulis", "berkas"):
+        assert w not in msg.lower()
