@@ -1072,11 +1072,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--root", type=Path, default=default_root,
                     help=f"direktori artifacts (default: {default_root})")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="alamat bind (default 127.0.0.1 = localhost saja; "
+                         "pakai 0.0.0.0 agar bisa diakses dari komputer lain)")
     args = ap.parse_args(argv)
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port),
+    server = ThreadingHTTPServer((args.host, args.port),
                                  make_handler(args.root.resolve()))
-    print(f"log viewer: http://127.0.0.1:{args.port}/  "
+    print(f"log viewer: http://{args.host}:{args.port}/  "
           f"(root={args.root.resolve()})")
     try:
         server.serve_forever()
