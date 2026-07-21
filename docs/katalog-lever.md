@@ -3787,3 +3787,22 @@ Komplementer dgn watcher (watcher = intra-run; a/b = antar-run).
 **Syarat elevate / catatan implementasi:** (2) butuh definisi "file disentuh repro" yang jelas (parse `[exec]` paths / import statis repro.py) + TDD; risiko false-reject bila repro minimal. (1) butuh titik-sisip di `run_rlfv_batch`/`eval` + label + jaminan papan skor tak terpengaruh.
 
 **Status: BELUM DITERAPKAN** (kandidat, catat-only — default disiplin "lever: catat, jangan terapkan"; menunggu instruksi eksplisit implement dari Mirza).
+
+---
+
+## Autopsi grup-1+2 (bot-02, 2026-07-21) — 41-belum-tersentuh, 17/20 selesai + eksperimen throughput paralel
+
+**Konteks.** Estafet bot-04→bot-02: jalankan 41 case belum-pernah-tersentuh RLFV. Grup-1 (10) serial + grup-2 (10) concurrent. 13925 diaborsi+dihapus (wrong-file, lihat kandidat di atas). 11564+12113 belum jalan (tail concurrent di-stop). **Katalog jenuh → ini pengukuran FREKUENSI, bukan lever baru.**
+
+### Papan skor pembeda (17 case, SOP §4)
+- **🟢 Hijau kandidat-asli (2):** `12908`, `12983` — file_match✓ line_overlap✓ (§3b patch-vs-gold BELUM dijalankan — deferred).
+- **⚠️ Lulus-palsu / valid-alt-file (1):** `11620` — `resolved=true` TAPI `file_match=false`. Model patch `django/urls/resolvers.py`; gold `django/views/debug.py`. F2P `test_technical_404_converter_raise_404` **lolos** + **66 P2P lolos, 0 regresi**. **Instans ke-2 pola `resolved=true`+`file_match=false` setelah 13658.** Belum dipastikan lulus-palsu-sejati vs fix-alternatif-lokasi-benar — butuh **§3b sabotase** (DEFERRED). 0-regresi bikin ia kandidat kuat "valid di file lain", beda dari 13658 (yang punya regresi diam-diam).
+- **🔴 Merah — localize benar, patch salah (5):** `13551`, `15819`, `astropy-14182`, `11019`, `11283` (file_match✓, F2P gagal). Akar-MODEL (FIX) atau repro-longgar — per-case autopsi §3 DEFERRED.
+- **🔴 Merah — salah-file / akar-LOCALIZE (1):** `11742` (file_match=false). **Kelas-A** (bareng 13925, 11797, 13158). Frekuensi Kelas-A grup ini: 2/17 (11742, 13925).
+- **🧱 REPRODUCE-wall, tak sampai FIX (6):** `14411`, `14608`, `12184`, `13265`, `13321`, `11630`. Plus `11564` (belum tuntas, tapi terobservasi KH-10). Sub-klasifikasi terkonfirmasi: `14411` = **KH-12 no-fence** (`<|tool_call>` tanpa fence, 0-exec, 40 turn ×3); `11564` = **KH-10 Python 3.6** (`subprocess.run(text=...)` TypeError berulang, exec JALAN tapi crash API-version). **REPRODUCE-wall = mode kegagalan DOMINAN** case belum-tersentuh (≥6/17), konsisten peringatan handoff bot-04 (regresi-territory; RLFV regime > baseline Papan 103).
+- **❓ Reached-FIX-no-VERIFY (2):** `12470`, `15388` — verdict FIX ada, `swebench_eval.json` TIDAK (resolved=None), spec ADA. Beda dari "spec hilang" (temuan setup-robustness bot-04). Perlu autopsi kenapa checker tak hasilkan eval — DEFERRED.
+
+### Temuan: throughput paralel NET-NEGATIF di GPU shared saturated
+Eksperimen (izin Mirza, konsekuensi diterima): `--allow-concurrent` (bypass gate GPU) + `--prune`. **Durasi per-case (menit):** serial grup-1 = 2.8–25.9 (mayoritas <15); concurrent 3-lane = 18–**98** (case rerun-berat `13265`=88.9, `12470`=97.6, ~4-6× lebih lambat; case ringan 2-3×). **Akar fisika:** GPU owner `derry-gemma4-31b-dp` sudah 100% util (saturated) — vLLM continuous-batching hanya untung bila ADA kapasitas nganggur; di sini 3 stream cuma **bagi-bagi compute** → tiap case melambat, throughput agregat break-even/rugi. **Bukan** "sistem tak mampu paralel" (mekanis berhasil, no deadlock). **Keputusan Mirza: serial ke depan; max-2 concurrent akan DITES** (hipotesis: 2-way isi idle-GPU saat lane lain di step CPU/docker gate — belum terukur). Baseline serial bersih tersedia utk pembanding tes max-2.
+
+**Status: DEFERRED (bukan lever)** — §3b sabotase 11620 + autopsi per-case merah + investigasi 12470/15388 + tes max-2 + run serial 11564/12113/REPRODUCE-wall reruns = pekerjaan lanjutan (kandidat estafet, konteks bot-02 tinggi).
