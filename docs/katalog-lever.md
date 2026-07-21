@@ -3724,3 +3724,25 @@ Dari 7 fail: **1/7 (7746)** diperbaiki ketatkan-repro (LV-01+K4); **2/7 (11797,1
 - **12308, 13220, 13401** — FIX **flip**, `file_match=true`+`line_overlap=true`, **resolved=false** (F2P gagal, p2p_failed ~0). Patch di file benar lolos repro model tapi bukan F2P resmi → **Kelas B (repro longgar / LV-01)**, senada 7746. Menambah instans LV-01: 3.
 
 **Papan skor GABUNGAN 13 backlog: resolved 2/13** (11964 hijau-ASLI, 12747 hijau-catatan). Sebaran akar 11 fail: LOCALIZE-miss 2 (11797,13158) · LV-01/repro-longgar 4 (7746,12308,13220,13401) · destructive+gate-P2P 1 (11910) · FIX-no-flip 1 (11422) · gold-blind-brittle 1 (13768) · wrong-mechanism 1 (15320) · catastrophic-hallucination 1 (15400). **Kontras tajam vs 10 A2 (8/10):** both-fail/hard jauh lebih keras dari tier A2 yang fix-nya terbukti ada.
+
+---
+
+## Reinforcement 2026-07-21 (bot-02) — 14411: instans ke-4 signature KH-12/15851 (no-fence `<|tool_call>`), diamati Mirza saat run grup-1 RLFV
+
+**Konteks.** Grup-1 (41-case belum-tersentuh, estafet bot-04 → bot-02). `django__django-14411` REPRODUCE **tidak qualified 3/3 rerun** (r1/r2/r3), verdict `syntax-fail` = **mislabel** ("required artifacts missing: repro.py, repro.md"), BUKAN SyntaxError. Diamati Mirza langsung di console.log (grep `ReadOnlyPasswordHashWidget` berulang t2–t40).
+
+**Signature = KH-12/15851 variant NO-FENCE (bukan 14855/15902 mis-tag-fence).** Bukti (r1; r2/r3 identik — 39 hit/205 baris tiap run):
+- 40 turn semua `[gemma tN] <|tool_call>call:bash` — model pakai protokol tool-call **native-nya sendiri** (`<|tool_call>…<tool_call|>`) **tanpa fenced-block** ```. `parse_actions` → **0 aksi**; **0 baris [exec]/output** di seluruh log → grep **TAK PERNAH** jalan.
+- `files/` cuma `pipe_runtime.py` (repro.py tak pernah ter-persist). `done=False, turns=40, attempts=1`.
+- Temp 0.0 + konteks tak berubah (aksi tak ter-parse → tak ada observasi baru) → regenerasi **byte-identik** 40 turn. Fixed-point deterministik, bukan "model ngotot grep".
+- `has_fences=False` → `format_reminder` **tak menyala** (persis defek 15851; beda dari 14855/15902 yang fence-nya ADA).
+
+**Frekuensi:** signature KH-12 no-fence naik jadi **15851 + 14411 = 2 case × 3 rerun = 6 run**. Keluarga KH-12 mislabel total = {15851, 14855, 15902, 14411}.
+
+**Root (2 lapis, konsisten):** primer **akar-MODEL** (instruction-following — model tak memakai format output harness); sekunder **akar-HARNESS** (verdict mislabel + tak ada pemutus loop no-progress lepas dari `observed_fail`).
+
+**Usulan lever Mirza (2026-07-21): detektor "≥3 command/reply identik berturut → ingatkan/putus loop."** = **persis candidate mechanism #3** temuan observability (B) 15851 ("Pemutus loop no-progress lepas dari `observed_fail`: abort/eskalasi setelah K reply byte-identik"). **DIKONFIRMASI penguat, BUKAN kelas/lever baru** (aturan katalog #3: satu mekanisme = satu lever).
+- **Caveat load-bearing:** reminder murni terbukti TAK cukup (14855/15902: `format_reminder` menyala, model tetap gagal 40 turn ×3 di temp-0). Maka breaker efektif harus **mengubah konteks** (mis. suntik parse-failure eksplisit / eskalasi berbeda) ATAU **putus-dini** (hemat 35+ turn terbakar), bukan sekadar menempel pesan yang diabaikan.
+- **Prioritas early-cut vs context-change:** menunggu keputusan Mirza (dia akan jelaskan manual).
+
+**Status: BELUM DITERAPKAN** (default catat-only).
