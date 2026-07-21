@@ -94,16 +94,39 @@ Angka historis proyek sendiri (vault) yang jadi dasar bobot:
   `PYTHONUTF8=1` di env subprocess checker (`run_rlfv_batch.py:300-302`).
 - Kompleksitas: kecil.
 
-### R5. Watcher no-progress: putus-dini + inject (keputusan Mirza 2026-07-21)
+### R5. Mechanical-trigger injection, habitat INTRA-RUN (watcher) — DESAIN FINAL Mirza 2026-07-21
 
-- **Menyerang:** R-1/R-2 (fixed-point deterministik temp-0; 35+ turn terbuang per run).
+**Pola umum (berlaku R5 & R9, difinalkan Mirza via diskusi Telegram 2026-07-21):**
+*trigger MEKANIS dari sinyal yang harness saksikan sendiri → suntik informasi
+GOLD-BLIND yang menyadarkan model arahnya salah.* Layer product penuh: HARAM
+menyuntikkan informasi/clue turunan gold ke model dalam bentuk apa pun. (Dev layer
+tetap bebas meng-expose gold di log/artefak untuk dikonsumsi bot analis.)
+
+- **Menyerang:** R-1/R-2/R-4/R-6 (fixed-point temp-0; 35+ turn terbuang per run).
+- **Trigger intra-run (semua terbukti muncul di korpus; K & threshold = kalibrasi):**
+  1. ≥K reply byte-identik (14411/15851: 40 turn).
+  2. ≥K turn beruntun dengan 0 aksi ter-parse (`parse_actions` kosong).
+  3. Marker `<|tool_call` di reply (protokol native model — pasti salah format).
+  4. ≥K eksekusi `python3 repro.py` padahal file tak pernah ter-persist
+     ("rerun file-hantu", 14855/15902).
+  5. Exception signature identik ≥K di output `[exec]` (App-churn `__init__
+     unexpected keyword` s/d 37×/run) → arahkan inspeksi API langsung.
+     *Pengecualian:* signature `No module named 'pipe_runtime'` BUKAN trigger —
+     itu bug harness, obatnya R1 (LV-09).
+  6. Command identik + output identik ≥K (grep sama 40×, 14411).
+  7. DONE-rejected ≥K dengan alasan sama (11564: 6× friksi PASS_OBSERVABLE).
+  8. Turn ≥X dan `observed_fail` masih False (churn produktif 12125, 66 exec) →
+     "you have not yet observed the failure; re-read the issue".
+- **Aksi (urutan Mirza):** (1) **putus-dini** pakai `break` BUKAN `emit_abort` (biar
+  artefak tersalin di `run_reproduce_gemma.py:489-501` dan gate tetap memvonis —
+  hindari konflik dua-penulis-verdict, temuan bonus #6), lalu untuk trigger yang
+  masih recoverable: (2) **inject pesan mekanis UNIK** (nomor turn + fakta yang
+  disaksikan, mis. parse-failure eksplisit) ke `feedback_parts` — di temp 0.0,
+  mengubah konteks adalah satu-satunya jalan keluar dari attractor.
 - **Kode:** loop turn `run_reproduce_gemma.py:315-321` — history reply SUDAH ada di
-  `messages`; deque K reply ternormalisasi; aksi: (1) putus-dini pakai `break` BUKAN
-  `emit_abort` (biar artefak tersalin di :489-501 dan gate tetap memvonis — hindari
-  konflik dua-penulis-verdict, temuan bonus #6), (2) inject pesan mekanis UNIK
-  (nomor turn + parse-failure eksplisit) ke `feedback_parts` — di temp 0.0, mengubah
-  konteks adalah satu-satunya jalan keluar dari attractor.
-- **Risiko:** false-positive reply pendek sah — kalibrasi K & normalisasi. Kompleksitas: kecil.
+  `messages`. Semua sinyal trigger di atas base-world (disaksikan driver) → gold-blind
+  by construction.
+- **Risiko:** false-positive reply pendek sah — kalibrasi K & normalisasi. Kompleksitas: kecil-sedang.
 
 ### R6. Dedup papan skor batch saat resume
 
@@ -139,22 +162,32 @@ Angka historis proyek sendiri (vault) yang jadi dasar bobot:
   repro subprocess (manage.py) pola sah yang difasilitasi App.
 - Kompleksitas: kecil-sedang. Taksonomi L-B akan kuperbarui dengan akar terkoreksi ini.
 
-### R9. Feedback-injection deterministik antar-rerun (opsi (b) Mirza; temp tetap 0.0)
+### R9. Mechanical-trigger injection, habitat ANTAR-RERUN — DESAIN FINAL Mirza 2026-07-21
+
+(Pola umum & prinsip = R5. Opsi (b) feedback-injection deterministik; temp tetap 0.0.)
 
 - **Menyerang:** rerun byte-identik = budget 3-rerun membeli 0 informasi (14411 dkk).
 - **Kode:** konteks awal `run_reproduce_gemma.py:299-304`; driver tahu `args.rerun` dan
-  bisa membaca artefak r(N−1): `verdict.json`, `events.jsonl` (exit `detail.failures`
-  verbatim), `gate_runs.json`. Append blok "PREVIOUS ATTEMPT FAILED THE GATE: ..." ke
-  pesan user pertama. Deterministik: artefak beku → konteks beku → reproducible.
-- **⚠ Garis gold-blind (dibingkai dua-layer, penegasan Mirza 2026-07-21):** proyek
-  berjalan di dua layer — *harness development* (boleh mencontek gold) vs *harness as
-  product* (gold-blind). Feedback-injection menyuntik konten ke **konteks model** =
-  layer product → kontennya wajib derivable dari base-world. `flip_run.json` = output
-  repro di dunia BER-GOLD-PATCH — verbatim = bocor. Usulan garis: kegagalan base-world
-  (syntax/vacuous/token/idempoten) boleh verbatim; flip-fail → kalimat generik ("your
-  predicate was never satisfied by any correct fix — rethink the observable").
-  Konten final injeksi = keputusan desain Mirza (diantisipasi katalog: "konten
-  feedback = keputusan desain berikutnya").
+  bisa membaca artefak r(N−1): `verdict.json`, `events.jsonl` (exit `detail.failures`),
+  `gate_runs.json`, `files/repro.py`. Append blok ke pesan user pertama.
+  Deterministik: artefak beku → konteks beku → reproducible.
+- **KEBIJAKAN KONTEN — STRICT (keputusan Mirza 2026-07-21, menggantikan usulan
+  "dua-tier" bot-04 yang masih membawa 1 bit turunan gold):**
+  - **Kegagalan base-world → boleh VERBATIM:** anti-vacuous PASS-at-base, token/
+    format/artefak hilang, idempotency, output repro di base (`gate_runs.json`),
+    crash scaffolding sendiri. Semua disaksikan tanpa gold.
+  - **Flip-fail → TANPA alasan sama sekali.** Yang boleh disuntikkan hanya: repro
+    attempt sebelumnya + output base-world-nya + directive diversity ("this exact
+    approach was already attempted; produce a fundamentally different reproduction
+    approach"). JANGAN katakan "predicate not satisfied by the fix" atau bentuk
+    apa pun yang mengabarkan hasil dunia ber-patch.
+  - **HARAM permanen:** isi `flip_run.json` / output & traceback dunia ber-gold-patch /
+    apa pun yang menunjuk lokasi, perilaku, atau keberadaan efek gold.
+- **Catatan integritas pengukuran:** rerun ber-injeksi ≠ comparable dengan rerun
+  historis tanpa injeksi — papan skor wajib menandai rezim (lesson "kontrol budget
+  saat klaim lift"). Kejujuran epistemik: keputusan me-rerun pasca flip-fail memang
+  terkondisi gold di level ORKESTRASI, tapi model ber-konteks-segar tidak melihat
+  fakta itu; yang dijaga strict adalah KONTEN yang masuk konteks model.
 - Kompleksitas: kecil-sedang.
 
 ### R10. Gate L membaca `trace_pool.json` (lapisan kedua untuk run tembus-tanpa-DONE)
