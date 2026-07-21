@@ -468,10 +468,14 @@ Kandidat untuk dipindahkan ke katalog oleh penulis berikutnya:
    `syntax-fail`, **20 tanpa `repro.py`/`localize.md` sama sekali** dan sisanya
    kehilangan `repro.md`/format — **nol SyntaxError sungguhan teramati**. Memperkuat
    spec relabel Mirza (`repro-missing`/`vacuous-repro`/…, temuan (B) #1).
-5. **Diskrepansi artefak `11797`:** autopsi backlog mencatat FIX 11797 resolved=false,
-   tetapi direktori `f-dev--django__django-11797--r*` **tidak ditemukan** saat sweep.
-   Sel F-5 karenanya berisi 2 run (11742, 13158), bukan 3. Perlu klarifikasi bot-03/
-   Mirza (terhapus? tak pernah ada?).
+5. **Diskrepansi artefak `11797` — TERJAWAB (Mirza, 2026-07-21):** direktori
+   `f-dev--django__django-11797--r1` **sengaja dihapus** (plus entrinya di
+   `f-dev/runs.jsonl`) pada sesi bot-04 sebelumnya, atas keputusan Mirza, untuk
+   membereskan anomali dashboard FV>L-PASS (11797 dijalankan batch gold-blind vs
+   dashboard gold-aware; FV 52→51 = L-PASS). Analisis autopsinya tetap tersimpan di
+   `katalog-lever.md`; artefak r-dev/l-dev 11797 utuh. Sel F-5 tetap 2 run
+   (11742, 13158) dan klasifikasi 11797 di L-A tetap berlaku (bukti dari katalog +
+   l-dev, bukan dari f-dev yang terhapus).
 6. **Diskrepansi denominator Tabel A katalog:** section batch A2 menaikkan sampel ke
    **52 case**, tetapi section batch-A undone (lebih akhir di file) menyebut "tetap
    **44**". Pembaca berikutnya jangan mengutip salah satu tanpa cek; angka K1–K5 di
