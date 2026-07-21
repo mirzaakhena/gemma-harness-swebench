@@ -3954,3 +3954,80 @@ case** (per bot-04).
   vacuous-always-FAIL akibat judge-forced orkestrasi (LV-05→LV-12) + peluncur SyntaxError**,
   ditangkap flip gate. Churn = App-API hallucination (`__init__ env/text`), bukan `subprocess.run`
   Python-3.6 (**KH-15**). **Tak menambah count baru**; hanya refine sub-signature.
+
+---
+
+## Autopsi batch grup-3 (bot-03, 2026-07-21) — 10 case, resolved 0/10
+
+**Korpus.** 10 case grup-3 (serial + `--prune-localize-miss`, bot-03): REPRODUCE-wall
+14155/15252/15781/12856; LOCALIZE 15213/12589/13033; reached-VERIFY 14534/15061/12284.
+Autopsi read-only, izin membantah pemanggil (SOP §6a) — dan **dua read-awal pemanggil
+terbantah di artefak** (15061 `line_overlap`; sub-mode 14155/12856). Katalog jenuh + bot-04
+baru sweep penuh → target = **ukur frekuensi + reinforcement**; TAPI dua defek harness/data
+mekanis BARU muncul yang lolos bar (corrupt gold.patch; false-prune) — dicatat sebagai
+**kandidat lever (BELUM DITERAPKAN)**, bukan keluhan. Nama kelas mengikuti taksonomi bot-04
+(`taksonomi-kegagalan-per-fase.md` §R/§L/§F) — **tak diduplikasi, hanya ditunjuk**.
+
+### Papan skor PEMBEDA (10 case per sub-mode SEBENARNYA, bukan label mentah — SOP §4)
+
+- **🧱 REPRODUCE-wall / GOLD.PATCH KORUP → flip vacuous (akar-HARNESS/DATA, mislabel `wrong-logic`) — 2:** `14155`, `12856`.
+- **🧱 REPRODUCE-wall / won't-flip wrong-predicate (akar-MODEL, gold satisfiable, R-4) — 2:** `15252`, `15781`.
+- **🟥 LOCALIZE Kelas-A recall-miss, prune BENAR (akar-LOCALIZE, L-A) — 2:** `15213` (gold-unguessable), `12589` (near-miss).
+- **⚠️ LOCALIZE FALSE-PRUNE: gold ADA di shortlist (`qualified=true`) tapi di-skip atas `file_match` (akar-HARNESS prune-logic) — 1:** `13033`.
+- **🔴 VERIFY P2P-regresi / patch over-broad single-hunk (akar-MODEL scope, F-2 varian) — 1:** `12284`.
+- **🔴 VERIFY wrong-mechanism / subset (akar-MODEL kelengkapan, F-3) — 2:** `15061` (metode DIHAPUS≠di-set-`''`), `14534` (fallback `or` over-defensif).
+
+resolved **0/10** (3 sampai VERIFY, ketiganya merah; 7 wall/prune di hulu). **Lulus-palsu: 0.**
+
+### Per-case ringkas (bukti di run-dir + field yang dibuka)
+
+**A1 — corrupt gold.patch (flip vacuous, mislabel):**
+- **14155** (`r-dev--…--r3`, semua r1–r3 identik). `flip_run.json` = `{"output":"error: corrupt patch at line 22\n","exit":128}`; `gate_runs.json` base = repro JALAN, `ResolverMatch(...) REPRO_STATUS: FAIL` (repro **bekerja**, base gagal benar). Flip lewat `repro_sandbox_runner.py:29` = `git apply /patch-in/gold.patch && python repro.py` → `git apply` GAGAL "corrupt patch" → `&&` short-circuit → repro tak pernah jalan di gold-world → `no REPRO_STATUS token in gold-patched run output` → verdict `wrong-logic`. **`cases/gold/…-14155/gold.patch` MALFORMED**: header hunk `@@ -59,9 +59,16 @@` tapi body cuma 8/15 baris (kurang 1 baris konteks trailing). Diverifikasi INDEPENDEN: `git apply --check` di git-dir kosong → "corrupt patch at line 22" (error PARSE, sebelum sentuh file). **Wall ini TAK bisa diatribusi ke repro model** — flip verdict VACUOUS sampai gold diperbaiki.
+- **12856** (`r-dev--…--r3`). Identik: `flip_run.json` "corrupt patch at line 15" exit 128; base repro JALAN (migration+constraint output, `REPRO_STATUS: FAIL`). `gold.patch` header `@@ …,6 …,12 @@` body 5/11 (kurang 1 konteks). `git apply --check` → corrupt.
+
+**A2 — won't-flip wrong-predicate (gold satisfiable, akar-MODEL):**
+- **15252** (`r-dev--…--r3`; r1=`fail` [scaffolding `ModuleNotFoundError` di sandbox, gate benar-tolak], r2/r3=`wrong-logic`). `flip_run` base=FAIL **DAN** gold=FAIL (`django_migrations table was created on 'other' database despite router / REPRO_STATUS: FAIL`) → won't-flip. **Sebab:** repro `recorder.record_applied(...)` → `ensure_schema()` **langsung**; gold memfix `executor.migrate()` (`if plan == []: … has_table()` alih `ensure_schema()`). Repro menguji **site yang salah** — gold tak pernah menyentuh jalur yang repro panggil → mustahil flip. Gold **satisfiable** (di level executor); akar-MODEL (repro menargetkan simptom, bukan kontrak yang gold ubah).
+- **15781** (`r-dev--…--r3`; orkestrasi `App([manage.py, help, tzkt_import])`). base=FAIL, gold=FAIL. Predikat repro cek newline-preservation antara "Import a contract from tzkt." dan "Example usage:" di help output. **Gold cuma memindah `formatter_class=DjangoHelpFormatter` ke `kwargs.setdefault(...)`** — mengizinkan command meng-override formatter; **TIDAK meng-auto-preserve newline** (butuh command opt-in `RawTextHelpFormatter`, yang repro tak set). Model **salah paham semantik fix** → gold tak flip. Gold satisfiable-tapi-butuh-lebih; akar-MODEL. (Sekunder: orkestrasi subprocess = R-3/LV-12 territory, tapi akar dominan = misunderstood-fix.)
+
+**B1 — Kelas-A recall-miss (prune BENAR):**
+- **15213** (`l-dev--…--r1`, `file_match=false qualified=false`, gold=`fields/__init__.py`). Model shortlist `[sql/where.py, sql/compiler.py]` — mekanisme DIPAHAMI benar (`WhereNode.as_sql` `~Q(pk__in=[])` → `''`), tapi gold fix = **`BooleanField.select_format`** (`if sql=='' : sql='1'`) di site tak terduga. **gold-unguessable (recall-miss SULIT)** — model nunjuk tempat SQL digenerate (natural), gold di hook field. Prune benar.
+- **12589** (`l-dev--…--r1`, `file_match=false qualified=false`, gold=`sql/query.py`). Model `[sql/compiler.py, models/query.py]` — **near-miss**: nunjuk `models/query.py` (values()) & `sql/compiler.py` (finalize_group_by), meleset `sql/query.py` sejengkal. Mekanisme (group_by ambiguity Subquery) teridentifikasi; file spesifik meleset. Prune benar.
+
+**B2 — FALSE-PRUNE (akar-HARNESS, temuan mekanis BARU):**
+- **13033** (`l-dev--…--r1`, gold=`sql/compiler.py`). `pointed_file`=`sql/query.py` (candidate 1) → `file_match=FALSE`; **candidate 2 = `sql/compiler.py` = GOLD → `qualified=TRUE`**. FIX mengiterasi shortlist (`shortlist_qualified` doc: "yang penting jawaban benar masuk daftar pendek"), jadi gold TERSEDIA utk FIX. TAPI `should_prune_fix` (`run_rlfv_batch.py:113`) me-return `data.get("file_match") is False` → **13033 di-skip** (`skipped-fix-localize-miss`), tak ada f-dev run. **Kriteria prune (`file_match`=pointed primer) INKONSISTEN dgn kriteria qualify/FIX-iterasi (`qualified`=any-shortlist∈gold).** LOCALIZE recall di 13033 **SUKSES**; yang gagal = prune over-agresif. **Bukan Kelas-A.**
+
+**C — reached-VERIFY resolved=false (3 sub-mode berbeda):**
+- **12284** (`f-dev--…--r1`, `file_match=true line_overlap=true`, 1 hunk gold / 1 hunk model, **region SAMA**). `f2p_failed=[]` (**SEMUA F2P lolos** — `test_overriding_inherited_FIELD_display` ok), **`p2p_failed=['test_overriding_FIELD_display']` (1 P2P REGRESI)**. `swebench_test_output.log:152`: `assertEqual(f.get_foo_bar_display(),'something')` → `AssertionError: 'foo' != 'something'`. **Sebab:** gold **mempersempit** guard (`hasattr(cls,…)` → `'…' not in cls.__dict__` = jangan override method same-class eksplisit, tapi boleh override inherited); model **MENGHAPUS guard sepenuhnya** → `setattr` tanpa syarat → menimpa `get_foo_bar_display` eksplisit same-class → regresi. **Pola KH-14 (line_overlap=true menutupi patch salah, F2P lolos P2P regresi) TAPI mekanisme BEDA dari 11999:** bukan superset hunk-EKSTRA di luar gold — ini **over-broad DALAM satu hunk di region gold** (guard-dihapus vs guard-dipersempit), jumlah region hunk gold==model. **Konsekuensi LV-14:** detektor mismatch-jumlah-region-hunk (dua arah subset∧superset) **TIDAK menangkap 12284** — regresi lahir dari over-broadening SEMANTIK dalam hunk yang cocok. Limit LV-14 yang perlu dicatat.
+- **15061** (`f-dev--…--r1`, `file_match=true line_overlap=TRUE`). **KOREKSI read-awal:** pemanggil menyebut `line_overlap=false` + waspada KH-13 rewrite-false-negative; **f-dev `gold_eval.json` aktual = `line_overlap:true`** (dibuka langsung — KH-12: jangan percaya label). `f2p_passed=[]`, **3 F2P gagal** (`test_form_as_table`×2, `test_form_as_table_data`). **Sebab:** gold ubah `MultiWidget.id_for_label(self,id_)` `if id_: id_+='_0'; return id_` → **`return ''`**; model **MENGHAPUS metode** → MultiWidget mewarisi `Widget.id_for_label` (return `id_` apa adanya) ≠ gold (return `''`). **Menghapus ≠ men-set-`''`** → label tetap dapat `for=` → 3 F2P gagal deterministik. `line_overlap=true` **literal benar** (edit di region gold). Wrong-mechanism, akar-MODEL (F-3). Bukan wrong-location, bukan rewrite-collateral.
+- **14534** (`f-dev--…--r1`, `file_match=true line_overlap=true`). `f2p_passed=1`, `f2p_failed=['test_iterable_boundfield_select']`, `p2p_failed=[]` (parsial). **Sebab:** gold `id_for_label` → `self.data['attrs'].get('id')` (unconditional); model → `self.data.get('attrs',{}).get('id') or 'id_%s_%s'%(…)` — **fallback `or` over-defensif** mengembalikan format lama saat attrs-id falsy, sedang test menuntut nilai attrs-based. Patch di site benar, logika over-defensif → 1 F2P gagal. akar-MODEL (F-3-ish, bukan regresi P2P).
+
+### Kandidat lever BARU (bar tinggi lolos — defek mekanis, bukan keluhan; BELUM DITERAPKAN)
+
+**KL-G3-1 — Validasi gold.patch aplikatif saat setup case (`git apply --check`), gagal-KERAS.**
+- **Gejala/akar:** `cases/gold/<id>/gold.patch` **korup** (hunk body < header) → flip test `git apply gold.patch && python repro.py` short-circuit di `git apply` → repro tak jalan di gold-world → verdict `wrong-logic` reason `no REPRO_STATUS token in gold-patched run output` = **MISLABEL** (bukan repro salah; gold tak bisa dipasang). akar-**HARNESS/DATA-setup** (kemungkinan trailing context-line ter-strip saat prepare/fetch case). Flip gate sendiri berperilaku aman (tak hijau-palsu), tapi **atribusi kegagalan tercemar**.
+- **Frekuensi (diukur, absolut):** **5/97 gold.patch django KORUP** — `12184`, `12856`, `13321`, `14155`, `15202` (di-scan `git apply --check` seluruh 97; error PARSE, deterministik). Grup-3: **2/10** (14155, 12856). **2 di antaranya (12184, 13321) = anggota ⏳ R-4 "belum-diautopsi" bot-04** (taksonomi §R-4 baris 142) → keliru dikandidatkan akar-MODEL; sebenarnya akar-DATA.
+- **Lever:** di titik setup case (`prepare_*` / `fetch_swebench_spec`), jalankan `git apply --check` atas `gold.patch` di image base; **gagal-keras + laporkan** (jangan biarkan lolos jadi wall `wrong-logic` diam-diam). Alternatif re-generate patch dgn `git diff` yang benar / `--recount`. **Perbaikan gold korup akan MEMBUKA re-test** 5 case ini (wall-nya bukan model).
+
+**KL-G3-2 — `should_prune_fix` seharusnya keying `qualified is False`, BUKAN `file_match is False`.**
+- **Gejala/akar:** `run_rlfv_batch.py:113` prune bila `file_match is False` (pointed primer), tapi kualifikasi LOCALIZE + iterasi shortlist FIX pakai `qualified` (any-candidate∈gold). Case ber-`file_match=false`+`qualified=true` (**gold ADA di shortlist**) di-skip walau FIX punya akses ke file gold. akar-**HARNESS orkestrasi** (kriteria prune ≠ kriteria FIX-input). **Over-prune** = buang peluang resolve + cemari statistik Kelas-A (dilabeli `localize-miss` padahal recall SUKSES).
+- **Frekuensi (composition-aware, KH-09):** signature `file_match=false ∧ qualified=true` = **9 run / 6 case distinct** (11620, 11742, 11964[×4 run kampanye era-lama=1 case], 13033, 13158, 14017). Yang **benar-benar di-prune oleh flag di grup-3 = 1** (`13033`). Bukti bahaya konkret: **`11620`** punya signature ini **DAN `resolved=true`** (F-6) — patch di file lain valid; artinya prune-atas-`file_match` **bisa membuang case yang menang**. (Sisanya jalan FIX pra-prune / bukan run-input.)
+- **Lever:** ganti predikat prune ke `data.get("qualified") is False` (fail-safe sama: None/tak terbaca → jangan prune). Menyelaraskan prune dgn semantik shortlist. **Guard papan skor tetap:** case ber-`qualified=false` yang di-prune tetap dihitung VERIFY-fail.
+
+### Bukti-penguat + frekuensi kelas terkatalog (denominator disebut)
+
+- **REPRODUCE-wall by-AKAR (taksonomi §R):** grup-3 memberi **2 corrupt-gold (kelas BARU, di luar R-1..R-7)** + **2 R-4 won't-flip** (15252 site-salah, 15781 misunderstood-fix). **Membantah** framing "REPRODUCE-wall ⏳ = kandidat akar-MODEL R-4" untuk 14155 (& korpus 12184/13321): akar sebenarnya DATA. R-4 terkonfirmasi bertambah: +15252, +15781 (sub-sebab: repro-target-site-salah; misunderstood-fix-semantics). Denominator R-4 grup-3 = 2/2 yang non-corrupt.
+- **Kelas-A / L-A (akar-LOCALIZE):** +**2 terkatalog** (15213, 12589) → total lintas-batch **7** (11797, 13158, 13925, 11742, 12113, +15213, +12589). Sub-split gold-unguessable: +**15213** (instans ke-2 eksplisit setelah 12113). **13033 TIDAK dihitung Kelas-A** (recall sukses; itu false-prune KL-G3-2).
+- **F-2 (over-broad → P2P regresi):** +**12284** → total terkonfirmasi **5** (11999, 12907, 15400, 11910, +12284). **Sub-varian BARU:** over-broad **DALAM hunk region-gold** (jumlah region gold==model), beda dari superset-hunk-ekstra (11999). **LV-14 blind-spot** tercatat.
+- **F-3 (subset/wrong-mechanism):** +**15061, 14534** → total terkonfirmasi **5** (14365, 15320, 13590, +15061, +14534). Sub-sebab baru: metode-DIHAPUS-vs-diubah (15061); fallback-over-defensif (14534).
+- **LV-09 (pipe_runtime di dunia kerja FIX):** grup-3 = **0/3** reached-FIX (12284/14534/15061: repro tak impor pipe_runtime, 0 `No module named 'pipe_runtime'` di console FIX). R-runs: hanya 15781 repro impor `pipe_runtime` (App), tak jadi wall. **Grup-3 tak menambah paparan LV-09** — konsisten era-baru (repro in-process tanpa App lebih dominan).
+- **Observability (B) verdict bucket:** +2 data-point mislabel `wrong-logic` (14155, 12856) yang **akar aslinya corrupt-gold** — sub-sebab bucket ke-N (setelah "SyntaxError launcher" 11564, "gold-unsatisfiable-menyesatkan" 10924). Split reason via `flip_run.json` (kandidat #1 (B)) akan memisahkan `corrupt-gold` dari `won't-flip` sejati.
+
+### Kandidat-DITOLAK (dicatat + syarat naik)
+
+- **"orkestrasi App subprocess di 15781 = LV-12/LV-05 wall".** DITOLAK sbg atribusi primer — akar dominan 15781 = **misunderstood-fix-semantics** (repro cek newline-preservation yang gold tak sediakan), bukan judge/orkestrasi menyeret titik-gagal. Orkestrasi hadir tapi tak load-bearing (base sudah FAIL karena predikat). Syarat naik: judge `[judge]` menolak checkpoint plausibel lalu memaksa orkestrasi (pola 11564/14752) — di 15781 TAK ada penolakan judge; model langsung orkestrasi. n=0 utk pola R-3 di sini.
+- **"14534 = subset (F-3 murni)".** Ditahan: bukan hunk-hilang, melainkan **edit over-defensif** (`or` fallback) di hunk yang cocok — lebih dekat "wrong-mechanism ringan". Dicatat sbg F-3 dgn catatan; syarat pisah kelas: ≥3 case "patch benar-lokasi, salah karena guard/fallback ekstra yang test tolak" (n=1 kini).
+
+### Catatan denominator
+Tabel A (K1–K5) **tak bertambah**: 3 reached-VERIFY grup-3 repro-nya qualified tapi **di luar remit autopsi-repro manual ini** (fokus = vonis FIX/flip, bukan skoring K1–K5 repro) — sengaja tak dihitung agar tak mengekstrapolasi (SOP §5). Sampel Tabel A tetap **44** (per bot-04). Yang benar-benar kuperiksa artefaknya di batch ini: **10/10 case** (verdict/gold_eval/swebench_eval/fix.diff/flip_run/console dibuka), + scan `git apply --check` **97/97 gold.patch**, + scan false-prune-signature **seluruh l-dev**.
+
+**Status: BELUM DITERAPKAN** (KL-G3-1, KL-G3-2 = kandidat catat-only; default disiplin lever).
