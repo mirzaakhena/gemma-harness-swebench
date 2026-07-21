@@ -225,11 +225,16 @@ REPRODUCE-wall = mode kegagalan **dominan** untuk case belum-tersentuh (papan gr
   "artefak wajib tidak ada: localize.md"; `files/` **kosong total**; `events.jsonl`
   event `abort` "trace pool is empty"; deterministik 3/3 (retry mustahil menolong).
   Prasyarat: repro input berbentuk `subprocess.run([sys.executable, ...])`.
-- **Akar:** **HARNESS** (trace-injection tidak mengikuti fork ke subprocess anak) —
-  model TAK PERNAH dipanggil. Gap kontrak lintas-fase: qualified-R tak menjamin
-  traceable-L. Konsekuensi hilir LV-12 yang belum tercatat sebagai entri.
-- **Lever:** bug-robustness tak-bernomor (katalog batch bot-02); syarat naik ≥3 case.
-  Rekomendasi tercatat: follow-fork trace ATAU gate R menambah cek in-process.
+- **Akar — DIPERSEMPIT (verifikasi kode bot-04, 2026-07-21):** tetap **HARNESS**,
+  tapi BUKAN "trace tidak mengikuti fork" — follow-child SUDAH diimplementasikan
+  (`localize_trace.py:98-107` + `trace_sitecustomize.py`, hook via `PYTHONPATH`).
+  Akar sebenarnya: repro 14580 **menimpa PYTHONPATH** di env child
+  (`env["PYTHONPATH"] = str(testbed)` di `r-dev--…-14580--r1/files/repro.py`) →
+  sitecustomize tak termuat di child; induk tak mengeksekusi file repo in-process →
+  pool kosong → abort. Model TAK PERNAH dipanggil; retry 3× mustahil menolong.
+- **Lever:** pindahkan hook ke site-packages container via file `.pth` (kebal
+  penimpaan PYTHONPATH) — lihat `rekomendasi-lever-dari-taksonomi.md` R8. Alternatif
+  "gate R melarang repro subprocess" TIDAK disarankan (pola sah).
 - **Frekuensi:** **1 case × 3 run = 3/3** (`14580`) — satu-satunya L-wall di korpus.
 - **Anggota:** 14580.
 
