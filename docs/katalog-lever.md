@@ -3752,3 +3752,19 @@ Komplementer dgn watcher (watcher = intra-run; a/b = antar-run).
 - **KEPUTUSAN Mirza (2026-07-21):** pilih **(b) feedback-injection deterministik** — utamakan reproducibility bit-for-bit seluruh pipeline; **(a) seeded-temperature DITOLAK** (mengembalikan flakiness pengukuran/vonis). Saat di-elevate nanti: rancang isi feedback yang di-inject ke r2/r3 (kandidat: parse-failure eksplisit / verdict reason rerun sebelumnya / output repro terakhir) — konten feedback = keputusan desain berikutnya.
 
 **Status: BELUM DITERAPKAN** (default catat-only).
+
+---
+
+## Kandidat 2026-07-21 (bot-02) — graceful-shutdown: tulis verdict `interrupted` saat run di-kill (menutup akar false-live/stale)
+
+**Gejala.** Run REPRODUCE yang dihentikan dari LUAR (kill proses / `docker stop` / TaskStop / Ctrl-C / crash / OOM) tak pernah menulis `verdict.json` → dashboard menandainya `"(live)"` selamanya (false-live). Sesi ini 3 instans: `r-dev--11019--r1`, `r-dev--15819--r1`, `r-dev--11620--r2` — semua mati saat iterasi experiment paralel (kill experiment ber-bug + stop batch serial utk konversi concurrent). Ketiganya sudah PASS di rerun berikutnya; bangkai murni artefak interupsi.
+
+**Akar: HARNESS-robustness (bukan model, bukan metodologi, bukan "paralel").** Verdict hanya ditulis di ujung run oleh gate; tak ada jalur yang menulis penanda terminal saat run diinterupsi. Interupsi APA PUN — serial maupun paralel — meninggalkan stale; paralel hanya menaikkan frekuensi interupsi (lebih sering kill/restart saat iterasi). Sistem **mampu** paralel (run concurrent 3-lane sesi ini bersih); stale bukan bukti "belum support paralel".
+
+**Usulan mekanis:** pasang signal handler (SIGTERM/SIGINT) + `try/finally` di driver run (`run_reproduce_gemma`/`localize`/`fix`) yang menulis `verdict.json` minimal `{"verdict": "interrupted", "pass_l1": false, ...}` saat run dibatalkan. Efek: (a) tak ada lagi false-live dari akarnya; (b) run yang di-kill terhitung jujur sebagai `interrupted`, bukan menyamar hidup.
+
+**Hubungan dgn fix dashboard (commit `9476fc6`):** fix itu di sisi-BACA (heuristik mtime `>300s` → `"(stale?)"`) — mitigasi, bukan akar. Kandidat ini di sisi-TULIS — menutup akar. **Komplementer**, bukan pengganti (heuristik mtime tetap berguna untuk crash keras yang tak sempat jalankan handler).
+
+**Syarat elevate:** bila run ter-interupsi jadi sering (iterasi paralel berulang / crash) ATAU bila heuristik mtime terbukti salah-cap (live dicap stale / sebaliknya) di praktik.
+
+**Status: BELUM DITERAPKAN** (kandidat, catat-only — keputusan Mirza 2026-07-21).
