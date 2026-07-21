@@ -193,6 +193,26 @@ def sort_runs_desc(runs: list[dict], campaign_dir: Path) -> list[dict]:
     return sorted(runs, key=key, reverse=True)
 
 
+def filter_runs_by_case(runs: list[dict], q: str | None) -> list[dict]:
+    """Nyaring run berdasar substring nama case (case-insensitive) — dipakai
+    kotak search dashboard (permintaan Mirza 2026-07-21). q kosong/None ->
+    daftar apa adanya (tanpa regresi). Match di case_id hasil split_run_id
+    supaya "15902"/"django-114" nyaring lintas SEMUA halaman sebelum paginasi."""
+    if not q:
+        return runs
+    needle = q.strip().lower()
+    if not needle:
+        return runs
+    out = []
+    for r in runs:
+        rid = r.get("run_id")
+        if not isinstance(rid, str) or not rid:
+            continue
+        if needle in split_run_id(rid)[0].lower():
+            out.append(r)
+    return out
+
+
 def paginate(items: list, page: int, per_page: int = 15) -> tuple[list, int]:
     """(potongan halaman, total_halaman); page 1-based, di-clamp."""
     total = max(1, -(-len(items) // per_page))
@@ -636,6 +656,14 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
 .sw{background:#8a6d1a}.sa{background:#7b1fa2}
 .summary details{margin-top:.35em}
 .summary summary{cursor:pointer;color:#7bf}
+.search{margin:.6em 0}
+.search input[type=text]{background:#000;color:#ddd;border:1px solid #444;
+    border-radius:3px;padding:.3em .5em;font:inherit;width:22em;max-width:80vw}
+.search button{background:#1a1a1a;color:#ddd;border:1px solid #444;
+    border-radius:3px;padding:.3em .9em;font:inherit;cursor:pointer;
+    margin-left:.3em}
+.search button:hover{background:#262626}
+.search .clear{margin-left:.8em;color:#888;text-decoration:none}
 </style>"""
 
 
@@ -679,7 +707,24 @@ def _verdict_summary(v) -> str:
 PAGE_SIZE = 15
 
 
-def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
+def _search_box(active: str, q: str | None) -> str:
+    """Kotak search/filter by nama case (GET form). `tab` dibawa sbg hidden
+    field supaya submit tetap di tab aktif; q terisi ulang. Tautan 'hapus'
+    muncul saat filter aktif."""
+    qval = html.escape(q or "", quote=True)
+    clear = ("<a class='clear' href='/?tab=" + urllib.parse.quote(active)
+             + "'>&times; hapus filter</a>") if q else ""
+    return ("<form class='search' method='get' action='/'>"
+            f"<input type='hidden' name='tab' value='{html.escape(active, quote=True)}'>"
+            f"<input type='text' name='q' value='{qval}' "
+            "placeholder='cari nama case (mis. 15902 atau django-114)' "
+            "autocomplete='off'>"
+            "<button type='submit'>cari</button>"
+            + clear + "</form>")
+
+
+def page_index(root: Path, tab: str | None = None, page: int = 1,
+               q: str | None = None) -> str:
     parts = ["<h1>gemma-harness log viewer</h1>",
              f"<p class='dim'>root: {html.escape(str(root))}</p>"]
     campaigns = order_campaigns(with_stage_tabs(list_campaigns(root)))
@@ -688,20 +733,35 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
         return _page("log viewer", "".join(parts))
 
     active = tab if tab in campaigns else campaigns[0]
+    # q dibawa lintas tab supaya filter berlaku di ketiga tab (permintaan Mirza)
+    qsuffix = ("&q=" + urllib.parse.quote(q)) if q else ""
     tab_links = []
     for camp in campaigns:
         cls = " class='active'" if camp == active else ""
         tab_links.append(
-            f"<a{cls} href='/?tab={urllib.parse.quote(camp)}'>"
+            f"<a{cls} href='/?tab={urllib.parse.quote(camp)}{qsuffix}'>"
             f"{html.escape(campaign_label(camp))}</a>")
     parts.append("<div class='tabs'>" + "".join(tab_links) + "</div>")
+    parts.append(_search_box(active, q))
 
     runs = sort_runs_desc(list_runs(root / active), root / active)
     if not runs:
         parts.append("<p class='dim'>(belum ada run)</p>")
         return _page("log viewer", "".join(parts))
 
-    # panel ringkasan per tahapan: dihitung dari SEMUA run (bukan halaman ini)
+    # filter by nama case SEBELUM ringkasan + paginasi -> nyaring lintas
+    # semua halaman, bukan cuma halaman aktif (permintaan Mirza 2026-07-21)
+    runs = filter_runs_by_case(runs, q)
+    if q:
+        parts.append(f"<p class='dim'>filter case: "
+                     f"<b>{html.escape(q)}</b> &middot; {len(runs)} run cocok"
+                     "</p>")
+    if not runs:
+        parts.append("<p class='dim'>(tidak ada case cocok dengan filter)</p>")
+        return _page("log viewer", "".join(parts))
+
+    # panel ringkasan per tahapan: dihitung dari run (ter)filter, bukan
+    # halaman ini — konsisten dgn tabel di bawahnya
     parts.append(render_stage_summary(
         stage_summary(root / active, active, runs)))
 
@@ -750,7 +810,7 @@ def page_index(root: Path, tab: str | None = None, page: int = 1) -> str:
     if total_pages > 1:
         nav = []
         page = max(1, min(page, total_pages))
-        base = "/?tab=" + urllib.parse.quote(active) + "&page="
+        base = ("/?tab=" + urllib.parse.quote(active) + qsuffix + "&page=")
         if page > 1:
             nav.append(f"<a href='{base}{page - 1}'>&laquo; lebih baru</a>")
         nav.append(f"<span class='dim'>hal {page}/{total_pages}</span>")
@@ -887,7 +947,12 @@ def make_handler(root: Path):
                     page = int((qs.get("page") or ["1"])[0])
                 except ValueError:
                     page = 1
-                self._send_html(page_index(root, tab=tab, page=page))
+                # q = search bebas (nama case); tak dipakai sbg path -> cukup
+                # di-escape saat render. Dipangkas agar tak jadi query raksasa.
+                q = (qs.get("q") or [None])[0]
+                if q is not None:
+                    q = q[:100]
+                self._send_html(page_index(root, tab=tab, page=page, q=q))
             elif parsed.path == "/run":
                 camp = (qs.get("c") or [""])[0]
                 rid = (qs.get("r") or [""])[0]
