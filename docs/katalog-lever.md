@@ -3768,3 +3768,22 @@ Komplementer dgn watcher (watcher = intra-run; a/b = antar-run).
 **Syarat elevate:** bila run ter-interupsi jadi sering (iterasi paralel berulang / crash) ATAU bila heuristik mtime terbukti salah-cap (live dicap stale / sebaliknya) di praktik.
 
 **Status: BELUM DITERAPKAN** (kandidat, catat-only — keputusan Mirza 2026-07-21).
+
+---
+
+## Kandidat 2026-07-21 (bot-02) — cegah wrong-file LOCALIZE lolos ke FIX (LV Kelas-A / akar-LOCALIZE) TANPA membocorkan gold
+
+**Gejala.** `django-13925`: LOCALIZE lolos gate mekanis (`pass_l1=True` + `candidates.md`) → sah masuk FIX (gold-blind), TAPI `gold_eval.file_match=False` — model nunjuk `model_checks.py`+`options.py`, gold-nya `base.py` (tak masuk kandidat). Dashboard: nongol di f-dev (62) tapi FAIL di panel l-dev (61) — gap 1 case = 13925. Bakal pasti FAIL VERIFY (fix di file salah). Instans lain terkatalog: **11797, 13158** (Kelas-A backlog). *Diaborsi+dihapus dari f-dev atas perintah Mirza; 62→61 konsisten.*
+
+**Ketegangan prinsip (WAJIB dijaga).** "wrong-file" hanya terukur via GOLD. Pipeline produk R→L→F **gold-blind by design** (prinsip §3, SOP §0.4). **DILARANG** menaruh cek `file_match`-vs-gold di gate FIX produk — itu membocorkan kunci jawaban ke loop model & merusak validitas eval. Analogi: ujian buku-tertutup tak boleh menyelundupkan kunci ke ruang ujian.
+
+**Keputusan Mirza (2026-07-21): tempuh 1+2 (bukan cek-gold di gate produk).**
+
+- **(1) Prune di level ORKESTRASI (bukan gate produk).** Batch runner/`eval` — yang boleh pegang gold DI LUAR loop model — skip menjalankan FIX utk localize yang gold-eval-nya sudah `file_match=False`. Hemat compute dev. **GUARD KRITIS:** ini mengubah semantik — statistik FIX jadi diukur hanya di case localize-benar (mengembang). **Papan skor end-to-end WAJIB tetap menghitung wrong-file sebagai VERIFY-fail** (jangan menipu diri). Wajib dilabeli `skipped-fix: localize-miss`.
+- **(2) Perkuat gate LOCALIZE yang TETAP blind.** Cross-check file yang di-localize vs file yang disentuh `repro.py` model sendiri (sinyal blind, bukan gold): LOCALIZE yang menunjuk file di luar himpunan yang repro-nya jalankan/sentuh = mencurigakan → tolak/flag. Menaikkan recall LOCALIZE tanpa gold. **Tak deterministik** (tak menangkap semua wrong-file, mis. bila repro kebetulan menyentuh file yang sama).
+
+**Root:** (1) = efisiensi-orkestrasi (bukan akar kualitas). (2) = **akar-LOCALIZE recall** (menyerang sumber Kelas-A). Keduanya komplementer; (2) fix kualitas jangka panjang, (1) hemat compute sementara.
+
+**Syarat elevate / catatan implementasi:** (2) butuh definisi "file disentuh repro" yang jelas (parse `[exec]` paths / import statis repro.py) + TDD; risiko false-reject bila repro minimal. (1) butuh titik-sisip di `run_rlfv_batch`/`eval` + label + jaminan papan skor tak terpengaruh.
+
+**Status: BELUM DITERAPKAN** (kandidat, catat-only — default disiplin "lever: catat, jangan terapkan"; menunggu instruksi eksplisit implement dari Mirza).
