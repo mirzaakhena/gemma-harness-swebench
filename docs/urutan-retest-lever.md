@@ -82,6 +82,56 @@ taruhan unlock terbaik (R8 → 14580, harness murni) + klaster R-4 won't-flip (R
 case). Contoh replan yang jujur: **cek dilakukan, peta dikonfirmasi tetap** (bukan
 tiap data mengubah rencana).
 
+### §-A0c — DISAMBIGUASI EMPIRIS 13230 (bot-03 n=3) — prediksi bot-04 TERBANTAH, temuan STOKASTISITAS FIX
+
+**Prediksiku (§-A0: "re-run G1 stabil-merah byte-identik antar-run = drift-rezim") DIBANTAH
+oleh data bot-03.** 13230 di-re-run n=3 di rezim IDENTIK (kini) → **3 trajektori beda
+total**: r2 no-flip (patch 14685B), r3 no-flip (attempt-1 kosong 0B), r4 flip-L1 tapi
+L2 katastrofik (F2P `test_rss2_feed` fail + 23 P2P regresi); md5 attempt beda antar-sampel.
+**Resolve-rate 13230 rezim-kini = 0/3, tapi BUKAN deterministik.** Aku salah menebak
+"byte-identik"; bot-03 benar secara empiris.
+
+**Kesimpulan INTI-ku (13230-fall BUKAN regresi lever) TETAP, malah MENGUAT:** variansnya
+**intrinsik** (muncul antar-rerun di rezim identik, lever tak menyentuh seed/model). Hijau
+historis r1 = satu draw beruntung; merah batch r2 = satu draw sial. Mekanisme = **stokastisitas
+FIX**, bukan drift-deterministik (dan bukan lever). *(bot-03 juga mengoreksi diri: "R5 fired
+20×"-nya = artefak grep kata `inject`; kami konvergen bahwa R5 tak ter-wire ke FIX.)*
+
+**Rekonsiliasi dengan 14411 (temp-0 byte-identik):** temp-0 greedy ≈reproducible untuk
+loop DEGENERAT PENDEK (REPRODUCE 14411 = fixed-point ketat) TAPI **stokastik untuk generasi
+PANJANG (FIX)** — di vLLM shared, continuous-batching bikin urutan reduksi floating-point
+beda per-request → argmax bisa beda di near-tie; makin panjang generasi, makin banyak titik
+divergensi. Jadi asumsi "temp-0 = deterministik" **hanya valid untuk REPRODUCE pendek**.
+
+### §-A0d — PROTOKOL UKUR BERBASIS-RATE (WAJIB sebelum G2; validasi empiris §A0)
+
+Konsekuensi stokastisitas FIX (bukti: 13230 {3 trajektori}, kanari 15790 {hijau↔merah};
+**2 dari 5 kanari GOYANG di rezim identik**):
+
+1. **Vonis per-case single-run TIDAK reliable** — termasuk papan skor origin R1 batch-1
+   (semua single-run). "0/4 unlock" **bukan bukti case tak-terpecahkan**; 13230 sendiri
+   membuktikan loop BISA hasilkan patch (r4 flip-L1) secara stokastik. Angka unlock G2
+   single-run akan sama noisy.
+2. **Ukur RESOLVE-RATE k/n, bukan biner.** n≥3 minimum (bahkan n=2 kurang — 15790 tak
+   sepakat dgn dirinya). Lever "unlock" = **menaikkan resolve-rate** (mis. 0/5 → 3/5),
+   bukan satu flip. Kanari "regresi" = **rate turun material**, bukan satu draw merah.
+3. **Definisi "solved" (perlu keputusan Mirza):** usul lapor DUA — optimistik
+   **pass@n≥1** (resolve ≥1× dari n) dan robust **majority ≥⌈n/2⌉**. Target 50-60/103
+   dinilai dengan threshold yang disepakati, bukan single-draw. Baseline "40/103" pun
+   single-draw → known-noisy, pakai sebagai kompas.
+4. **Kanari sbg detektor-regresi harus rate-based** — kanari single-run tak bisa jadi
+   pagar (2/5 goyang). Kanari valid = rate-drop lintas n≥3.
+
+**Implikasi lever (bukan cuma ukur):** (a) trigger R5 "reply byte-identik" TAK akan
+menyala di FIX (reply FIX bervariasi — 13230 thrashing dgn reply beda-beda, bukan identik);
+port R5 ke FIX butuh trigger LAIN (mis. signature-error berulang / no-diff berulang), bukan
+byte-identity. (b) Premis R9 "rerun byte-identik = 0 info" **hanya benar untuk REPRODUCE**;
+di FIX rerun sudah bervariasi sendiri.
+
+**Rekomendasi G2:** JANGAN mulai G2 sampai (i) protokol rate disepakati Mirza, (ii)
+batch-1 R1 origins di-re-run n≥3 utk resolve-rate riil (0/4 single-run belum final).
+Kandidat KH utk bot-03: "temp-0 tak bit-reproducible untuk FIX; FIX stokastik run-to-run".
+
 ---
 
 ## §0 — Prinsip pengukuran (WAJIB dibaca sebelum menjalankan urutan)
@@ -105,8 +155,11 @@ per-gelombang.
      benar per definisi baru; tidak mengubah resolved sama sekali.
 2. **Regression set (kanari) tiap gelombang** — lesson vault (uplift2: unlock 2 case
    sulit, merusak 2 case mudah): setiap gelombang lever diuji pada case asal PLUS
-   kanari hijau-asli stabil: **11049, 15790, 15347, 13230, astropy-6938** (murah,
-   §3b-done, lintas-repo). Kanari berubah status = red flag lever.
+   kanari. **⚠ REVISI 2026-07-22 (§-A0d): kanari harus STABIL-RATE, dan diukur
+   rate-based n≥3.** Kanari lama {11049, 15790, 15347, 13230, 6938} ternyata **2 goyang**
+   (13230 0/3, 15790 hijau↔merah) di rezim identik → BUKAN pagar valid single-run.
+   Kanari-stabil terverifikasi: **11049, 15347, astropy-6938**. Kanari "regresi" =
+   resolve-rate turun material, bukan satu draw merah.
 3. **Wasit = checker L2**, bukan repro-flip (P23: false-success 20/52 bila L1
    dijadikan wasit). Budget dikontrol saat klaim lift (lesson uplift2-vs-budget).
 4. **Label rezim per run:** catat commit harness + lever aktif + injeksi on/off di
