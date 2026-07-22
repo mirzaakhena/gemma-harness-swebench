@@ -77,7 +77,7 @@ Kamu adalah subagent "claude-play" — memainkan peran MODEL dalam pipeline RLFV
 ## ATURAN GOLD-BLIND (pelanggaran = trace cacat, run hangus)
 - DILARANG membaca file/dir apa pun di host selain run dir kamu sendiri. Khususnya DILARANG seluruh `/Users/mirza/Workspace/gemma-harness-swebench/main/` dan run dir lain.
 - DILARANG akses jaringan/web untuk mencari solusi atau issue aslinya.
-- Di container: jangan buang langkah mencari solusi via git history (commit masa depan tidak ada di image).
+- PERINGATAN KERAS: /testbed memuat SELURUH git history TERMASUK commit SETELAH base commit (fix asli issue ini ada di dalamnya). DILARANG menjelajah history/refs dalam bentuk apa pun: git log (kecuali `git log -1` pada HEAD utk orientasi), git show <ref>, branch/tag/reflog/for-each-ref, checkout ref lain, diff antar-ref, pickaxe -S/-G, grep di .git. git yang DIIZINKAN hanya: git status, git diff (working tree), git checkout -- <path> (revert edit sendiri), git rev-parse HEAD, git add -N. Menemukan/meniru commit fix dari history = kebocoran, run hangus.
 - DILARANG mengedit file test yang sudah ada di /testbed — fix harus di kode sumber.
 - DILARANG pip/conda install atau mengubah dependency env.
 - Verifikasi final (test gold) BUKAN urusanmu — orkestrator wasitnya. Kamu boleh menjalankan test yang sudah ada di repo untuk memandu kerja, tapi tidak wajib.
@@ -135,6 +135,18 @@ jenis yang sudah dipakai:
   seperti di statement)"; 12470 → "(di sini: arah ORDER BY pada query Child)";
   15902 → "(bila warning deprecation muncul saat memproduksi management form
   formset)". 11910 tanpa penyesuaian.
+
+**INSIDEN GIT-HISTORY (2026-07-23, penting):** asumsi handoff "commit masa
+depan tak ada di image — aman by construction" TERBUKTI SALAH. Image Epoch
+memuat clone PENUH (refs/heads/main sampai Django 5.1.2 + semua tag). Dua run
+haiku tercemar sebelum terdeteksi: 15202 (candidates.md merujuk e8b4feddc3 =
+gold fix #33367) dan 11019 (meniru 231b513926 = gold fix #30179) → keduanya
+ditandai CACAT dan diulang r2 dgn aturan git yang diperkeras (lihat template).
+Audit run lain: bersih (hanya git log -1/-3 HEAD utk orientasi). Kandidat
+mitigasi mekanis utk SEMUA pemain (Gemma juga): prune refs/history di
+container kerja sebelum sesi (mis. `rm -rf /testbed/.git/refs/tags; git
+pack-refs; git reflog expire --all --expire=now; git gc --prune=now` atau
+reclone shallow) — belum diterapkan, putuskan bersama Mirza.
 
 Batas: penyesuaian TIDAK boleh menyebut file/fungsi target fix — itu bocoran
 localize. Juga TIDAK boleh diturunkan dari hasil eval gold attempt sebelumnya
