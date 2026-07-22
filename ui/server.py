@@ -532,18 +532,6 @@ def _pct(x: int, n: int) -> str:
     return f"{round(100 * x / n)}%" if n else "0%"
 
 
-def _stage_legend(s: dict) -> str:
-    """Teks legenda status (dipindah dari tampilan langsung ke modal '[info]',
-    permintaan Mirza 2026-07-21). Baris WAIT/ANOMALY hanya bila relevan."""
-    return ("PASS = pernah qualified (&ge;1 run); "
-            "FAIL = tak pernah qualified, alasan dari run terbaru"
-            + ("; ⏳ WAIT = product-pass, menunggu VERIFY"
-               if s.get("wait") else "")
-            + ("; ⚠️ ANOMALY = product FAIL tapi SWE-bench resolved "
-               "(kontradiksi sinyal, autopsi manual)"
-               if s.get("anomaly") else ""))
-
-
 def _stat_card(num_html: str, label: str) -> str:
     """Satu kartu statistik panel ringkasan: angka besar (+ikon) di atas,
     label kecil di bawah (permintaan Mirza 2026-07-22)."""
@@ -552,10 +540,11 @@ def _stat_card(num_html: str, label: str) -> str:
 
 
 def render_stage_summary(s: dict) -> str:
-    """Panel infografik: angka+persen berikut label "[info]" (klik -> modal
-    legenda) dan bar bertumpuk CSS. Rincian FAIL/ANOMALY per case sekarang
-    dibuka lewat modal saat ikon di tabel utama diklik (bukan lagi di panel);
-    daftar WAIT (menunggu VERIFY) tetap collapsible. Tanpa case -> "".
+    """Panel infografik: kartu statistik angka+persen dan bar bertumpuk
+    CSS (legenda "[info]" dibuang, permintaan Mirza 2026-07-22). Rincian
+    FAIL/ANOMALY per case dibuka lewat modal saat ikon di tabel utama
+    diklik (bukan lagi di panel); daftar WAIT (menunggu VERIFY) tetap
+    collapsible. Tanpa case -> "".
     """
     n = s["total"]
     if n == 0:
@@ -585,12 +574,7 @@ def render_stage_summary(s: dict) -> str:
                         f"style='width:{_pct(cnt, n)}'></span>")
     parts = ["<div class='summary'><div class='scards'>", "".join(cards),
              "</div>",
-             # legenda tersembunyi; isinya disalin JS ke modal saat "[info]"
-             "<div id='legendBody' style='display:none'>"
-             + _stage_legend(s) + "</div>",
-             "<div class='sbar'>", "".join(segs), "</div>",
-             "<p class='dim' style='margin:.2em 0'>"
-             "<a class='info-link' onclick='showInfo()'>[info]</a></p>"]
+             "<div class='sbar'>", "".join(segs), "</div>"]
 
     waiting = [i for i in s["items"] if i["status"] == "WAIT"]
     if waiting:
@@ -816,7 +800,7 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
 .summary p{margin:.2em 0}
 .scards{display:flex;gap:.6em;flex-wrap:wrap;margin:.1em 0 .5em}
 .scard{background:#141414;border:1px solid #333;border-radius:5px;
-       padding:.45em .95em;min-width:6.5em;text-align:center}
+       padding:.45em .95em;flex:1 1 6.5em;text-align:center}
 .scard .num{font-size:20px;font-weight:bold;color:#fff;line-height:1.2}
 .scard .lbl{color:#888;font-size:12px;margin-top:.1em}
 .sbar{display:flex;height:10px;background:#333;border-radius:3px;
@@ -832,10 +816,14 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
     border-radius:3px;padding:.3em .9em;font:inherit;cursor:pointer;
     margin-left:.3em}
 .search button:hover{background:#262626}
-.search .clear{margin-left:.8em;color:#888;text-decoration:none}
-.rfilter{margin:.5em 0;color:#aaa}
+.searchwrap{position:relative;display:inline-block}
+.searchwrap input[type=text]{padding-right:1.9em}
+.searchwrap .clearx{position:absolute;right:.5em;top:50%;
+    transform:translateY(-50%);color:#888;text-decoration:none;
+    font-size:1.1em;line-height:1}
+.searchwrap .clearx:hover{color:#fff}
+.rfilter{margin-left:1em;color:#aaa}
 .rfilter label{margin-right:.9em;cursor:pointer}
-.info-link{color:#7bf;cursor:pointer;text-decoration:underline;margin-left:.4em}
 .xbtn{background:none;border:none;color:inherit;font:inherit;cursor:pointer;
       padding:0}
 .xbtn:hover{filter:brightness(1.35)}
@@ -855,9 +843,9 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
 </style>"""
 
 
-# Modal + JS inline global (dashboard lokal, JS-on diasumsikan): satu overlay
-# reusable diisi JS untuk (a) legenda "[info]" dan (b) alasan FAIL/ANOMALY saat
-# ikon diklik; plus radio filter baris tabel utama. Tanpa library eksternal.
+# Modal + JS inline global (dashboard lokal, JS-on diasumsikan): satu
+# overlay reusable diisi JS utk alasan FAIL/ANOMALY saat ikon diklik;
+# plus radio filter baris tabel utama. Tanpa library eksternal.
 _MODAL_JS = """
 <div id="uiModal" class="modal-overlay" onclick="if(event.target===this)closeModal()">
   <div class="modal-box">
@@ -874,12 +862,6 @@ function showReason(el){
       'alasan: '+(el.getAttribute('data-case')||'');
   document.getElementById('uiModalBody').textContent=
       el.getAttribute('data-reason')||'(detail tidak terekam)';
-  _openModal();
-}
-function showInfo(){
-  document.getElementById('uiModalTitle').textContent='legenda status';
-  var b=document.getElementById('legendBody');
-  document.getElementById('uiModalBody').innerHTML=b?b.innerHTML:'';
   _openModal();
 }
 function _copyFeedback(btn){
@@ -978,46 +960,31 @@ def _verdict_summary(v) -> str:
     return str(v)
 
 
-def _search_box(active: str, q: str | None,
-                status: str | None = None) -> str:
-    """Kotak search/filter by nama case (GET form). `tab` (+`status` bila
-    aktif) dibawa sbg hidden field supaya submit tetap di tab & filter
-    status aktif; q terisi ulang. Tautan 'hapus' muncul saat filter aktif."""
+def _filter_bar(active: str, q: str | None, status: str | None) -> str:
+    """Baris filter global (di ATAS tab, permintaan Mirza 2026-07-22):
+    input nama case (tombol × di dalam input utk hapus), tombol cari,
+    radio All/PASS/FAIL/LIVE di kanannya — satu GET form."""
     qval = html.escape(q or "", quote=True)
     ssuffix = ("&status=" + urllib.parse.quote(status)) if status else ""
-    clear = ("<a class='clear' href='/?tab=" + urllib.parse.quote(active)
-             + ssuffix + "'>&times; hapus filter</a>") if q else ""
-    hidden_status = (f"<input type='hidden' name='status' "
-                     f"value='{html.escape(status, quote=True)}'>"
-                     if status else "")
-    return ("<form class='search' method='get' action='/'>"
-            f"<input type='hidden' name='tab' value='{html.escape(active, quote=True)}'>"
-            + hidden_status +
-            f"<input type='text' name='q' value='{qval}' "
-            "placeholder='cari nama case (mis. 15902 atau django-114)' "
-            "autocomplete='off'>"
-            "<button type='submit'>cari</button>"
-            + clear + "</form>")
-
-
-def _status_filter_form(active: str, q: str | None,
-                        status: str | None) -> str:
-    """Radio filter status server-side All/PASS/FAIL (permintaan Mirza
-    2026-07-22) — GET form auto-submit; tab & q dibawa hidden. Nilai
-    'All' dikirim apa adanya dan dinormalkan jadi None di handler."""
-    opts = []
-    for val in ("All", "PASS", "FAIL"):
+    clearx = ("<a class='clearx' title='hapus filter' href='/?tab="
+              + urllib.parse.quote(active) + ssuffix + "'>&times;</a>"
+              if q else "")
+    radios = []
+    for val in ("All", "PASS", "FAIL", "LIVE"):
         sel = " checked" if (status or "All") == val else ""
-        opts.append(
+        radios.append(
             f"<label><input type='radio' name='status' value='{val}'"
             f"{sel} onchange='this.form.submit()'> {val}</label>")
-    hidden = [f"<input type='hidden' name='tab' "
-              f"value='{html.escape(active, quote=True)}'>"]
-    if q:
-        hidden.append(f"<input type='hidden' name='q' "
-                      f"value='{html.escape(q, quote=True)}'>")
-    return ("<form class='rfilter' method='get' action='/'>filter: "
-            + "".join(hidden) + "".join(opts) + "</form>")
+    return ("<form class='search' method='get' action='/'>"
+            f"<input type='hidden' name='tab' "
+            f"value='{html.escape(active, quote=True)}'>"
+            "<span class='searchwrap'>"
+            f"<input type='text' name='q' value='{qval}' "
+            "placeholder='cari nama case (mis. 15902 atau django-114)' "
+            "autocomplete='off'>" + clearx + "</span>"
+            "<button type='submit'>cari</button>"
+            "<span class='rfilter'>" + "".join(radios) + "</span>"
+            "</form>")
 
 
 def _row_status_from_icon(icon: str) -> str:
@@ -1055,6 +1022,9 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
     # status dibawa lintas tab & halaman — paritas perilaku q
     # (permintaan Mirza 2026-07-22: filter global utk ketiga stage)
     ssuffix = ("&status=" + urllib.parse.quote(status)) if status else ""
+    # baris filter global — di ATAS tab karena berlaku lintas stage
+    # (permintaan Mirza 2026-07-22)
+    parts.append(_filter_bar(active, q, status))
     tab_links = []
     for camp in campaigns:
         cls = " class='active'" if camp == active else ""
@@ -1063,10 +1033,6 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
             f"{ssuffix}'>"
             f"{html.escape(campaign_label(camp))}</a>")
     parts.append("<div class='tabs'>" + "".join(tab_links) + "</div>")
-    parts.append(_search_box(active, q, status))
-    # radio filter status — server-side, berlaku ke seluruh data
-    # posisi: persis di bawah kotak search (permintaan Mirza 2026-07-22)
-    parts.append(_status_filter_form(active, q, status))
 
     runs = sort_runs_desc(list_runs(root / active), root / active)
     if not runs:
@@ -1076,10 +1042,6 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
     # filter by nama case SEBELUM ringkasan + paginasi -> nyaring lintas
     # semua halaman, bukan cuma halaman aktif (permintaan Mirza 2026-07-21)
     runs = filter_runs_by_case(runs, q)
-    if q:
-        parts.append(f"<p class='dim'>filter case: "
-                     f"<b>{html.escape(q)}</b> &middot; {len(runs)} run cocok"
-                     "</p>")
     if not runs:
         parts.append("<p class='dim'>(tidak ada case cocok dengan filter)</p>")
         return _page("log viewer", "".join(parts))
@@ -1108,19 +1070,23 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
             two_status = case_status(active, run_dir)
             icon = status_icon(two_status["status"])
         has_verdict = vpath.is_file()
-        if not has_verdict and run_liveness(run_dir) == "stale":
-            # marker STALE (dibunuh/ditinggalkan) — beda dari run live
-            # (ikon kosong) & dari pass/fail (permintaan Mirza 2026-07-22)
-            icon = "➖ "
+        if not has_verdict:
+            live = run_liveness(run_dir) == "live"
+            if not live:
+                # marker STALE (dibunuh/ditinggalkan) — beda dari run
+                # live (ikon kosong) & pass/fail (Mirza 2026-07-22)
+                icon = "➖ "
+            # run hidup -> status LIVE (radio filter LIVE, Mirza
+            # 2026-07-22); stale ikut WAIT via ikon ➖
+            row_status = "LIVE" if live else "WAIT"
+        else:
+            row_status = _row_status_from_icon(icon)
         row_meta.append({"rid": rid, "vtext": vtext, "icon": icon,
                          "has_verdict": has_verdict,
-                         "status": _row_status_from_icon(icon)})
+                         "status": row_status})
 
     if status:
         row_meta = [m for m in row_meta if m["status"] == status]
-        parts.append(f"<p class='dim'>filter status: "
-                     f"<b>{html.escape(status)}</b> &middot; "
-                     f"{len(row_meta)} run cocok</p>")
         if not row_meta:
             parts.append("<p class='dim'>(tidak ada run dengan status "
                          "ini)</p>")
@@ -1379,7 +1345,7 @@ def make_handler(root: Path):
                 if q is not None:
                     q = q[:100]
                 status = (qs.get("status") or [None])[0]
-                if status not in ("PASS", "FAIL"):
+                if status not in ("PASS", "FAIL", "LIVE"):
                     status = None   # "All"/nilai lain -> tanpa filter
                 self._send_html(page_index(root, tab=tab, page=page, q=q,
                                            status=status))

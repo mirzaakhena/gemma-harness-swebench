@@ -343,7 +343,7 @@ def test_page_index_status_filter_across_pages(tmp_path):
                pass_l1=True, started=f"2026-07-02T10:0{i}:00+07:00")
     out = page_index(tmp_path, tab="r-dev", page=1, status="FAIL")
     assert "okcase-" not in out
-    assert "16 run cocok" in out
+    # baris info "filter status: ... run cocok" dihapus (Mirza 2026-07-22)
     assert "hal 1/2" in out               # paging ikut set terfilter
     page2 = page_index(tmp_path, tab="r-dev", page=2, status="FAIL")
     assert "failcase-" in page2 and "okcase-" not in page2
@@ -412,9 +412,10 @@ def test_render_stage_summary_cards_markup():
     assert "<div class='num'>4</div><div class='lbl'>cases</div>" in out
     assert "✅ 3" in out and "PASS 75%" in out
     assert "❌ 1" in out and "FAIL 25%" in out
-    # bar proporsi + [info] tetap
+    # bar proporsi tetap; "[info]" + legenda modal dibuang (Mirza
+    # 2026-07-22)
     assert "class='sbar'" in out and "width:75%" in out
-    assert "[info]" in out and "showInfo()" in out
+    assert "[info]" not in out and "showInfo" not in out
 
 
 def test_render_stage_summary_cards_wait_only_when_present():
@@ -439,7 +440,10 @@ def test_render_stage_summary_cards_wait_only_when_present():
     assert "⏳ 1" in out2 and "WAIT 50%" in out2
 
 
-def test_page_index_radio_directly_below_search(tmp_path):
+def test_page_index_radio_inside_search_above_summary(tmp_path):
+    # radio kini menyatu DI DALAM form search (bukan lagi form terpisah
+    # di bawahnya) — search (dgn radio) tetap tampil sebelum panel
+    # ringkasan (permintaan Mirza 2026-07-22)
     from ui.server import page_index
     mk_run(tmp_path, "r-dev", "case-a", "r1", verdict="pass",
            pass_l1=True)
@@ -463,3 +467,66 @@ def test_render_stage_summary_fail_zero_card_still_shown():
     out = render_stage_summary(s)
     assert "❌ 0" in out and "FAIL 0%" in out
     assert "✅ 2" in out and "PASS 100%" in out
+
+
+# --- re-layout filter bar global + LIVE (Mirza 2026-07-22) -----------------
+
+def test_page_index_filter_bar_above_tabs(tmp_path):
+    from ui.server import page_index
+    mk_run(tmp_path, "r-dev", "case-a", "r1", verdict="pass",
+           pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev")
+    assert out.index("class='search'") < out.index("class='tabs'")
+    # radio menyatu di form search (kanan tombol cari), tanpa "filter:"
+    assert out.index("class='rfilter'") > out.index("class='search'")
+    # label "filter: " (prefix _status_filter_form lama) sudah hilang;
+    # dicek via pola persis form lama, bukan substring "filter:" polos
+    # -> CSS ".xbtn:hover{filter:brightness(...)}" tetap sah & tak boleh
+    # jadi false-positive (Mirza 2026-07-22)
+    assert "action='/'>filter: " not in out
+
+
+def test_page_index_clearx_inside_input(tmp_path):
+    from ui.server import page_index
+    mk_run(tmp_path, "r-dev", "case-a", "r1", verdict="pass",
+           pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev", q="case-a")
+    # class='clearx' baru ada, tautan visible "&times; hapus filter" lama
+    # (class='clear') sudah hilang; title tooltip 'hapus filter' pada
+    # tombol × yang baru tetap boleh ada (aksesibilitas, sesuai spec)
+    assert "class='clearx'" in out
+    assert "class='clear'" not in out
+    assert "&times; hapus filter</a>" not in out
+    tanpa_q = page_index(tmp_path, tab="r-dev")
+    assert "class='clearx'" not in tanpa_q
+
+
+def test_page_index_no_filter_info_lines(tmp_path):
+    from ui.server import page_index
+    mk_run(tmp_path, "r-dev", "case-a", "r1", verdict="pass",
+           pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev", q="case-a", status="PASS")
+    assert "run cocok" not in out
+
+
+def test_page_index_live_filter(tmp_path):
+    from ui.server import page_index
+    # run tanpa verdict.json: mk_run baru menulis events.jsonl -> mtime
+    # sekarang -> liveness "live"
+    mk_run(tmp_path, "r-dev", "case-live", "r1")
+    mk_run(tmp_path, "r-dev", "case-done", "r1", verdict="pass",
+           pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev", status="LIVE")
+    assert "case-live" in out and "case-done" not in out
+    assert 'data-status="LIVE"' in out
+    assert "value='LIVE' checked" in out
+
+
+def test_render_stage_summary_no_info_no_legend():
+    from ui.server import render_stage_summary
+    s = {"total": 1, "pass": 1, "fail": 0, "unknown": 0,
+         "items": [{"case": "a", "rerun": "r1", "status": "PASS",
+                    "category": "pass", "reasons": []}]}
+    out = render_stage_summary(s)
+    assert "[info]" not in out and "legendBody" not in out
+    assert "showInfo" not in out

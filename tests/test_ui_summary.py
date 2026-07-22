@@ -348,11 +348,14 @@ def test_render_stage_summary_text_bar_and_info():
     assert "class='sbar'" in out and "width:75%" in out  # bar bertumpuk CSS
     # rincian FAIL/ANOMALY tak lagi di panel (pindah ke modal ikon tabel utama)
     assert "rincian FAIL" not in out
-    # label [info] -> buka modal legenda (permintaan Mirza 2026-07-21)
-    assert "[info]" in out and "showInfo()" in out
+    # label [info] + modal legenda dibuang (permintaan Mirza 2026-07-22)
+    assert "[info]" not in out
 
 
-def test_render_stage_summary_labels_ever_qualified_definition():
+def test_render_stage_summary_no_legend_definition_in_panel():
+    # legenda "pernah qualified" dibuang by design bersama modal
+    # "[info]"/legendBody (Mirza 2026-07-22) — definisi status tak lagi
+    # ditampilkan di panel maupun disalin ke modal manapun
     s = {"total": 2, "pass": 1, "fail": 1, "unknown": 0,
          "items": [
              {"case": "case-a", "rerun": "r1", "status": "PASS",
@@ -361,7 +364,8 @@ def test_render_stage_summary_labels_ever_qualified_definition():
               "category": "fail", "reasons": []},
          ]}
     out = render_stage_summary(s)
-    assert "pernah qualified" in out  # definisi terbaca di panel
+    assert "pernah qualified" not in out
+    assert "legendBody" not in out
 
 
 def test_render_stage_summary_no_fail_details_table_in_panel():
@@ -483,13 +487,15 @@ def test_page_index_has_row_radio_filter(tmp_path):
     assert 'data-status="PASS"' in out
 
 
-def test_page_index_info_label_opens_legend_modal(tmp_path):
+def test_page_index_no_info_legend_modal(tmp_path):
+    # tombol "[info]" + modal legenda dibuang dari page_index (Mirza
+    # 2026-07-22) — dulu tes ini memverifikasi modal ADA, sekarang
+    # memverifikasi fitur itu memang sudah tidak ada (by design)
     _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "pass"},
             pass_l1=True)
     out = page_index(tmp_path, tab="r-dev")
-    # [info] clickable + legenda tersembunyi (isi lama) tersedia utk modal
-    assert "[info]" in out and "showInfo()" in out
-    assert "legendBody" in out and "pernah qualified" in out
+    assert "[info]" not in out and "showInfo" not in out
+    assert "legendBody" not in out and "pernah qualified" not in out
 
 
 def test_page_index_fail_icon_carries_case_reason(tmp_path):
