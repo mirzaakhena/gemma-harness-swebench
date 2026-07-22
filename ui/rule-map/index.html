@@ -1,0 +1,2038 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peta Rule Harness — gemma-harness-swebench</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#1a1d21; --muted:#5b6570;
+    --line:#e3e6ea; --line2:#eef0f3;
+    --accent:#2f6feb; --accent-soft:#eaf1fe;
+    --green:#1f9d55; --green-soft:#e5f5ec; --green-line:#bfe6cf;
+    --blue:#2f6feb; --blue-soft:#e8f0fe; --blue-line:#c6dafc;
+    --amber:#b7791f; --amber-soft:#fdf3e2; --amber-line:#f0d8a8;
+    --red:#c53030; --red-soft:#fdecec; --red-line:#f3c4c4;
+    --purple:#7c3aed; --purple-soft:#f1eafe; --purple-line:#dcc9fb;
+    --slate:#556; --slate-soft:#eef1f4;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06);
+    --radius:12px; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --muted:#8b949e;
+      --line:#262c34; --line2:#20262e;
+      --accent:#589bff; --accent-soft:#132135;
+      --green:#3fb950; --green-soft:#0f2417; --green-line:#1f4a2c;
+      --blue:#589bff; --blue-soft:#11213a; --blue-line:#1d3a63;
+      --amber:#d9a441; --amber-soft:#2a2110; --amber-line:#4d3d16;
+      --red:#f06666; --red-soft:#2a1414; --red-line:#5a2020;
+      --purple:#b083f0; --purple-soft:#1f1633; --purple-line:#3b2a63;
+      --slate:#aab2bd; --slate-soft:#1c222b;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.4);
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent)}
+  .wrap{max-width:1240px; margin:0 auto; padding:22px 20px 80px}
+
+  /* Header */
+  header.top{margin-bottom:18px}
+  h1{font-size:22px; margin:0 0 4px; letter-spacing:-.01em}
+  .sub{color:var(--muted); font-size:13.5px; margin:0}
+  .pipeline{display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:14px 0 4px}
+  .pipe-step{font:600 12px/1 var(--mono); padding:6px 10px; border-radius:999px; background:var(--panel); border:1px solid var(--line); color:var(--ink)}
+  .pipe-arrow{color:var(--muted); font-size:13px}
+  .pipe-orch{font:600 12px/1 var(--mono); padding:6px 10px; border-radius:999px; background:var(--slate-soft); border:1px dashed var(--line); color:var(--muted)}
+  .disclaimer{
+    margin-top:14px; padding:10px 13px; border-radius:10px;
+    background:var(--amber-soft); border:1px solid var(--amber-line); color:var(--ink);
+    font-size:13px; display:flex; gap:9px; align-items:flex-start;
+  }
+  .disclaimer b{color:var(--amber)}
+
+  /* Controls */
+  .controls{
+    position:sticky; top:0; z-index:20; background:var(--bg);
+    padding:14px 0 12px; margin-top:14px; border-bottom:1px solid var(--line);
+    display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center;
+  }
+  .search{flex:1 1 240px; min-width:200px; position:relative}
+  .search input{
+    width:100%; padding:9px 12px 9px 34px; border-radius:9px; border:1px solid var(--line);
+    background:var(--panel); color:var(--ink); font-size:14px; outline:none;
+  }
+  .search input:focus{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
+  .search svg{position:absolute; left:10px; top:50%; transform:translateY(-50%); opacity:.5}
+  .seg{display:inline-flex; background:var(--panel); border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  .seg button{
+    border:0; background:transparent; color:var(--muted); font:600 13px/1 inherit;
+    padding:8px 12px; cursor:pointer; white-space:nowrap;
+  }
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:var(--accent-soft); color:var(--accent)}
+  .seg-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-right:2px}
+  .grp{display:flex; align-items:center; gap:7px}
+
+  /* Summary */
+  .summary{display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 6px}
+  .stat{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:9px 13px; display:flex; align-items:center; gap:8px; font-size:13px;
+  }
+  .stat b{font-size:16px}
+  .dot{width:9px; height:9px; border-radius:50%; display:inline-block}
+  .dot.g{background:var(--green)} .dot.b{background:var(--blue)}
+
+  /* Phase sections */
+  .phase{margin-top:26px}
+  .phase-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:4px}
+  .phase-head h2{margin:0; font-size:16px; letter-spacing:.01em}
+  .phase-tag{font:700 11px/1 var(--mono); padding:4px 8px; border-radius:6px; background:var(--accent-soft); color:var(--accent)}
+  .phase-count{color:var(--muted); font-size:12.5px}
+  .phase-desc{color:var(--muted); font-size:13px; margin:2px 0 12px; max-width:80ch}
+  .phase.orch .phase-tag{background:var(--slate-soft); color:var(--slate)}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:11px}
+
+  /* Card */
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:13px 13px 12px; cursor:pointer; position:relative; transition:transform .08s ease, box-shadow .12s ease, border-color .12s ease;
+    display:flex; flex-direction:column; gap:8px; min-height:96px;
+  }
+  .card:hover{transform:translateY(-2px); box-shadow:var(--shadow); border-color:var(--accent)}
+  .card.mekanik{border-left:3px solid var(--slate)}
+  .card.lever{border-left:3px solid var(--purple)}
+  .card-top{display:flex; align-items:center; gap:7px}
+  .rule-id{font:700 11px/1 var(--mono); color:var(--muted); background:var(--line2); padding:3px 6px; border-radius:5px}
+  .card h3{margin:0; font-size:14px; line-height:1.35; font-weight:600}
+  .card .what{color:var(--muted); font-size:12.5px; line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .card-foot{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:auto}
+
+  /* Badges */
+  .badge{font:600 11px/1 inherit; padding:4px 8px; border-radius:999px; display:inline-flex; align-items:center; gap:4px; white-space:nowrap}
+  .badge.st-terpasang{background:var(--green-soft); color:var(--green); border:1px solid var(--green-line)}
+  .badge.st-direkomendasikan{background:var(--blue-soft); color:var(--blue); border:1px solid var(--blue-line)}
+  .badge.st-ditolak{background:var(--red-soft); color:var(--red); border:1px solid var(--red-line)}
+  .badge.layer{background:transparent; color:var(--muted); border:1px solid var(--line)}
+  .badge.mk{cursor:help}
+  .badge.mk-terpasang-tapi-gugur{background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber-line)}
+  .badge.mk-parsial-fase{background:var(--purple-soft); color:var(--purple); border:1px solid var(--purple-line)}
+  .badge.mk-bug-terbuka{background:var(--red-soft); color:var(--red); border:1px solid var(--red-line)}
+  .badge.mk-entri-katalog-stale{background:var(--slate-soft); color:var(--slate); border:1px solid var(--line)}
+  .empty{color:var(--muted); font-size:13px; padding:10px 2px}
+
+  /* Drawer */
+  .scrim{position:fixed; inset:0; background:rgba(10,14,20,.42); opacity:0; pointer-events:none; transition:opacity .16s ease; z-index:40}
+  .scrim.open{opacity:1; pointer-events:auto}
+  .drawer{
+    position:fixed; top:0; right:0; height:100%; width:min(560px,94vw); background:var(--panel);
+    border-left:1px solid var(--line); box-shadow:-8px 0 30px rgba(16,24,40,.18);
+    transform:translateX(100%); transition:transform .2s cubic-bezier(.4,0,.2,1); z-index:41;
+    display:flex; flex-direction:column;
+  }
+  .drawer.open{transform:translateX(0)}
+  .drawer-head{padding:18px 20px 14px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--panel)}
+  .drawer-head .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .drawer-head h2{margin:8px 0 0; font-size:18px; line-height:1.3}
+  .drawer-close{margin-left:auto; border:1px solid var(--line); background:var(--panel); color:var(--muted); width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:17px; line-height:1}
+  .drawer-close:hover{color:var(--ink); border-color:var(--accent)}
+  .drawer-body{padding:6px 20px 40px; overflow-y:auto}
+  .sec{margin-top:20px}
+  .sec-label{font:700 11px/1 inherit; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:6px}
+  .sec .what-full{font-size:14.5px; line-height:1.6}
+  .story{font-size:14px; line-height:1.65; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px 14px}
+  .meta-grid{display:flex; flex-wrap:wrap; gap:7px; margin-top:11px}
+  .chip{font:600 12px/1 inherit; padding:6px 10px; border-radius:8px; background:var(--bg); border:1px solid var(--line); color:var(--ink); display:inline-flex; gap:6px; align-items:center}
+  .chip .k{color:var(--muted); font-weight:600}
+  .chip.case .k{color:var(--accent)}
+  .chip.kh .k{color:var(--purple)}
+  .chip.lv .k{color:var(--amber)}
+  .mono{font-family:var(--mono); font-size:12.5px; line-height:1.6; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:11px 13px; white-space:pre-wrap; word-break:break-word; color:var(--ink)}
+  .mono .lbl{color:var(--muted); user-select:none}
+  .marker-note{border-radius:10px; padding:11px 13px; font-size:13.5px; line-height:1.55; margin-top:9px; display:flex; gap:9px; align-items:flex-start}
+  .marker-note.terpasang-tapi-gugur{background:var(--amber-soft); border:1px solid var(--amber-line)}
+  .marker-note.parsial-fase{background:var(--purple-soft); border:1px solid var(--purple-line)}
+  .marker-note.bug-terbuka{background:var(--red-soft); border:1px solid var(--red-line)}
+  .marker-note.entri-katalog-stale{background:var(--slate-soft); border:1px solid var(--line)}
+  .marker-note .mtitle{font-weight:700; display:block; margin-bottom:2px; text-transform:capitalize}
+  .none{color:var(--muted); font-style:italic; font-size:13px}
+
+  /* Footer / legend */
+  .legend{margin-top:40px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:12.5px; line-height:1.7}
+  .legend b{color:var(--ink)}
+  .legend .li{display:flex; gap:8px; align-items:flex-start; margin:3px 0}
+  kbd{font:600 11px var(--mono); background:var(--line2); border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:2px 5px}
+  .odec{margin-top:12px; padding:11px 13px; border-radius:10px; background:var(--blue-soft); border:1px solid var(--blue-line); font-size:13px; color:var(--ink)}
+  .odec ul{margin:6px 0 0; padding-left:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Peta Rule Harness</h1>
+    <p class="sub" id="subline"></p>
+    <div class="pipeline" id="pipeline"></div>
+    <div class="disclaimer" id="disclaimer" hidden></div>
+  </header>
+
+  <div class="controls">
+    <div class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" type="search" placeholder="Cari rule: nama, id, case, cerita…  ( / untuk fokus )" autocomplete="off">
+    </div>
+    <div class="grp">
+      <span class="seg-label">Status</span>
+      <div class="seg" id="statusSeg">
+        <button data-v="terpasang" class="on">Terpasang</button>
+        <button data-v="roadmap">Roadmap</button>
+        <button data-v="all">Semua</button>
+      </div>
+    </div>
+    <div class="grp">
+      <span class="seg-label">Layer</span>
+      <div class="seg" id="layerSeg">
+        <button data-v="all" class="on">Semua</button>
+        <button data-v="mekanik-dasar">Mekanik</button>
+        <button data-v="lever-katalog">Lever</button>
+      </div>
+    </div>
+    <div class="grp">
+      <span class="seg-label">Tandai</span>
+      <div class="seg" id="markSeg">
+        <button data-v="off" class="on">Semua</button>
+        <button data-v="on">⚑ Ada catatan</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div id="board"></div>
+
+  <div class="legend" id="legend"></div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+<script>
+const DATA = {
+ "generated_context": {
+  "repo": "C:\\Users\\Mirza\\workspace\\gemma-harness-swebench\\main",
+  "generated_by": "subagent READ-ONLY (bot-04 fork)",
+  "generated_at": "2026-07-22",
+  "repo_head": "84c70e8 (Gelombang 1 applied)",
+  "pipeline": "REPRODUCE -> LOCALIZE -> FIX -> VERIFY (gold-blind untuk model; gold hanya dipakai harness/dev SETELAH model selesai)",
+  "layer_legend": {
+   "mekanik-dasar": "Rule tanpa nomor LV; tertanam sejak harness dibangun (gate mekanis, flip-test, bukti-dulu, slot diisi harness, judge, guard-tulis, dll).",
+   "lever-katalog": "Lever berkatalog dengan asal-usul case jelas: LV-01..14 (docs/katalog-lever.md), R1-R19 (docs/rekomendasi-lever-dari-taksonomi.md), atau lever L-series (L#2/L#3/L#4/L-a)."
+  },
+  "status_legend": {
+   "terpasang": "AKTIF di kode sekarang (diverifikasi ke source).",
+   "direkomendasikan": "Tercatat tapi BELUM diterapkan (catat-only).",
+   "ditolak": "Kandidat yang ditolak / gugur."
+  },
+  "verification_note": "Semua status di-verifikasi langsung ke kode 2026-07-22, bukan telan doc. Koreksi doc-vs-kode dicatat di field 'correction' bila ada.",
+  "key_corrections": [
+   "LV-09: entri utama katalog (katalog-lever.md:1011) berbunyi 'BELUM DITERAPKAN', TAPI kode + section Gelombang-1 (katalog-lever.md:4220) menunjukkan sudah terpasang via R1 (ship pipe_runtime ke FIX+LOCALIZE).",
+   "R5 no_progress watcher: terpasang TAPI HANYA di-wire ke REPRODUCE (run_reproduce_gemma.py:42,499). run_fix_gemma.py & run_localize_gemma.py TIDAK meng-import no_progress — fixed-point temp-0 di FIX/LOCALIZE tak tertangani."
+  ]
+ },
+ "phases": {
+  "REPRODUCE": "Model membuat repro.py yang mencetak REPRO_STATUS: FAIL di base commit + repro.md. Gate: 4 gate mekanis + flip-test L2 (gold).",
+  "LOCALIZE": "Model menunjuk lokasi akar (localize.md 6-slot + candidates.md >=2 file) dari pool file yang tereksekusi saat repro. Repo read-only; workspace /testbed/.pipe/.",
+  "FIX": "Harness mengiterasi kandidat; tiap attempt = 1 kandidat = sesi fresh + container baru. Model mengedit file kandidat sampai repro beku mencetak PASS. Gate = evaluator tunggal dunia segar.",
+  "VERIFY": "swebench_checker L2: grading resmi paket swebench (F2P/P2P) di container Epoch segar -> swebench_eval.json. Tidak menyentuh verdict.json / loop model.",
+  "ORCHESTRATION": "Lintas-fase: batch runner RLFV, prune orkestrasi (gold di luar loop model), dedup papan, koordinasi GPU, git-apply-check setup, eval gold dev-only, emit single-writer."
+ },
+ "rules": [
+  {
+   "id": "MD-R-evidence-first",
+   "phase": "REPRODUCE",
+   "name": "Bukti-dulu-baru-SELESAI (repro)",
+   "what": "Menolak DONE sampai model menyerahkan blok repro.md DAN driver benar-benar menyaksikan REPRO_STATUS: FAIL di run repro.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "django__django-11422 r2"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-18",
+    "story": "Lahir dari kegagalan run r2 (11422): model menyerahkan CONFIRMED-AT-BASE=yes + SELESAI padahal eksekusi repro-nya crash — konfirmasi tanpa bukti. Gate DONE kini menuntut FAIL tersaksikan dulu."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/gemma_protocol.py:55-67; harness/stages/run_reproduce_gemma.py:403-417",
+    "doc_ref": "docs/kontrak-output.md §9"
+   }
+  },
+  {
+   "id": "MD-R-self-check",
+   "phase": "REPRODUCE",
+   "name": "Ronde self-check sebelum DONE",
+   "what": "Sebelum DONE pertama diterima, driver menyisipkan pertanyaan self-check (kutip source PASS observable, buktikan skrip menjalankan jalur user, jelaskan positive-control mekanisme background).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "django__django-11422 r9"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "r9 (11422): model MENGARANG kutipan source di self-check dan driver menerimanya tanpa verifikasi. Self-check kini wajib mengarah ke deklarasi PASS_OBSERVABLE yang diverifikasi mekanis."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_reproduce_gemma.py:84-109,418-421",
+    "doc_ref": "docs/kontrak-output.md"
+   }
+  },
+  {
+   "id": "MD-R-pass-observable-verify",
+   "phase": "REPRODUCE",
+   "name": "Verifikasi mekanis PASS_OBSERVABLE",
+   "what": "Klaim PASS_OBSERVABLE diverifikasi grep -F ke source repo (exclude .pipe) ATAU harus benar-benar dicetak skrip model sendiri; kalau tidak ada, DONE ditolak dan klaim wajib dideklarasi ulang.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "11422 r9",
+     "11797 r5",
+     "r12",
+     "r14",
+     "r26"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "r9 model mengarang kutipan; r14 model deklarasi bentuk runtime sementara source simpan template %s (observable_candidates trim); r26 token hantu 'Restarting...' lolos grep karena literal ada di baris pencarian skrip sendiri (literal_emitted_by_script) + --exclude-dir=.pipe menutup self-match."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_reproduce_gemma.py:176-193,422-476; gemma_protocol.py:70-112,139-167",
+    "doc_ref": "docs/katalog-lever.md (LV-07 terkait, BELUM)"
+   }
+  },
+  {
+   "id": "MD-R-fresh-world-verdict",
+   "phase": "REPRODUCE",
+   "name": "Vonis repro dari dunia segar (mid-loop)",
+   "what": "Setiap eksekusi repro.py di loop divonis dari container segar tanpa patch (fresh_sandbox_output), bukan dari state container kerja — feedback mid-loop = kebenaran yang sama dengan gate.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Keputusan Mirza: vonis repro SELALU dari dunia segar agar state bengkel (edit model, file scaffold) tak menipu vonis."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_reproduce_gemma.py:231-246,346-357",
+    "doc_ref": "docs/kontrak-output.md §9"
+   }
+  },
+  {
+   "id": "MD-R-fresh-pair-precheck",
+   "phase": "REPRODUCE",
+   "name": "Pre-check pair 2x sandbox segar saat DONE",
+   "what": "Saat DONE, repro.py dijalankan 2x di container segar; keduanya wajib mencetak REPRO_STATUS: FAIL (exact_status) — mirror gate. Gagal -> feedback kaya + injeksi rule kontrak.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "r16",
+     "r20"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "r16 (state-dependence, 1 run cukup lolos) lalu r20 (skrip flaky: run-1 FAIL sah, run-2 diagnostik control tanpa token) — pre-check 1x lolos tapi gate 2x menangkap; pre-check disamakan 2x."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/gemma_protocol.py:271-299; run_reproduce_gemma.py:422-466",
+    "doc_ref": "docs/kontrak-output.md §9"
+   }
+  },
+  {
+   "id": "MD-R-judge",
+   "phase": "REPRODUCE",
+   "name": "Judge fresh-context (advisory)",
+   "what": "Sebelum DONE final, reviewer LLM fresh-context menilai skrip vs kontrak (REVIEW: OK/ISSUES). Advisory — vonis tetap milik gate mekanis; balasan tak ter-parse = fail-open OK.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [
+     "KH-04"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Usulan Mirza (paket hardening): satu percakapan bersih menilai skrip vs kontrak untuk menangkap repro-halusinasi. R17 mengusulkan mendemosikan judge jadi advisory penuh terhadap checkpoint observed-FAIL (BELUM)."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_reproduce_gemma.py:196-228,434-450; gemma_protocol.py:115-136",
+    "doc_ref": "docs/katalog-lever.md LV-05/LV-17"
+   }
+  },
+  {
+   "id": "MD-R-exact-status",
+   "phase": "REPRODUCE",
+   "name": "Standar token TUNGGAL baris-eksak",
+   "what": "REPRO_STATUS ditentukan dari baris eksak terakhir (^REPRO_STATUS: (PASS|FAIL)$), satu-satunya definisi 'FAIL/PASS tersaksikan' dipakai driver R & F dan gate.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Audit 2026-07-19: cek substring mid-loop vs regex pair menghasilkan dua vonis berbeda atas output yang sama (REPRO_STATUS: FAIL (Got foo...)) dan model 'berdebat' dengan harness 3 turn. exact_status menyatukan standar; token_format_note memberi tahu bila token ada tapi tak baris-eksak."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/gemma_protocol.py:237-257",
+    "doc_ref": "docs/kontrak-output.md §9"
+   }
+  },
+  {
+   "id": "MD-R-feedback-notes",
+   "phase": "REPRODUCE",
+   "name": "Nota feedback eskalatif ber-sinyal",
+   "what": "Injeksi nota kontekstual saat sinyal mekanis menyala: mixed_block_note (blok bash campur), repeated_error_note (alasan retry identik), token_format_note, next_step_nudge (FAIL disaksikan tapi repro.md belum disetor).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "r13",
+     "r21",
+     "r35"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-18",
+    "story": "r35 blok `sed && python repro.py` (perintah lain diam-diam tak jalan); r21 TypeError sama 6x (feedback traceback mentah tak mengubah perilaku); r13 loop degeneratif menulis-ulang skrip tanpa menyetor repro.md. Tiap nota menargetkan attractor spesifik."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/gemma_protocol.py:182-230,248-257,302-312",
+    "doc_ref": "docs/koreksi-hipotesis.md"
+   }
+  },
+  {
+   "id": "MD-R-rule-catalog",
+   "phase": "REPRODUCE",
+   "name": "Kontrak dua-tier + injeksi rule ber-sinyal",
+   "what": "System prompt dirampingkan: blok <!--detail:id--> tak dirender ke model, hanya di-inject verbatim (rule_catalog.inject) saat detector sinyal menyala (crash-repair, early-draft, source-pass-side, self-contained, repeatable, positive-control).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-18",
+    "story": "Keputusan Mirza: formalisasi living-checklist P24 harness lama. Katalog = system prompt itu sendiri (satu sumber kebenaran), prompt dirampingkan agar tak membebani Gemma dengan hal yang belum tentu dia hasilkan."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/rule_catalog.py:1-77; reproduce_prompt.md:3-6",
+    "doc_ref": "docs/prinsip-pengembangan.md; docs/katalog-lever.md"
+   }
+  },
+  {
+   "id": "MD-R-prompt-rules",
+   "phase": "REPRODUCE",
+   "name": "Rule kontrak prompt REPRODUCE",
+   "what": "Rule bentuk-repro di system prompt: scope-minimal-predicate, observable-behavior-change, predicate-from-witnessed-output, settle-before-trigger, positive-control, robust-scaffold, early-draft (+ detail self-contained/repeatable/faithful-setup/pass-fidelity).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "11905",
+     "11797",
+     "13220"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Kumpulan rule prompt. Bukti proyek: rule prompt NEMPEL bila hanya mengubah cara model menurunkan literal (Paket Predikat 11797/13220 0/3->3/3) tapi GAGAL bila menuntut mekanisme asing (observable-behavior 11905 0/3, warnings-capture). Karena itu enforcement kuat dipindah ke gate/injeksi."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/reproduce_prompt.md:28-131",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md §0"
+   }
+  },
+  {
+   "id": "MD-R-app-runtime",
+   "phase": "REPRODUCE",
+   "name": "pipe_runtime.App (settle/readiness mekanis)",
+   "what": "Modul pipe_runtime.py di-ship ke semua dunia eksekusi; App menangani readiness (start settles baseline watcher), re-readiness (wait_ready), visibilitas [app] echo, grace-window restart — mekanika yang berulang merusak skrip hand-rolled.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "r38"
+    ],
+    "kh_refs": [
+     "KH-10"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Pembagian kerja: model tentukan WHAT (command/ready line/predikat), modul memiliki mekanika settle/readiness. r38: pengumuman restart mendahului baris ready-nya -> grace window. LV-06 (mode one-shot run_once) & R13 mengusulkan perluasan; BELUM."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/pipe_runtime.py:29-235; run_reproduce_gemma.py:46-49,293-299; reproduce_prompt.md:58-72",
+    "doc_ref": "docs/katalog-lever.md LV-06"
+   }
+  },
+  {
+   "id": "MD-R-docker-timeout-restart",
+   "phase": "REPRODUCE",
+   "name": "Guard timeout docker_exec + restart container",
+   "what": "docker_exec yang timeout membunuh command dan me-restart container (membersihkan proses background yatim, isi disk utuh) tanpa membunuh driver.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "r7"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Pelajaran r7: repro.py yang hang (menunggu runserver tanpa batas) tidak boleh membunuh driver. R12 mengusulkan port guard ini ke driver FIX (BELUM — di FIX satu command hang mengabort seluruh run)."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_reproduce_gemma.py:136-157",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R12"
+   }
+  },
+  {
+   "id": "MD-CRLF-writefile",
+   "phase": "ORCHESTRATION",
+   "name": "docker_write_file raw bytes (guard CRLF)",
+   "what": "Tulis file model ke container pakai bytes mentah (body.replace CRLF->LF lalu encode), BUKAN text=True — mode teks Windows menerjemahkan \\n->\\r\\n ke pipe; byte \\r di file model adalah BUG.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "r15"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Bug nyata r15: pattern grep berakhiran \\r tak pernah match source LF — CRLF merusak SEMUA file tulisan model secara retroaktif ('kadang yang harus diautopsi bukan model, tapi harness'). Terpasang di driver R & F sejak awal; port ke L = R7."
+   },
+   "evidence": {
+    "code_anchor": "run_reproduce_gemma.py:160-169; run_fix_gemma.py:135-143; run_localize_gemma.py:96-105",
+    "doc_ref": "docs/kontrak-output.md §2"
+   }
+  },
+  {
+   "id": "MD-R-checkpoint",
+   "phase": "REPRODUCE",
+   "name": "Checkpoint known-good repro-first-fail",
+   "what": "Saat FAIL pertama disaksikan, versi skrip saat itu diamankan ke files/repro-first-fail.py sehingga tulisan ulang yang lebih rusak tak menghapus bukti.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Paket hardening (disetujui Mirza). LV-08 (reinstatement checkpoint setelah churn) mengusulkan MENGEMBALIKAN checkpoint ini, BELUM diterapkan — checkpoint disimpan tapi belum di-reinstate otomatis."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_reproduce_gemma.py:358-372",
+    "doc_ref": "docs/katalog-lever.md LV-08"
+   }
+  },
+  {
+   "id": "MD-R-gates",
+   "phase": "REPRODUCE",
+   "name": "Gate mekanis 4-gate REPRODUCE",
+   "what": "evaluate_gates atas 2 run sandbox segar: format repro.md 5-slot, timeout, scaffolding-error (self-contained: ModuleNotFoundError/ImproperlyConfigured), token hadir, anti-vacuous (PASS-at-base ditolak), idempotent (2 run konsisten), CONFIRMED-AT-BASE=yes.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-18",
+    "story": "Gate L1 inti stage REPRODUCE. Driver tidak memvonis; gate = penulis verdict resmi."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/reproduce_gates.py:107-166; run_repro_gates.py:84-92",
+    "doc_ref": "docs/kontrak-output.md §9"
+   }
+  },
+  {
+   "id": "MD-R-flip-test",
+   "phase": "REPRODUCE",
+   "name": "Flip-test L2 (FAIL@base -> PASS@gold)",
+   "what": "Ekuivalensi fungsional: repro qualified jika FAIL di base DAN PASS saat gold patch terpasang (1 run tambahan). Gold hanya dipakai harness SETELAH model selesai (gold-blind untuk model).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [
+     "KH-01",
+     "KH-03"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-18",
+    "story": "Keputusan Mirza 2026-07-18: repro yang valid harus flip saat bug diperbaiki gold. Wasit sesungguhnya L2 checker (P23: L1 25/52 vs L2 6/52, false-success 20). R2 memecah kegagalan flip jadi gold-wont-flip vs gold-flip-crash."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/reproduce_gates.py:71-104; run_repro_gates.py:94-114",
+    "doc_ref": "docs/kontrak-output.md §9"
+   }
+  },
+  {
+   "id": "MD-R-compose-slots",
+   "phase": "REPRODUCE",
+   "name": "Slot mekanis repro.md diisi harness",
+   "what": "compose_repro_md membuang baris model untuk REPRO COMMAND & CONFIRMED-AT-BASE lalu mengisinya dari fakta yang disaksikan driver — model tidak boleh menyetel slot mekanis.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-18",
+    "story": "Keputusan Mirza 2026-07-18: meringankan model — slot mekanis (perintah konstan + apakah FAIL tersaksikan) diisi harness, bukan diklaim model. Pola sama di FIX (compose_fix_md)."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/reproduce_gates.py:55-68",
+    "doc_ref": "docs/kontrak-output.md"
+   }
+  },
+  {
+   "id": "MD-L-write-guard",
+   "phase": "LOCALIZE",
+   "name": "Guard tulis-file /testbed/.pipe/ (repo read-only)",
+   "what": "Aksi file: HANYA boleh menulis di bawah /testbed/.pipe/ (probe/notes); tulisan di luar workspace ditolak dengan retry — repo adalah bahan bacaan, bukan tulisan.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Boundary stage LOCALIZE: scope-nya menunjuk lokasi, bukan mengedit. Guard memaksa repo tetap pristine selama L."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_localize_gemma.py:287-299",
+    "doc_ref": "docs/kontrak-output.md §10"
+   }
+  },
+  {
+   "id": "L-lever-3-trace-injection",
+   "phase": "LOCALIZE",
+   "name": "Lever L#3 — trace-injection pool",
+   "what": "repro.py dieksekusi di container segar di bawah coverage trace; himpunan file repo yang tereksekusi diinject ke pesan user pertama + candidates.md di-enforce subset pool. Gagal trace = abort (lever wajib hidup, no-silent-caps).",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11964",
+     "11797",
+     "11910 r1"
+    ],
+    "kh_refs": [],
+    "lv_ref": "L#3",
+    "decision_date": "2026-07-19",
+    "story": "VERDICT L#2: kelas eksplorasi/framing (11964, 11797) kebal rule pasif & enumerasi mekanis — file akar tak pernah masuk bidang pandang model. Obat: injeksi sinyal eksternal blind — akar yang tak tereksekusi saat repro ~ kontradiksi dgn repro yang flip-able. R8 (.pth hook) & R10 (gate L baca pool) memperkuat, BELUM."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/localize_trace.py:1-116; run_localize_gemma.py:206-274",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R8/R10"
+   }
+  },
+  {
+   "id": "L-lever-2-candidates",
+   "phase": "LOCALIZE",
+   "name": "Lever L#2 — enumerasi kandidat mekanis",
+   "what": "DONE ditahan sampai candidates.md valid: >=2 dan <=3 kandidat dari file BERBEDA, tiap kandidat ber-evidence + expectation terisi, dan file localize.md wajib salah satu kandidat.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11964",
+     "11797"
+    ],
+    "kh_refs": [],
+    "lv_ref": "L#2",
+    "decision_date": "2026-07-19",
+    "story": "Rule pasif L#1 nol efek (11964 1/3->1/3, 11797 0/3->0/3). Kepatuhan dipindah ke pagar kode ala bukti-dulu; pagar 2-3 kandidat = anti-gaming (kriteria qualified = gold in kandidat, tanpa batas atas daftar panjang mengosongkan makna shortlist)."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/localize_gates.py:59-133; run_localize_gemma.py:252-274; gemma_protocol.py:377-401",
+    "doc_ref": "docs/kontrak-output.md §10"
+   }
+  },
+  {
+   "id": "L-lever-4-probe-runtime",
+   "phase": "LOCALIZE",
+   "name": "Lever L#4 — probe_runtime helper",
+   "what": "Boilerplate framework untuk probe ber-Model (setup() in-memory DB, create_tables) dipindah ke probe_runtime.py yang di-ship ke /testbed/.pipe/ — kelas probe-crash app-registry mati by construction.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11964"
+    ],
+    "kh_refs": [],
+    "lv_ref": "L#4",
+    "decision_date": "2026-07-19",
+    "story": "Autopsi 11964: probe model gagal karena boilerplate registry app Django. Helper di-ship agar model bisa memvalidasi kandidat via probe tanpa mengulang boilerplate."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_localize_gemma.py:198-202; localize_prompt.md:64-70",
+    "doc_ref": "docs/katalog-lever.md"
+   }
+  },
+  {
+   "id": "L-lever-a-range-validation",
+   "phase": "LOCALIZE",
+   "name": "Lever L-a — validasi rentang baris saat DONE",
+   "what": "Penahan DONE atas localize.md: format 6-slot, start>=1, start<=end, span<=200 (MAX_SPAN), end<=EOF (wc -l di container) — vonis gate L1 dihitung SAAT DONE supaya model dapat retry, bukan setelah run hangus.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "12747 l-dev r1-r3"
+    ],
+    "kh_refs": [],
+    "lv_ref": "L-a/LV-P25",
+    "decision_date": "2026-07-19",
+    "story": "Baseline 12747: rentang baris melewati akhir file (380-450 pada file 445 baris; 713-844) — gate L1 memvonis SETELAH run, driver menerima DONE tanpa cek -> nol retry, run hangus. Bukti telak lever mekanis vs pasif: 12747 0/3->3/3."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_localize_gemma.py:112-155; localize_gates.py:136-163",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md §0"
+   }
+  },
+  {
+   "id": "MD-L-explore-first",
+   "phase": "LOCALIZE",
+   "name": "Eksplorasi-dulu (>=1 aksi bash)",
+   "what": "DONE ditolak bila model belum menjalankan minimal 1 aksi bash — melarang localize buta dari prior tanpa membuka kode.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Evidensi minimal: model harus benar-benar eksplorasi kode sebelum menyerahkan peta."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/gemma_protocol.py:377-401; run_localize_gemma.py:317-323",
+    "doc_ref": "docs/kontrak-output.md §10"
+   }
+  },
+  {
+   "id": "MD-L-gate",
+   "phase": "LOCALIZE",
+   "name": "Gate mekanis L1 LOCALIZE",
+   "what": "run_localize_gates memvonis localize.md di container segar: format 6-slot, file ada, rentang di dalam file, span<=MAX_SPAN. Product gold-blind — evaluasi vs gold di eval/localize_gold_eval (terpisah).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Gate L1 murni; framing Mirza: product (harness+model) gold-blind total, evaluasi kebenaran vs gold hidup di lapisan test-system."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_localize_gates.py:22-76",
+    "doc_ref": "docs/kontrak-output.md §10"
+   }
+  },
+  {
+   "id": "MD-F-candidate-iteration",
+   "phase": "FIX",
+   "name": "Harness mengiterasi kandidat (attempt = kandidat)",
+   "what": "HARNESS mengiterasi kandidat dari candidates.md (urutan tulis, tanpa prioritas); satu attempt = satu kandidat = sesi Gemma FRESH + container kerja BARU (pristine by construction, nol kontaminasi).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Spec fix-stage-design 2026-07-20: FIX mengiterasi SELURUH shortlist, jadi selama gold ada di salah satu kandidat FIX masih bisa menang. Kandidat aktif diberi scope positif; kandidat lain tak pernah disebut ke model."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_fix_gemma.py:240-263",
+    "doc_ref": "docs/superpowers/specs/2026-07-20-fix-stage-design.md §2/§3"
+   }
+  },
+  {
+   "id": "MD-F-evidence-first",
+   "phase": "FIX",
+   "name": "Bukti-dulu FIX (PASS tersaksikan + fix.md)",
+   "what": "DONE ditolak sampai driver menyaksikan repro.py mencetak REPRO_STATUS: PASS (exact_status) di container kerja DAN fix.md disetor.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Spec §4: standar tunggal 'PASS tersaksikan' = exact_status output == PASS — pola bukti-dulu yang sama dengan REPRODUCE."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/gemma_protocol.py:404-415; run_fix_gemma.py:290-321",
+    "doc_ref": "docs/superpowers/specs/2026-07-20-fix-stage-design.md §4"
+   }
+  },
+  {
+   "id": "MD-F-single-evaluator",
+   "phase": "FIX",
+   "name": "Evaluator patch tunggal (pre-check = gate)",
+   "what": "evaluate_patch_in_fresh_world adalah SATU-satunya definisi 'patch sah + flip', dipakai pre-check DONE driver DAN gate L1: static check -> git apply --check -> pair 2x PASS di dunia segar dgn repro BEKU.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [
+     "KH-02"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Prinsip Stabilisasi §4: standar tunggal cegah dua vonis berbeda atas patch yang sama. repro.py yang divonis SELALU dari artefak beku fase R — edit model atas repro di container kerja tak berpengaruh."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/fix_patch_runner.py:23-55; fix_gates.py:60-105",
+    "doc_ref": "docs/superpowers/specs/2026-07-20-fix-stage-design.md §4/§7"
+   }
+  },
+  {
+   "id": "MD-F-edit-guard",
+   "phase": "FIX",
+   "name": "Pagar edit hanya file kandidat + apply bersih",
+   "what": "Cek statis: diff non-empty, hanya menyentuh file kandidat aktif (off-candidate ditolak), patch apply bersih (git apply --check). Diff diekstrak `git add -N` dgn .pipe dikecualikan.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "12497",
+     "13447",
+     "11999"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Scope positif per attempt: fix harus hidup di file kandidat. R16 (harta vault) mencatat celah TERBUKA: off-candidate untracked non-kosong bisa lolos karena pre-check menghitung tracked-modified saja sementara ekstraksi pakai git add -N (untracked ikut) — BELUM ditutup."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/fix_gates.py:60-78; run_fix_gemma.py:171-180",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R16"
+   }
+  },
+  {
+   "id": "MD-F-fresh-pair",
+   "phase": "FIX",
+   "name": "Pair 2x PASS di dunia segar ber-patch",
+   "what": "Patch model diterapkan ke container segar dan repro beku dijalankan 2x; keduanya wajib REPRO_STATUS: PASS baris-eksak. Timeout -> verdict timeout.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Reuse mekanisme flip-test REPRODUCE; pair 2x menangkap fix flaky/state-dependent."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/fix_gates.py:86-105; fix_patch_runner.py:48-55",
+    "doc_ref": "docs/superpowers/specs/2026-07-20-fix-stage-design.md §7"
+   }
+  },
+  {
+   "id": "MD-F-compose-slots",
+   "phase": "FIX",
+   "name": "Slot mekanis fix.md diisi harness + seed lihat repro",
+   "what": "compose_fix_md membuang baris model utk FILE/CANDIDATE/REPRO lalu mengisinya dari fakta driver. Seed per attempt menyertakan ISI repro.py (P21: model melihat lembar ujiannya) + kandidat aktif saja.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Pola sama compose_repro_md — tulisan model di slot mekanis dibuang & diganti fakta yang disaksikan. P21: menampilkan repro.py agar model tahu predikat yang harus di-PASS-kan."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/fix_gates.py:143-186; run_fix_gemma.py:90-106",
+    "doc_ref": "docs/superpowers/specs/2026-07-20-fix-stage-design.md §3"
+   }
+  },
+  {
+   "id": "MD-V-swebench-checker",
+   "phase": "VERIFY",
+   "name": "Checker L2 grading resmi swebench",
+   "what": "fix.diff model dinilai grading RESMI paket swebench (get_eval_report) — test F2P+P2P di container Epoch segar -> swebench_eval.json (resolved). TIDAK menyentuh verdict.json/events.jsonl; tak pernah diumpankan ke loop model (boundary integritas).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [
+     "KH-05",
+     "KH-06"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Spec swebench-checker-l2. Wasit evaluasi lever = checker L2 bukan repro-flip (P23 false-success 20). Vonis resolved = ground truth end-to-end."
+   },
+   "evidence": {
+    "code_anchor": "eval/swebench_checker.py:107-190",
+    "doc_ref": "docs/superpowers/specs/2026-07-20-swebench-checker-l2-design.md"
+   }
+  },
+  {
+   "id": "MD-O-emit-single-writer",
+   "phase": "ORCHESTRATION",
+   "name": "Emitter single-writer + driver tak memvonis",
+   "what": "harness/emit.py adalah SATU-satunya penulis events.jsonl/verdict.json/runs.jsonl/campaign.json (whitelist verdict per fase, atomic write). Driver TIDAK pernah menulis verdict — no-progress break & crash pakai jalur emit khusus untuk hindari dua-penulis-verdict.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-18",
+    "story": "Prinsip §5: gate = penulis verdict; driver hanya emit_abort saat crash. R5 watcher memakai break (bukan emit_abort) justru agar gate yang memvonis. Whitelist verdict di emit.py wajib memuat label R2 (ValueError bila tidak)."
+   },
+   "evidence": {
+    "code_anchor": "harness/emit.py:1-137",
+    "doc_ref": "docs/kontrak-output.md; docs/prinsip-pengembangan.md §5"
+   }
+  },
+  {
+   "id": "MD-O-gpu-coord",
+   "phase": "ORCHESTRATION",
+   "name": "Koordinasi GPU (waiting==0 + no other case)",
+   "what": "Sebelum tiap pemanggilan Gemma, batch runner menunggu antrean vLLM waiting==0 DAN tidak ada container gemma-work-* case lain (parse_waiting fail-safe: tak terbaca = sibuk). --allow-concurrent bypass total (eksperimen throughput).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Jebakan #3 batch runner: vLLM dipakai bersama, tabrakan GPU. Gagal-aman ke arah menunggu."
+   },
+   "evidence": {
+    "code_anchor": "scripts/run_rlfv_batch.py:68-76,169-199",
+    "doc_ref": "docs/sop-rlfv-case-run.md"
+   }
+  },
+  {
+   "id": "MD-O-rerun-slot",
+   "phase": "ORCHESTRATION",
+   "name": "Slot rerun bebas (tak pernah rename/reuse)",
+   "what": "next_free_rerun memilih nomor rerun bebas berikutnya; batch runner TIDAK PERNAH me-rename/menghapus run dir. qualified_rerun memilih rerun QUALIFIED terakhir (pass_l1 true), bukan nomor terbesar.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Jebakan #2: run parsial pernah di-rename agar slot r1 bebas, memecah konsistensi nama folder vs run_id vs runs.jsonl."
+   },
+   "evidence": {
+    "code_anchor": "scripts/run_rlfv_batch.py:78-134",
+    "doc_ref": "docs/sop-rlfv-case-run.md"
+   }
+  },
+  {
+   "id": "MD-O-resume",
+   "phase": "ORCHESTRATION",
+   "name": "Batch aman-diulang (resume by swebench_eval)",
+   "what": "State disimpan per case; --resume (default) melewati case yang sudah punya swebench_eval.json. Batch tidak mati karena satu case (exception per-case ditangkap). Dijalankan sebagai proses OS (bebas cap tool 10 menit).",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Jebakan #1: subagent yang membungkus driver dalam satu panggilan tool kena kill di tengah run (REPRODUCE bisa 18+ menit). Script proses OS sendiri."
+   },
+   "evidence": {
+    "code_anchor": "scripts/run_rlfv_batch.py:213-217,336-396",
+    "doc_ref": "docs/sop-rlfv-case-run.md"
+   }
+  },
+  {
+   "id": "MD-O-fix-gold-eval",
+   "phase": "ORCHESTRATION",
+   "name": "Eval gold FIX (dev-only, penangkap false-PASS)",
+   "what": "eval/fix_gold_eval: file_match (file fix.diff subset file gold) + line_overlap (advisory). Menangkap run yang flip secara product tapi menyentuh file/arah berbeda dari gold (special-casing repro). Manual, tak menyentuh verdict.json.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [
+     "11620",
+     "11999",
+     "12907"
+    ],
+    "kh_refs": [
+     "KH-13",
+     "KH-14",
+     "KH-19"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-20",
+    "story": "Spec §8. LV-14/R15 mengusulkan detektor dua-arah region-hunk (subset/superset) karena line_overlap menyesatkan dua arah — BELUM diterapkan (line_overlap sekarang cuma 'ada irisan')."
+   },
+   "evidence": {
+    "code_anchor": "eval/fix_gold_eval.py:31-45",
+    "doc_ref": "docs/katalog-lever.md LV-14"
+   }
+  },
+  {
+   "id": "MD-O-localize-gold-eval",
+   "phase": "ORCHESTRATION",
+   "name": "Eval gold LOCALIZE (dev-only, qualified shortlist)",
+   "what": "eval/localize_gold_eval: ground truth = file yang disentuh gold patch. qualified = ada kandidat in file gold (shortlist-v2; fallback chosen-file-v1). file_match/line_overlap advisory. Manual, tak menyentuh verdict.json.",
+   "status": "terpasang",
+   "layer": "mekanik-dasar",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [
+     "KH-17"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-19",
+    "story": "Keputusan Mirza 2026-07-19 via buttons: kriteria qualified = ada kandidat in file gold (FIX mengiterasi shortlist). qualified dev-loop dibaca dari file ini oleh batch runner."
+   },
+   "evidence": {
+    "code_anchor": "eval/localize_gold_eval.py:65-97,118-142",
+    "doc_ref": "docs/katalog-lever.md"
+   }
+  },
+  {
+   "id": "LV-01",
+   "phase": "REPRODUCE",
+   "name": "Perketat repro uji jalur global-name-resolution",
+   "what": "Usulan memperketat repro agar benar-benar menguji jalur resolusi nama global (bukan kondisi else selalu-true).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "django__django-13660"
+    ],
+    "kh_refs": [],
+    "lv_ref": "LV-01",
+    "decision_date": null,
+    "story": "Autopsi 13660: bug dipahami benar tapi repro/predikat tidak menggigit jalur yang benar. Naik prioritas setelah LV-04 (prompt pasif) terbukti tak cukup."
+   },
+   "evidence": {
+    "code_anchor": "(belum ada di kode)",
+    "doc_ref": "docs/katalog-lever.md:39,307"
+   }
+  },
+  {
+   "id": "LV-02",
+   "phase": "FIX",
+   "name": "Validasi syntax saat driver FIX menulis file (py_compile)",
+   "what": "Usulan driver FIX memvalidasi py_compile saat model menulis file agar SyntaxError tertangkap dini.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "django__django-15851"
+    ],
+    "kh_refs": [
+     "KH-12"
+    ],
+    "lv_ref": "LV-02",
+    "decision_date": null,
+    "story": "Analog KH-12: mode gagal SyntaxError. Catatan koreksi: py_compile tak tersedia di harness (host 3.12 vs container 3.6) — sebagian besar 'syntax-fail' sebenarnya artifacts-missing, bukan SyntaxError asli."
+   },
+   "evidence": {
+    "code_anchor": "(belum ada di kode)",
+    "doc_ref": "docs/katalog-lever.md:314,336"
+   }
+  },
+  {
+   "id": "LV-03",
+   "phase": "FIX",
+   "name": "Samakan himpunan file pagar-edit vs ekstraksi diff",
+   "what": "Usulan menyamakan himpunan file yang dipakai pagar off-candidate dan yang dipakai ekstraksi fix.diff (mencegah patch off-candidate lolos).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "12497",
+     "13447",
+     "11999"
+    ],
+    "kh_refs": [],
+    "lv_ref": "LV-03",
+    "decision_date": null,
+    "story": "Celah terbuka (harta vault F-dev Akar #2): pre-check off-candidate hitung tracked-modified saja; ekstraksi diff pakai git add -N (untracked ikut). R16 adalah pendorong LV-03 ke prioritas. BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(gap: fix_gates.py:60-78 vs run_fix_gemma.py:171-180)",
+    "doc_ref": "docs/katalog-lever.md:343,362; rekomendasi R16"
+   }
+  },
+  {
+   "id": "LV-04",
+   "phase": "LOCALIZE",
+   "name": "Prompt LOCALIZE jadi kriteria-outcome",
+   "what": "Slot expectation & what di candidates.md/localize.md digeser ke kriteria-hasil (outcome) + Quality rule #6 'State the target, not the edit'. Enforcement prompt-only.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "django__django-13660"
+    ],
+    "kh_refs": [],
+    "lv_ref": "LV-04",
+    "decision_date": "2026-07-20",
+    "story": "13660 akar #1a (commit 795415f). DITERAPKAN di prompt tapi GUGUR sebagai penyelesai 13660 (checker L2 resolved=FALSE, Gemma menulis exec(cmd, {}) lagi — prompt kriteria hanya MEMBUNGKUS resep salah). Tidak di-revert: higiene kriteria-vs-resep tetap sah walau tak cukup sendiri."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/localize_prompt.md:24-26,42,76-78",
+    "doc_ref": "docs/katalog-lever.md:365-383"
+   }
+  },
+  {
+   "id": "LV-05",
+   "phase": "REPRODUCE",
+   "name": "app-runtime tak boleh batalkan bukti tersaksikan",
+   "what": "Usulan agar rule app-runtime / judge tidak menggugurkan bukti FAIL yang sudah disaksikan driver.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "django__django-13660 r1-r3"
+    ],
+    "kh_refs": [
+     "KH-04"
+    ],
+    "lv_ref": "LV-05",
+    "decision_date": null,
+    "story": "13660 3/3 run: mekanika harness (bukan bug) yang menyulitkan. Arah LV-13(a)/R17: kewajiban bukti > filter kategori — judge tak boleh membatalkan checkpoint observed-FAIL-at-base. BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(belum ada di kode)",
+    "doc_ref": "docs/katalog-lever.md:402,580; rekomendasi R17"
+   }
+  },
+  {
+   "id": "LV-06",
+   "phase": "REPRODUCE",
+   "name": "App mode one-shot + output terbaca program",
+   "what": "Usulan menambah pipe_runtime.run_once(cmd, cwd, timeout) untuk skenario non-server (one-shot), mengembalikan (exit, lines) + helper contains().",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "14752"
+    ],
+    "kh_refs": [
+     "KH-10"
+    ],
+    "lv_ref": "LV-06",
+    "decision_date": null,
+    "story": "Kelas bernama terbesar korpus: 'unexpected keyword' 33 kejadian/8 case, App one-shot 27/5 case, 'failed to become ready' 14752. ready_token WAJIB, tak ada jalur one-shot. R13 = bentuk konkret + wajib didokumentasikan di kontrak app-runtime. BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(gap: pipe_runtime.py:43-45 ready_token wajib)",
+    "doc_ref": "docs/katalog-lever.md:585,684; rekomendasi R13"
+   }
+  },
+  {
+   "id": "LV-07",
+   "phase": "REPRODUCE",
+   "name": "Kunci PASS observable ke token kanonik",
+   "what": "Usulan mengunci PASS observable ke token kanonik agar deklarasi model konsisten diverifikasi.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "r14",
+     "r26"
+    ],
+    "kh_refs": [],
+    "lv_ref": "LV-07",
+    "decision_date": null,
+    "story": "Terkait erat mekanik MD-R-pass-observable-verify yang sudah terpasang; LV-07 mengusulkan formalisasi token kanonik lebih jauh (BELUM sebagai lever terpisah)."
+   },
+   "evidence": {
+    "code_anchor": "(sebagian tercakup gemma_protocol.py:70-112)",
+    "doc_ref": "docs/katalog-lever.md:693,736"
+   }
+  },
+  {
+   "id": "LV-08",
+   "phase": "REPRODUCE",
+   "name": "Reinstatement checkpoint known-good setelah churn",
+   "what": "Usulan MENGEMBALIKAN checkpoint repro-first-fail bila model mengembara/merusak skrip setelah churn.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": "LV-08",
+    "decision_date": null,
+    "story": "Checkpoint known-good SUDAH disimpan (MD-R-checkpoint) tapi belum di-reinstate otomatis. Syarat naik: setelah LV-05 terpasang masih ada run mengembara dari checkpoint. BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(checkpoint disimpan run_reproduce_gemma.py:358-372, reinstate belum ada)",
+    "doc_ref": "docs/katalog-lever.md:748,820"
+   }
+  },
+  {
+   "id": "LV-09",
+   "phase": "FIX",
+   "name": "Container kerja FIX/LOCALIZE terima dependency repro",
+   "what": "Kirim pipe_runtime.py ke dunia kerja FIX & LOCALIZE agar repro beku ber-'from pipe_runtime import App' bisa dijalankan (bukan hanya di dunia segar gate).",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11910 r1"
+    ],
+    "kh_refs": [
+     "KH-02",
+     "KH-09"
+    ],
+    "lv_ref": "LV-09",
+    "decision_date": "2026-07-22",
+    "story": "Gap kembar: run_fix_gemma & run_localize_gemma dulu hanya menulis repro.py — repro qualified ber-App mati 'No module named pipe_runtime' di container kerja (441/588/232 kejadian 11910). Diterapkan via R1 (commit 0444b81). KOREKSI DOC: entri utama katalog (baris 1011) masih 'BELUM DITERAPKAN' tapi section Gelombang-1 (baris 4220) + kode = terpasang."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_fix_gemma.py:146-160,254; run_localize_gemma.py:192-196",
+    "doc_ref": "docs/katalog-lever.md:899,1011 (stale) vs :4220 (terpasang)"
+   }
+  },
+  {
+   "id": "LV-10",
+   "phase": "FIX",
+   "name": "Repro beku wajib divalidasi ulang FAIL di container kerja pristine",
+   "what": "Usulan memvalidasi ulang repro beku mencetak FAIL di container kerja FIX pristine sebelum model mengedit.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": "LV-10",
+    "decision_date": null,
+    "story": "Terkait erat LV-09 (dependency dunia kerja). Kandidat-ditolak #3 LV-10 (~41 run 'wrong-logic'/gold-unsatisfiable) menyatukan salah-atribusi. BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(belum ada di kode)",
+    "doc_ref": "docs/katalog-lever.md:1044,1251"
+   }
+  },
+  {
+   "id": "LV-11",
+   "phase": "FIX",
+   "name": "Repro beku benar-benar beku (read-only) selama FIX",
+   "what": "Usulan memastikan repro.py beku read-only selama fase FIX (evaluator sudah pakai repro dari dir beku, tapi edit model di container kerja tak boleh berpengaruh).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": "LV-11",
+    "decision_date": null,
+    "story": "Sebagian sudah dijamin desain (evaluate_patch_in_fresh_world memakai repro_dir beku, spec §4), tapi LV-11 mengusulkan penegakan read-only eksplisit di container kerja. BELUM sebagai lever."
+   },
+   "evidence": {
+    "code_anchor": "(desain fix_patch_runner.py:35-55 pakai repro_dir beku; read-only enforce belum)",
+    "doc_ref": "docs/katalog-lever.md:1254,1316"
+   }
+  },
+  {
+   "id": "LV-12",
+   "phase": "REPRODUCE",
+   "name": "Preferensikan repro in-process",
+   "what": "Usulan mendorong repro in-process; orkestrasi environment (subprocess/server) hanya bila perlu.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": "LV-12",
+    "decision_date": null,
+    "story": "Repro in-process yang ditolak (oleh judge/model) punya nol kemunculan qualified — model membangun backend sintetis di disk. Sengaja BELUM diusulkan sebagai perubahan (butuh hati-hati)."
+   },
+   "evidence": {
+    "code_anchor": "(belum ada di kode)",
+    "doc_ref": "docs/katalog-lever.md:1347,1392"
+   }
+  },
+  {
+   "id": "LV-13",
+   "phase": "LOCALIZE",
+   "name": "Citation-check: klaim kode wajib diverifikasi mesin",
+   "what": "Usulan memverifikasi mekanis klaim faktual model tentang kode (function/line/behavior) ke source (citation check).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": "LV-13",
+    "decision_date": null,
+    "story": "LV-13(b) disebut 'detektor gratis yang sudah setengah terpasang'. Verifikasi observable REPRODUCE (MD-R-pass-observable-verify) adalah kerabatnya, tapi citation-check umum untuk localize.md evidence BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(belum ada di kode untuk LOCALIZE evidence)",
+    "doc_ref": "docs/katalog-lever.md:1496,1611"
+   }
+  },
+  {
+   "id": "LV-14",
+   "phase": "ORCHESTRATION",
+   "name": "Detektor divergensi patch-vs-gold berhenti di file/baris",
+   "what": "Usulan detektor dua-arah region-hunk (subset patch<gold, superset patch>gold) di eval/fix_gold_eval — isi hunk dibandingkan, bukan hanya file/baris. Realm EVAL (gold-aware SAH).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11999",
+     "12907",
+     "14365",
+     "12284"
+    ],
+    "kh_refs": [
+     "KH-13",
+     "KH-14"
+    ],
+    "lv_ref": "LV-14",
+    "decision_date": null,
+    "story": "line_overlap menyesatkan dua arah (11999 superset overlap=true; 12907 rewrite overlap=false). R15 = bentuk konkret. Caveat: 12284 over-broad DALAM satu region-gold tak tertangkap mismatch-region. BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(gap: eval/fix_gold_eval.py:36-44 hanya line_overlap sederhana)",
+    "doc_ref": "docs/katalog-lever.md:1712,1914; rekomendasi R15"
+   }
+  },
+  {
+   "id": "R1",
+   "phase": "FIX",
+   "name": "R1 — kirim pipe_runtime ke dunia kerja FIX+LOCALIZE (=LV-09)",
+   "what": "Helper ship-repro mengirim pipe_runtime.py (bila ada di input repro dir) ke container kerja FIX & LOCALIZE. Implementasi konkret LV-09.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11910 r1"
+    ],
+    "kh_refs": [
+     "KH-02",
+     "KH-09"
+    ],
+    "lv_ref": "LV-09",
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit 0444b81 (bot-04). Menyerang F-4 FIX-no-flip (3 case ber-'No module named pipe_runtime' 441/588/232) + gap kembar LOCALIZE. Dunia segar gate sudah benar (repro_sandbox_runner copy kondisional)."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_fix_gemma.py:146-160; run_localize_gemma.py:192-196",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R1; katalog-lever.md:4220"
+   }
+  },
+  {
+   "id": "R2",
+   "phase": "REPRODUCE",
+   "name": "R2 — split verdict bucket REPRODUCE",
+   "what": "5 label identifikasi-gejala: repro-missing, vacuous-repro, syntax-error (derivasi grep SyntaxError, bukan py_compile), gold-wont-flip vs gold-flip-crash (grep Traceback di flip_run). Whitelist emit.py + ikon UI.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [
+     "KH-11",
+     "KH-12",
+     "KH-15"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit 8933a06. Observability yang sudah 3x menyesatkan autopsi; taksonomi §6.4: 27 run syntax-fail = 100% artifacts-missing, 0 SyntaxError asli. Koreksi: py_compile tak ada di harness."
+   },
+   "evidence": {
+    "code_anchor": "reproduce_gates.py:93-104,107-166; run_repro_gates.py:65-72,109-114; emit.py:19-30",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R2"
+   }
+  },
+  {
+   "id": "R3",
+   "phase": "REPRODUCE",
+   "name": "R3 — generalisasi format_reminder + port ke F/L",
+   "what": "Detektor has_tool_call_marker (<|tool_call) + helper terpadu no_action_feedback memilih pesan koreksi bentuk; di-port ke ketiga driver R/F/L (nol format_reminder sebelumnya di F/L).",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "14855",
+     "15902"
+    ],
+    "kh_refs": [
+     "KH-12"
+    ],
+    "lv_ref": null,
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit d592ccc. Keluarga KH-12 (R-1/R-2: 5 case x 3 rerun = 15 run terbakar 40 turn pakai protokol tool-call native tanpa fenced block). Reminder saja tak cukup (penyelamat sebenarnya R5). CATATAN NUANSA: fence-reminder (fence ada tapi tak ter-parse) tetap REPRODUCE-only; tool-call-marker reminder = ketiga driver."
+   },
+   "evidence": {
+    "code_anchor": "gemma_protocol.py:335-374; run_reproduce_gemma.py:485-494; run_localize_gemma.py:342-343; run_fix_gemma.py:366-368",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R3"
+   }
+  },
+  {
+   "id": "R4",
+   "phase": "VERIFY",
+   "name": "R4 — fix encoding checker (charmap Windows)",
+   "what": "swebench_checker menulis salinan log ber-encoding locale (errors=replace) khusus untuk grade_log; artefak asli tetap UTF-8. Menutup UnicodeDecodeError charmap saat grading.py:58 baca log non-ASCII.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "astropy-12907",
+     "astropy-14365",
+     "astropy-14995"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit 8aac0d0. V-C: 3 case astropy, pasti kambuh di base non-ASCII lain. grading.py membaca log dgn bare open() -> cp1252 Windows -> crash -> swebench_eval.json tak pernah ditulis."
+   },
+   "evidence": {
+    "code_anchor": "eval/swebench_checker.py:90-104,167-186",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R4"
+   }
+  },
+  {
+   "id": "R5",
+   "phase": "REPRODUCE",
+   "name": "R5 — no-progress watcher (fixed-point temp-0)",
+   "what": "Modul murni no_progress: trigger #1 (>=3 reply byte-identik), #2 (>=3 turn 0-aksi), #8 (turn>=15 & belum observed_fail). Aksi: inject pesan UNIK (nomor turn) lalu, bila PERSISTS, break (BUKAN emit_abort — biar gate memvonis). K=3, X=15.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "14411",
+     "15851",
+     "14855",
+     "15902",
+     "12125"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit d4c455b (bot-04). R-1/R-2/R-4/R-6 fixed-point temp-0: reply byte-identik 35+ turn. KOREKSI PENTING (temuan bot-04): watcher HANYA di-wire ke REPRODUCE — run_fix_gemma.py & run_localize_gemma.py TIDAK meng-import no_progress, jadi FIX/LOCALIZE tak terlindungi. Doc R5 anchor memang menyebut run_reproduce_gemma saja, tapi framing 'fixed-point' bisa disalahpahami lintas-fase. AMBIGU: perlu keputusan apakah R5 di-port ke F/L."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/no_progress.py:1-135; run_reproduce_gemma.py:42,322-326,496-514 (WIRED); run_fix_gemma.py & run_localize_gemma.py (TIDAK import no_progress)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md §1 R5"
+   }
+  },
+  {
+   "id": "R6",
+   "phase": "ORCHESTRATION",
+   "name": "R6 — dedup papan skor batch saat resume",
+   "what": "dedup_results per-case (last-wins) saat menyusun ringkasan resume — satu case bisa muncul >1 kali karena state di-append lintas resume/re-run. Prune tetap dihitung gagal.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "13033"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit 6aff344. Integritas angka pelaporan (bukan kelas kegagalan model). Makin relevan karena re-run pasca-repair gold + re-run tanpa-prune menambah entri ganda per case."
+   },
+   "evidence": {
+    "code_anchor": "scripts/run_rlfv_batch.py:137-148,393",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R6"
+   }
+  },
+  {
+   "id": "R7",
+   "phase": "LOCALIZE",
+   "name": "R7 — port fix CRLF ke driver LOCALIZE",
+   "what": "docker_write_file LOCALIZE menulis raw bytes (LF-only), menyamakan pola driver R/F. Menutup bug CRLF di file tulisan model fase LOCALIZE.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "r15"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit 2279cbc. Bug CRLF yang sudah diperbaiki di R & F belum diport ke L. Vault: CRLF pernah merusak SEMUA file tulisan model retroaktif."
+   },
+   "evidence": {
+    "code_anchor": "harness/stages/run_localize_gemma.py:96-105",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R7"
+   }
+  },
+  {
+   "id": "R8",
+   "phase": "LOCALIZE",
+   "name": "R8 — trace hook via .pth site-packages",
+   "what": "Usulan memindah trace hook ke .pth site-packages (dieksekusi saat site-init apa pun isi PYTHONPATH) alih-alih PYTHONPATH — tutup L-B (repro menimpa PYTHONPATH child).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "14580"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": null,
+    "story": "Koreksi subagent: follow-child trace SUDAH ada (trace_sitecustomize via PYTHONPATH). Akar 14580 sebenarnya: repro menimpa env PYTHONPATH -> child kehilangan hook. .pth menutupnya. Gelombang 2, BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(sekarang PYTHONPATH: localize_trace.py:98-107; trace_sitecustomize.py)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R8"
+   }
+  },
+  {
+   "id": "R9",
+   "phase": "REPRODUCE",
+   "name": "R9 — mechanical-trigger injection ANTAR-RERUN",
+   "what": "Usulan menyuntik konteks ke pesan user pertama rerun r(N) dari artefak r(N-1) (base-world verbatim; flip-fail HANYA directive diversity tanpa alasan gold). Deterministik.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "14411"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": null,
+    "story": "Rerun byte-identik = budget 3-rerun beli 0 informasi. Kebijakan konten STRICT Mirza 2026-07-21: base-world boleh verbatim, flip-fail tanpa alasan sama sekali (haram konten turunan gold-patch). Gelombang 2, BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(belum ada di kode)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R9"
+   }
+  },
+  {
+   "id": "R10",
+   "phase": "LOCALIZE",
+   "name": "R10 — gate L membaca trace_pool.json",
+   "what": "Usulan gate LOCALIZE membaca files/trace_pool.json dan enforce kandidat subset pool juga di gate (bukan hanya jalur DONE driver) — tutup run yang habis max-turns tanpa DONE tapi menulis localize.md.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": null,
+    "story": "Lubang nyata: run L yang habis max-turns tanpa DONE tetap menulis files/localize.md TANPA pernah lewat cek pool — bisa qualified di gate. Pool SUDAH dipersist. Gelombang 2, BELUM (gate tak baca pool sama sekali)."
+   },
+   "evidence": {
+    "code_anchor": "(gap: run_localize_gates.py:56-76 tak baca pool; run_localize_gemma.py:346-350 tulis md tanpa DONE)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R10"
+   }
+  },
+  {
+   "id": "R11",
+   "phase": "ORCHESTRATION",
+   "name": "R11 — graceful-shutdown verdict interrupted",
+   "what": "Usulan signal handler + except BaseException/finally -> emit_abort('interrupted') agar KeyboardInterrupt/SystemExit tak lolos tanpa verdict.json (9 run bangkai, false-live dashboard).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": null,
+    "story": "Driver hanya emit_abort saat crash via 'except Exception' (bukan BaseException) — Ctrl+C/SystemExit lolos tanpa verdict. Jujur: di Windows taskkill /F tak beri kesempatan handler. Gelombang 2, BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(gap: run_reproduce_gemma.py:517-523 except Exception; run_fix_gemma.py:393-402)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R11"
+   }
+  },
+  {
+   "id": "R12",
+   "phase": "FIX",
+   "name": "R12 — guard timeout docker_exec FIX + backoff chat",
+   "what": "Usulan port guard TimeoutExpired+restart (ada di R) ke driver FIX (docker_exec FIX tanpa penanganan timeout -> satu command hang mengabort SELURUH run) + retry backoff chat().",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": null,
+    "story": "run_fix_gemma docker_exec tanpa TimeoutExpired+restart yang sudah ada di R. chat() timeout 600s retry sekali tanpa backoff -> dua kegagalan endpoint beruntun = crash run. Gelombang 2, BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(gap: run_fix_gemma.py:126-132 vs run_reproduce_gemma.py:136-157)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R12"
+   }
+  },
+  {
+   "id": "R13",
+   "phase": "REPRODUCE",
+   "name": "R13 — pipe_runtime.run_once() one-shot (= LV-06)",
+   "what": "Bentuk konkret LV-06: fungsi modul run_once(cmd, cwd, timeout) py3.6-safe return (exit, lines) + contains(), WAJIB didokumentasikan di kontrak app-runtime (lever mati kalau model tak tahu API).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "14752"
+    ],
+    "kh_refs": [
+     "KH-10"
+    ],
+    "lv_ref": "LV-06",
+    "decision_date": null,
+    "story": "Kelas bernama terbesar korpus (unexpected keyword 33/8 case). Contoh prompt-change SAH (mengubah API, bukan menuntut mekanisme asing). Gelombang 3 (desain dulu), BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(gap: pipe_runtime.py:29,43-45)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R13"
+   }
+  },
+  {
+   "id": "R14",
+   "phase": "REPRODUCE",
+   "name": "R14 — slot CONTROL-MARKER opt-in (positive-control semi-mekanis)",
+   "what": "Usulan slot repro.md opt-in CONTROL-MARKER: <literal>; gate cek literal tercetak di output fresh-run SEBELUM REPRO_STATUS + verifikasi anti-karang (literal_emitted_by_script).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11999"
+    ],
+    "kh_refs": [],
+    "lv_ref": null,
+    "decision_date": null,
+    "story": "K4 (positive control) = sumbu dominan lintas-batch 45/52 case (87%); absen K4 -> false-flip. Plafon jujur: K4 penuh tak mekanis tanpa gold — realistis 'kalau model MENGKLAIM kontrol, klaimnya diverifikasi tercetak'. Gelombang 3, BELUM (positive-control kini hanya rule prompt)."
+   },
+   "evidence": {
+    "code_anchor": "(rule prompt ada: reproduce_prompt.md:73-79; slot CONTROL-MARKER belum)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R14"
+   }
+  },
+  {
+   "id": "R15",
+   "phase": "ORCHESTRATION",
+   "name": "R15 — detektor dua-arah region-hunk (=LV-14)",
+   "what": "Bentuk konkret LV-14 di eval/fix_gold_eval: hitung jumlah region hunk gold vs patch per file; mismatch (subset/superset) + line_overlap=true -> flag. Realm EVAL (gold-aware SAH).",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11999",
+     "12907",
+     "14365",
+     "12284"
+    ],
+    "kh_refs": [
+     "KH-13",
+     "KH-14"
+    ],
+    "lv_ref": "LV-14",
+    "decision_date": null,
+    "story": "F-2/F-3 + H-3: line_overlap menyesatkan dua arah. Blind-spot terukur: 12284 over-broad DALAM satu region-gold tak tertangkap. Gelombang 3, BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(gap: eval/fix_gold_eval.py:36-44)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R15"
+   }
+  },
+  {
+   "id": "R16",
+   "phase": "FIX",
+   "name": "R16 — tutup celah pagar edit FIX (=LV-03)",
+   "what": "Usulan menyamakan himpunan file pre-check off-candidate (tracked-modified saja) dengan ekstraksi fix.diff (git add -N, untracked ikut) — patch off-candidate non-kosong bisa lolos pagar.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "12497",
+     "13447",
+     "11999"
+    ],
+    "kh_refs": [],
+    "lv_ref": "LV-03",
+    "decision_date": null,
+    "story": "Harta vault F-dev Akar #2: bug TERBUKA belum di katalog. Cocok dgn gejala 'file kosong/stray bocor ke diff'. Gelombang 3, BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(gap: fix_gates.py:60-78 vs run_fix_gemma.py:171-180)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R16"
+   }
+  },
+  {
+   "id": "R17",
+   "phase": "REPRODUCE",
+   "name": "R17 — judge tak boleh batalkan checkpoint observed-FAIL (=LV-05/LV-13a)",
+   "what": "Usulan: judge TIDAK boleh membatalkan checkpoint yang observed-FAIL-at-base; keberatannya didemosikan jadi advisory bila checkpoint plausibel-flip. Kewajiban bukti > filter kategori.",
+   "status": "direkomendasikan",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "11564 r3",
+     "14752"
+    ],
+    "kh_refs": [
+     "KH-04"
+    ],
+    "lv_ref": "LV-05",
+    "decision_date": null,
+    "story": "R-3 (2 wall + ongkos turn di >=5 case). LV-05(b) mekanika-saja tak menyelamatkan (keberatan judge kategori correctness/action-path). Hati-hati: judge juga penangkal repro-halusinasi. Gelombang 3 (desain+uji), BELUM."
+   },
+   "evidence": {
+    "code_anchor": "(judge sekarang MEMBLOKIR: run_reproduce_gemma.py:434-450)",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R17"
+   }
+  },
+  {
+   "id": "R18",
+   "phase": "ORCHESTRATION",
+   "name": "R18 — git-apply-check gold.patch saat setup (fail-KERAS)",
+   "what": "validate_gold_patch_parses via `git apply --numstat` saat prepare_cases — tolak gold.patch yang tak parse (GoldPatchCorrupt), cegah flip vacuous + mislabel wrong-logic dari jalur setup mana pun.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "5/97 gold korup"
+    ],
+    "kh_refs": [
+     "KH-16"
+    ],
+    "lv_ref": "KL-G3-1",
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit 84c70e8 (bot-02). Kelas baru R-8: gold korup -> flip vacuous, mislabel wrong-logic, salah-atribusi akar-MODEL. Akar prepare_cases patch.rstrip() sudah di-fix (471cb6d); lever ini cegah kambuh. --numstat = cek PARSE murni tanpa worktree."
+   },
+   "evidence": {
+    "code_anchor": "scripts/prepare_cases.py:31-55,108-115",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R18 (addendum)"
+   }
+  },
+  {
+   "id": "R19",
+   "phase": "ORCHESTRATION",
+   "name": "R19 — prune keying qualified, bukan file_match",
+   "what": "should_prune_fix di-key ke `qualified is False` (BUKAN file_match) — selaras semantik shortlist (FIX mengiterasi seluruh kandidat, selama gold in salah satu kandidat FIX bisa menang). Fail-safe: semua kondisi lain -> jalankan FIX.",
+   "status": "terpasang",
+   "layer": "lever-katalog",
+   "origin": {
+    "case_ids": [
+     "13033"
+    ],
+    "kh_refs": [
+     "KH-17"
+    ],
+    "lv_ref": "KL-G3-2",
+    "decision_date": "2026-07-22",
+    "story": "Gelombang 1, commit 0d835b6 (bot-04). Bukti solve-recovery: 13033 di-prune salah atas file_match -> re-run tanpa prune -> resolved=true, 0 regresi. PENTING: prune = orkestrasi dev (gold di LUAR loop model); pipeline produk tetap gold-blind; case di-skip TETAP dihitung gagal."
+   },
+   "evidence": {
+    "code_anchor": "scripts/run_rlfv_batch.py:86-117,289-302",
+    "doc_ref": "docs/rekomendasi-lever-dari-taksonomi.md R19 (addendum)"
+   }
+  }
+ ],
+ "curator": {
+  "by": "bot-04",
+  "date": "2026-07-22",
+  "honesty": "Status 'terpasang' untuk lever Gelombang-1 = kode + unit-test hijau; UNLOCK belum divalidasi end-to-end (retest batch-1 baru mengukur; lihat urutan-retest-lever.md §-A0). Jangan baca 'terpasang' sebagai 'terbukti menaikkan PASS'.",
+  "special_markers": [
+   {
+    "rule_hint": "LV-04",
+    "marker": "terpasang-tapi-gugur",
+    "note": "Prompt LOCALIZE terpasang TAPI divonis GUGUR sebagai penyelesai 13660 (checker L2 resolved=false). Tampilkan sebagai 'installed but ineffective'."
+   },
+   {
+    "rule_hint": "R5 / no_progress watcher",
+    "marker": "parsial-fase",
+    "note": "Hanya ter-wire ke REPRODUCE (bukan FIX/LOCALIZE). Kandidat roadmap: port ke F/L (fixed-point 40-turn juga muncul di FIX, mis. thrashing 13230 16k baris)."
+   },
+   {
+    "rule_hint": "R3 fence_reminder",
+    "marker": "parsial-fase",
+    "note": "Cabang tool-call-marker ke 3 driver, TAPI cabang fence_reminder (fence ada tapi tak ter-parse) tetap REPRODUCE-only."
+   },
+   {
+    "rule_hint": "R16/LV-03 & R10",
+    "marker": "bug-terbuka",
+    "note": "Bukan sekadar rekomendasi: R16=celah pagar edit FIX (pre-check vs git add -N), R10=run L habis-turn tulis localize.md tanpa cek pool. Keduanya menutup bug aktif."
+   },
+   {
+    "rule_hint": "LV-09",
+    "marker": "entri-katalog-stale",
+    "note": "Entri utama katalog masih tertulis BELUM DITERAPKAN; sebenarnya TERPASANG via R1 (Gelombang-1). Status benar = terpasang."
+   }
+  ],
+  "open_decisions_for_owner": [
+   "Port R5 watcher ke FIX/LOCALIZE? (efficiency; kandidat G2/G3)",
+   "R3 fence_reminder digeneralisasi ke F/L? (disengaja atau gap?)"
+  ]
+ }
+};
+
+/* ---------- setup: derive marker map, order ---------- */
+const PHASE_ORDER = ["REPRODUCE","LOCALIZE","FIX","VERIFY","ORCHESTRATION"];
+const MARKER_LABEL = {
+  "terpasang-tapi-gugur":"Terpasang tapi gugur",
+  "parsial-fase":"Parsial-fase",
+  "bug-terbuka":"Bug terbuka",
+  "entri-katalog-stale":"Entri katalog stale"
+};
+const MARKER_ICON = {
+  "terpasang-tapi-gugur":"⚠",
+  "parsial-fase":"◑",
+  "bug-terbuka":"🐞",
+  "entri-katalog-stale":"✎"
+};
+
+// map: rule.id -> [marker objects]  (match token dari rule_hint ke id rule)
+const RULE_IDS = new Set(DATA.rules.map(r=>r.id));
+const markersByRule = {};
+(DATA.curator && DATA.curator.special_markers || []).forEach(m=>{
+  const tokens = (m.rule_hint||"").split(/[^A-Za-z0-9-]+/).filter(Boolean);
+  tokens.forEach(tok=>{
+    if(RULE_IDS.has(tok)){
+      (markersByRule[tok] = markersByRule[tok] || []).push(m);
+    }
+  });
+});
+
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- state ---------- */
+const state = { q:"", status:"terpasang", layer:"all", marked:"off" };
+
+function ruleText(r){
+  return [r.id, r.name, r.what, r.phase, r.layer, r.status,
+    r.origin&&r.origin.story, (r.origin&&r.origin.case_ids||[]).join(" "),
+    (r.origin&&r.origin.kh_refs||[]).join(" "), r.origin&&r.origin.lv_ref,
+    r.evidence&&r.evidence.code_anchor, r.evidence&&r.evidence.doc_ref
+  ].filter(Boolean).join(" ␟ ").toLowerCase();
+}
+
+function passFilter(r){
+  if(state.status==="terpasang" && r.status!=="terpasang") return false;
+  if(state.status==="roadmap" && r.status==="terpasang") return false;
+  if(state.layer!=="all" && r.layer!==state.layer) return false;
+  if(state.marked==="on" && !(markersByRule[r.id]&&markersByRule[r.id].length)) return false;
+  if(state.q){ if(!ruleText(r).includes(state.q.toLowerCase())) return false; }
+  return true;
+}
+
+/* ---------- render summary ---------- */
+function renderSummary(){
+  const all = DATA.rules;
+  const t = all.filter(r=>r.status==="terpasang").length;
+  const d = all.filter(r=>r.status==="direkomendasikan").length;
+  const shown = all.filter(passFilter).length;
+  const mk = Object.keys(markersByRule).length;
+  document.getElementById("summary").innerHTML = `
+    <div class="stat"><b>${all.length}</b> rule total</div>
+    <div class="stat"><span class="dot g"></span><b>${t}</b> terpasang</div>
+    <div class="stat"><span class="dot b"></span><b>${d}</b> roadmap</div>
+    <div class="stat">⚑ <b>${mk}</b> ber-catatan kurator</div>
+    <div class="stat" style="margin-left:auto">Tampil sekarang: <b>&nbsp;${shown}</b></div>`;
+}
+
+/* ---------- render board ---------- */
+function badge(cls,txt,title){ return `<span class="badge ${cls}"${title?` title="${esc(title)}"`:""}>${txt}</span>`; }
+
+function markerBadges(r){
+  const ms = markersByRule[r.id]||[];
+  return ms.map(m=>badge(`mk mk-${m.marker}`, `${MARKER_ICON[m.marker]||"⚑"} ${MARKER_LABEL[m.marker]||m.marker}`, m.note)).join("");
+}
+
+function cardHTML(r){
+  const lc = r.layer==="lever-katalog"?"lever":"mekanik";
+  const layerIcon = r.layer==="lever-katalog" ? "🎚️ lever" : "⚙️ mekanik";
+  return `<div class="card ${lc}" data-id="${esc(r.id)}" tabindex="0" role="button">
+    <div class="card-top">
+      <span class="rule-id">${esc(r.id)}</span>
+      ${badge("st-"+r.status, r.status==="terpasang"?"● terpasang":(r.status==="direkomendasikan"?"○ roadmap":esc(r.status)))}
+    </div>
+    <h3>${esc(r.name)}</h3>
+    <div class="what">${esc(r.what)}</div>
+    <div class="card-foot">
+      <span class="badge layer">${layerIcon}</span>
+      ${markerBadges(r)}
+    </div>
+  </div>`;
+}
+
+function renderBoard(){
+  const board = document.getElementById("board");
+  let html = "";
+  PHASE_ORDER.forEach(ph=>{
+    const rules = DATA.rules.filter(r=>r.phase===ph && passFilter(r));
+    const totalInPhase = DATA.rules.filter(r=>r.phase===ph).length;
+    const desc = DATA.phases[ph]||"";
+    const isOrch = ph==="ORCHESTRATION";
+    html += `<section class="phase${isOrch?" orch":""}">
+      <div class="phase-head">
+        <span class="phase-tag">${ph}${isOrch?" · lintas-fase":""}</span>
+        <h2>${phaseTitle(ph)}</h2>
+        <span class="phase-count">${rules.length} / ${totalInPhase} rule</span>
+      </div>
+      <p class="phase-desc">${esc(desc)}</p>
+      ${rules.length ? `<div class="grid">${rules.map(cardHTML).join("")}</div>`
+        : `<div class="empty">Tidak ada rule cocok filter di fase ini.</div>`}
+    </section>`;
+  });
+  board.innerHTML = html;
+  board.querySelectorAll(".card").forEach(c=>{
+    c.addEventListener("click", ()=>openDrawer(c.dataset.id));
+    c.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); openDrawer(c.dataset.id);} });
+  });
+}
+
+function phaseTitle(ph){
+  return { REPRODUCE:"Reproduce — bikin repro yang FAIL di base",
+           LOCALIZE:"Localize — tunjuk lokasi akar",
+           FIX:"Fix — iterasi kandidat sampai PASS",
+           VERIFY:"Verify — grading resmi swebench L2",
+           ORCHESTRATION:"Orchestration — batch, prune, integritas data" }[ph]||ph;
+}
+
+/* ---------- drawer ---------- */
+function listChips(kind, arr, kLabel){
+  if(!arr || !arr.length) return "";
+  return arr.map(v=>`<span class="chip ${kind}"><span class="k">${kLabel}</span> ${esc(v)}</span>`).join("");
+}
+
+function openDrawer(id){
+  const r = DATA.rules.find(x=>x.id===id); if(!r) return;
+  const o = r.origin||{}, e = r.evidence||{};
+  const ms = markersByRule[r.id]||[];
+  const layerIcon = r.layer==="lever-katalog" ? "🎚️ lever-katalog" : "⚙️ mekanik-dasar";
+  const layerHint = DATA.generated_context && DATA.generated_context.layer_legend && DATA.generated_context.layer_legend[r.layer] || "";
+
+  const metaChips = [
+    listChips("case", o.case_ids, "case"),
+    listChips("kh", o.kh_refs, "KH"),
+    o.lv_ref ? `<span class="chip lv"><span class="k">lever</span> ${esc(o.lv_ref)}</span>` : "",
+    o.decision_date ? `<span class="chip"><span class="k">tanggal</span> ${esc(o.decision_date)}</span>` : `<span class="chip"><span class="k">tanggal</span> —</span>`
+  ].filter(Boolean).join("");
+
+  const markerHTML = ms.length ? ms.map(m=>`
+      <div class="marker-note ${m.marker}">
+        <span style="font-size:16px">${MARKER_ICON[m.marker]||"⚑"}</span>
+        <div><span class="mtitle">${esc(MARKER_LABEL[m.marker]||m.marker)}</span>${esc(m.note)}</div>
+      </div>`).join("") : "";
+
+  const drawer = document.getElementById("drawer");
+  drawer.innerHTML = `
+    <div class="drawer-head">
+      <div class="row">
+        <span class="rule-id">${esc(r.id)}</span>
+        ${badge("st-"+r.status, r.status==="terpasang"?"● terpasang":(r.status==="direkomendasikan"?"○ roadmap (direkomendasikan)":esc(r.status)))}
+        <span class="badge layer" title="${esc(layerHint)}">${layerIcon}</span>
+        <button class="drawer-close" id="drawerClose" aria-label="Tutup">✕</button>
+      </div>
+      <div class="row" style="margin-top:8px"><span class="phase-tag">${esc(r.phase)}</span></div>
+      <h2>${esc(r.name)}</h2>
+    </div>
+    <div class="drawer-body">
+      ${markerHTML ? `<div class="sec"><div class="sec-label">⚑ Catatan kurator</div>${markerHTML}</div>` : ""}
+
+      <div class="sec">
+        <div class="sec-label">Apa yang dilakukan</div>
+        <div class="what-full">${esc(r.what)}</div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-label">Asal-usul penerapan</div>
+        <div class="story">${esc(o.story) || `<span class="none">Tidak ada cerita asal.</span>`}</div>
+        <div class="meta-grid">${metaChips}</div>
+        ${(!(o.case_ids&&o.case_ids.length) && !(o.kh_refs&&o.kh_refs.length) && !o.lv_ref)
+          ? `<div class="none" style="margin-top:8px">Tanpa anchor case/KH/lever — keputusan desain langsung.</div>` : ""}
+      </div>
+
+      <div class="sec">
+        <div class="sec-label">Bukti (di kode &amp; doc)</div>
+        <div class="mono"><span class="lbl">code_anchor →</span> ${esc(e.code_anchor)||"—"}</div>
+        <div class="mono" style="margin-top:7px"><span class="lbl">doc_ref &nbsp;&nbsp;&nbsp;→</span> ${esc(e.doc_ref)||"—"}</div>
+      </div>
+    </div>`;
+  drawer.classList.add("open"); drawer.setAttribute("aria-hidden","false");
+  document.getElementById("scrim").classList.add("open");
+  document.getElementById("drawerClose").addEventListener("click", closeDrawer);
+  drawer.querySelector(".drawer-body").scrollTop = 0;
+}
+function closeDrawer(){
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("drawer").setAttribute("aria-hidden","true");
+  document.getElementById("scrim").classList.remove("open");
+}
+
+/* ---------- header + legend ---------- */
+function renderStatic(){
+  const gc = DATA.generated_context||{};
+  document.getElementById("subline").innerHTML =
+    `${esc(gc.repo||"")} · head <code>${esc(gc.repo_head||"")}</code> · ${DATA.rules.length} rule terverifikasi ke kode ${esc(gc.generated_at||"")}`;
+
+  // pipeline
+  const pipe = document.getElementById("pipeline");
+  const main = ["REPRODUCE","LOCALIZE","FIX","VERIFY"];
+  let ph = main.map((p,i)=>`<span class="pipe-step">${p}</span>${i<main.length-1?'<span class="pipe-arrow">→</span>':""}`).join("");
+  ph += `<span class="pipe-arrow" style="margin:0 6px">·</span><span class="pipe-orch">ORCHESTRATION (lintas-fase)</span>`;
+  pipe.innerHTML = ph;
+
+  // disclaimer (curator honesty)
+  const cur = DATA.curator||{};
+  if(cur.honesty){
+    const d = document.getElementById("disclaimer");
+    d.hidden = false;
+    d.innerHTML = `<span style="font-size:16px">⚠</span><div><b>Baca status dengan jujur.</b> ${esc(cur.honesty)}</div>`;
+  }
+
+  // legend + open decisions
+  const ll = DATA.generated_context.layer_legend||{};
+  const odec = cur.open_decisions_for_owner||[];
+  document.getElementById("legend").innerHTML = `
+    <div class="li"><b>Layer &nbsp;⚙️ mekanik-dasar</b> — ${esc(ll["mekanik-dasar"]||"")}</div>
+    <div class="li"><b>Layer &nbsp;🎚️ lever-katalog</b> — ${esc(ll["lever-katalog"]||"")}</div>
+    <div class="li"><span class="dot g"></span> <b>terpasang</b> = aktif di kode. &nbsp; <span class="dot b"></span> <b>roadmap</b> = direkomendasikan, belum diterapkan.</div>
+    <div class="li">Tekan <kbd>/</kbd> untuk cari, <kbd>Esc</kbd> untuk tutup panel. Klik kartu → asal-usul + bukti.</div>
+    ${odec.length ? `<div class="odec"><b>Keputusan terbuka untuk owner (${esc(cur.by||"")})</b><ul>${odec.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
+  `;
+}
+
+/* ---------- wire controls ---------- */
+function wireSeg(segId, key){
+  const seg = document.getElementById(segId);
+  seg.addEventListener("click", e=>{
+    const btn = e.target.closest("button"); if(!btn) return;
+    seg.querySelectorAll("button").forEach(b=>b.classList.remove("on"));
+    btn.classList.add("on");
+    state[key] = btn.dataset.v;
+    rerender();
+  });
+}
+function rerender(){ renderSummary(); renderBoard(); }
+
+document.getElementById("q").addEventListener("input", e=>{ state.q = e.target.value.trim(); rerender(); });
+wireSeg("statusSeg","status"); wireSeg("layerSeg","layer"); wireSeg("markSeg","marked");
+document.getElementById("scrim").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", e=>{
+  if(e.key==="Escape") closeDrawer();
+  if(e.key==="/" && document.activeElement.id!=="q"){ e.preventDefault(); document.getElementById("q").focus(); }
+});
+
+renderStatic(); rerender();
+</script>
+</body>
+</html>
