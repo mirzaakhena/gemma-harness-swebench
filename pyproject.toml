@@ -3,6 +3,9 @@ name = "gemma-harness-swebench"
 version = "0.1.0"
 description = "Harness SWE-bench untuk Gemma — fresh start, kontrak output seragam v1.0.0"
 requires-python = ">=3.12"
+dependencies = [
+    "swebench>=4.1.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
