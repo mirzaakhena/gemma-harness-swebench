@@ -414,3 +414,32 @@ lever salah-arah di ~3 dari 4 case.
 - **Yang benar (data n=3, retest 2026-07-22, rezim harness `02dc710`=G1):** fase FIX **stokastik run-to-run**, BUKAN deterministik. `13230` tiga sampel rezim-identik = **tiga trajektori berbeda total**: r2 `no-flip` (patch 14685B tak-flip repro), r3 `no-flip` (attempt-1 KOSONG 0B), r4 `flip` L1 tapi L2 katastrofik (F2P `test_rss2_feed` fail + **23 P2P regresi** seluruh `SyndicationFeedTest`). md5 attempt beda antar-sampel → BUKAN byte-identik. **Resolve-rate 13230 rezim-kini = 0/3**, hijau historis r1 (20-jul) = satu draw beruntung. Korroborasi: kanari `15790` **goyang** dalam rezim identik (r2 resolved=true; r3 flip-L1 tapi P2P regresi ×2 → resolved=false), **resolve-rate 1/2**. Sumber non-determinisme = vLLM greedy non-determinism (beban/urutan-batch server bersama), tampak lintas jeda & antar-rerun; temp-0 byte-identik hanya terbukti untuk **REPRODUCE pendek same-session** (14411), tak berlaku untuk FIX panjang.
 - **Bukti pembantah (deterministik, dari artefak):** `f-dev--django__django-13230--r{2,3,4}/verdict.json` (no-flip/no-flip/flip) + `swebench_eval.json` r4 (resolved=false, f2p_failed=[`test_rss2_feed`], 23 p2p_failed) + `md5sum` `files/attempts/attempt-2.diff` r2≠r3; `f-dev--django__django-15790--r{2,3}` (resolved true vs false, p2p_failed 2× `CheckTemplateTagLibrariesWithSameName`). Papan skor: `artifacts/papan-skor-retest-batch1-g1.md` §FASE 2.
 - **Pelajaran:** (1) **vonis per-case single-run TIDAK reliable** — termasuk papan skor origin R1 batch-1 (0/4 semua single-run); satu `no-flip`/`resolved=false` BUKAN bukti case tak-terpecahkan (13230 sendiri hasilkan flip-L1 di r4). (2) **Ukur RESOLVE-RATE k/n (n≥3)**, bukan biner; kanari/baseline WAJIB same-session + rate (bahkan n=2 kurang — 15790 tak sepakat dgn dirinya). (3) Kejatuhan kanari **BUKAN bukti regresi lever** kecuali di luar pita varians rate-based. Diformalkan bot-04 di [[urutan-retest-lever]] §A0c/A0d (commit 7d4e023). Konsekuensi: G2 sebaiknya menunggu protokol ukur berbasis-rate agar angka unlock tak noisy.
+
+## KH-21 — "trigger R5 'reply byte-identik' TAK akan menyala di FIX (reply FIX bervariasi)"
+
+- **Yang dinyatakan:** implikasi (a) di [[urutan-retest-lever]] §-A0d (2026-07-22):
+  karena FIX stokastik dan reply-nya bervariasi (bukti 13230 thrashing dgn reply
+  beda-beda), trigger byte-identity milik R5 tak akan pernah menyala di fase FIX;
+  port R5 ke FIX dianggap butuh trigger LAIN.
+- **Derajat: DIPERSEMPIT** (klaim variabilitas benar ANTAR-draw, terbantah DALAM-run).
+- **Yang benar (spesimen 12184 r12, rezim mac-arm64-rosetta G1, 2026-07-22):** reply
+  FIX memang bervariasi antar-draw (KH-20 tetap berdiri: r8/r9/r10/r12 = 4 trajektori
+  beda), TETAPI di dalam SATU run, FIX BISA jatuh ke fixed-point byte-identik: r12
+  attempt-1 menghasilkan **32 reply berturut-turut ber-md5 identik** (t9–t40,
+  `9746478b…`), siklus 126-baris identik-mutlak kecuali timestamp. Konteks berulang
+  (reject message identik → reply identik → hasil identik) = kondisi cukup utk
+  fixed-point temp-0 di FIX, sama seperti REPRODUCE. Trigger byte-identity justru
+  akan MENYALA dan menghemat ~31 turn (78% budget attempt) di spesimen ini.
+- **Bukti pembantah (deterministik, dari artefak):**
+  `f-dev--django__django-12184--r12/console.log` baris 1511–5542 (blok berulang per
+  126 baris; md5 reply t9=t24=t39=t40 setelah normalisasi timestamp) +
+  `events.jsonl` baris 2–80 (38× pasangan `repro FAIL`+`done-rejected`,
+  interval ~21,5 dtk stabil) + `files/attempts/attempt-1.diff` (nol perubahan file
+  target — loop no-op murni).
+- **Pelajaran:** (1) stokastisitas antar-draw dan degenerasi dalam-run BUKAN lawan —
+  keduanya nyata di FIX; jangan pakai yang satu utk menyangkal yang lain. (2) Port R5
+  ke FIX kembali layak dgn trigger byte-identity sederhana (md5 reply N vs N-1,
+  2–3 ulangan) — usulan mekanis dicatat di [[katalog-lever]] entri kandidat
+  claude-mac 2026-07-22. (3) Kondisi pemicunya spesifik: kandidat terkunci +
+  feedback loop identik (grep exit 1 / reject message sama) — kelas ini mungkin
+  lebih sering di case wrong-file-shortlist (akar-LOCALIZE).

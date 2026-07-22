@@ -4236,3 +4236,37 @@ TETAP catat-only sampai perintah Mirza berikutnya.
 BUKAN klaim unlock. Efek pada case-asal + kanari diukur di fase retest berikut (bot-02) per
 [[urutan-retest-lever]] §0 (unlock/efficiency/observability, wasit L2, label rezim
 injeksi). K/X di R5 = kalibrasi awal, tunggu data retest.
+
+## Kandidat 2026-07-22 (claude-mac) — watcher no-progress/reply-hash utk loop FIX (bukti: loop degenerat byte-identik 12184 r12)
+
+**Spesimen:** `f-dev--django__django-12184--r12` (rezim mac-arm64-rosetta, G1, retest
+rate origin R1). Attempt-1 FIX: setelah 8 turn eksplorasi, model jatuh ke **fixed-point
+byte-identik selama 32 turn (t9–t40)** — md5 reply t9=t24=t39=t40 (`9746478b…`), blok
+siklus 126 baris identik kecuali timestamp server. Siklus: grep `args = match.groups()`
+di `django/urls/base.py` (kandidat #1 shortlist beku) → **exit 1** (string itu adanya di
+`resolvers.py`) → tulis skrip fix **no-op** → repro FAIL → DONE rejected → ulang.
+**31 turn (~78% budget attempt, ~11 menit) terbakar tanpa satu byte pun perubahan repo**
+(`files/attempts/attempt-1.diff`: satu-satunya perubahan = file skrip `fix_urls.py`).
+Bukti: `console.log` baris 1511–5542 (marker per 126 baris), `events.jsonl` baris 2–80
+(38 pasangan `repro FAIL`+`done-rejected`, msg_used 2→40, ~21,5 dtk/turn).
+
+**Diagnosa (akar):** gabungan **akar-harness** (watcher `no_progress`/R5 hanya ter-wire
+di `run_reproduce_gemma`, 0× di `run_fix_gemma` — loop degenerat FIX tak pernah
+diinterupsi) di atas **akar-LOCALIZE** (shortlist beku salah-atribusi: kandidat #1
+`base.py` dgn evidence yang mendeskripsikan simbol milik `resolvers.py`; gold di posisi
+#2). Bukan akar-model murni: resep fix di reply beku itu justru BENAR (filter named
+groups via `match.re.groupindex`) — hanya dieksekusi di file yang salah.
+
+**Usulan mekanis:** di loop FIX, hitung `md5(reply_N)`; jika sama dengan
+`md5(reply_{N-1})` 2–3× berturut-turut → interupsi (rotasi kandidat / injeksi pesan
+konteks baru / akhiri attempt lebih awal). Trigger byte-identity SUDAH terbukti cukup di
+spesimen ini (32 ulangan identik-mutlak); tak butuh deteksi semantik. Perkiraan hematan
+di spesimen: ~30 turn/attempt. Catatan relasi: (a) memperkuat kandidat bot-02 2026-07-21
+"cegah wrong-file LOCALIZE lolos ke FIX" (akar hulunya sama — lihat entri di atas);
+(b) merevisi implikasi §-A0d [[urutan-retest-lever]] bhw trigger byte-identik "tak akan
+menyala di FIX" — lihat [[koreksi-hipotesis]] KH-21. Konteks pembanding draw lain 12184
+(r8/r9/r10/r11-invalid): autopsi banding sesi ini — r9 menang justru karena attempt-1
+base.py-nya GAGAL cukup lama utk memicu rotasi kandidat ke `resolvers.py`; r10 kalah
+karena monkey-patch-nya menipu repro lemah (oracle 200→PASS) sebelum rotasi. Repro lemah
+12184 (status-200=PASS, exception→PASS) = bukti penguat keluarga lever perketat-repro
+(LV-01/LV-10), bukan entri baru.
