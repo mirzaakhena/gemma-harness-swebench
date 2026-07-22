@@ -164,6 +164,46 @@
   .marker-note .mtitle{font-weight:700; display:block; margin-bottom:2px; text-transform:capitalize}
   .none{color:var(--muted); font-style:italic; font-size:13px}
 
+  /* Distribution matrix */
+  .dist-intro{margin:16px 0 6px; color:var(--muted); font-size:13.5px; line-height:1.6; max-width:88ch}
+  .dist-intro b{color:var(--ink)}
+  .tierbar{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 6px}
+  .tierchip{display:flex; align-items:center; gap:7px; padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:var(--panel); font-size:13px}
+  .tierchip b{font-size:15px}
+  .tierchip .tdesc{color:var(--muted); font-size:11.5px}
+  .matrix-scroll{overflow-x:auto; margin:16px 0 6px; padding-bottom:4px}
+  table.matrix{border-collapse:separate; border-spacing:8px; min-width:640px}
+  table.matrix th{font-size:12px; color:var(--muted); font-weight:600; padding:4px 6px; text-align:center; vertical-align:bottom}
+  table.matrix th.rowh{text-align:right; vertical-align:middle; max-width:150px}
+  table.matrix th.rowh b{color:var(--ink); font-size:13.5px; display:block}
+  table.matrix th.rowh .rh-hint{color:var(--muted); font-size:11px; font-weight:400; line-height:1.3}
+  table.matrix th.colh b{color:var(--ink); font-size:13.5px; display:block}
+  table.matrix th.colh .ch-sub{color:var(--muted); font-size:11px; font-weight:400}
+  table.matrix th.corner{background:transparent}
+  .cell{
+    min-width:118px; height:100%; border-radius:11px; border:1px solid var(--line); background:var(--panel);
+    padding:9px 10px; cursor:pointer; text-align:left; transition:transform .08s, box-shadow .12s, border-color .12s; position:relative;
+  }
+  .cell:hover{transform:translateY(-2px); box-shadow:var(--shadow)}
+  .cell.sel{outline:2px solid var(--accent); outline-offset:1px}
+  .cell.empty0{opacity:.5; cursor:default}
+  .cell.empty0:hover{transform:none; box-shadow:none}
+  .cell.tier-p1{background:var(--red-soft);    border-color:var(--red-line)}
+  .cell.tier-p2{background:var(--amber-soft);  border-color:var(--amber-line)}
+  .cell.tier-p3{background:#fbf6d9;            border-color:#ecdf9a}
+  .cell.tier-p4{background:var(--panel);       border-color:var(--line)}
+  .cell .cnum{font-size:22px; font-weight:800; line-height:1; color:var(--ink)}
+  .cell .cmeta{font-size:11px; color:var(--muted); margin-top:3px}
+  .cell .ctier{font-size:11px; margin-top:6px; font-weight:600}
+  .cell .cflag{position:absolute; top:7px; right:8px; font-size:12px}
+  @media (prefers-color-scheme: dark){
+    .cell.tier-p3{background:#2a2510; border-color:#4d451a}
+  }
+  .dist-list-head{margin:22px 0 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .dist-list-head h2{margin:0; font-size:16px}
+  .dist-list-head .pill{font:600 12px/1 inherit; padding:5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent); cursor:pointer; border:1px solid var(--blue-line)}
+  .dist-list-head .muted{color:var(--muted); font-size:13px}
+
   /* Footer / legend */
   .legend{margin-top:40px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:12.5px; line-height:1.7}
   .legend b{color:var(--ink)}
@@ -186,6 +226,13 @@
     <div class="search">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <input id="q" type="search" placeholder="Cari rule: nama, id, case, cerita…  ( / untuk fokus )" autocomplete="off">
+    </div>
+    <div class="grp">
+      <span class="seg-label">Tampilan</span>
+      <div class="seg" id="viewSeg">
+        <button data-v="phase" class="on">Peta Fase</button>
+        <button data-v="dist">Distribusi</button>
+      </div>
     </div>
     <div class="grp">
       <span class="seg-label">Status</span>
@@ -214,6 +261,7 @@
 
   <div class="summary" id="summary"></div>
   <div id="board"></div>
+  <div id="distribution" hidden></div>
 
   <div class="legend" id="legend"></div>
 </div>
@@ -1784,6 +1832,125 @@ const DATA = {
  }
 };
 
+const SCOPE = {
+  "_meta": {
+    "by": "bot-06",
+    "date": "2026-07-22",
+    "purpose": "Anotasi SUMBU RUNTIME-SCOPE untuk peta distribusi rule-map. Sumbu ini JUDGMENT bot-06 (bukan dari data rule-inventory.json), diturunkan dari membaca field 'what'+'name' tiap rule. Sumbu breadth dihitung terpisah & mekanis dari origin.case_ids di viz.",
+    "scope_legend": {
+      "always-on": "Mekanik jalan tiap run/DONE/attempt di fase-nya, tanpa syarat isi kasus (gate, guard, compose, evaluator, single-writer, dsb).",
+      "conditional": "Jalan tiap run TAPI hanya BERTINDAK saat detektor/sinyal runtime menyala (stall, timeout, marker bentuk, mixed-block, first-fail, resume-dedup).",
+      "targeted": "Hanya kepakai untuk KELAS kasus tertentu (server/app, probe ber-Model, one-shot, log non-ASCII) — kasus di luar kelas tak menyentuhnya."
+    },
+    "honesty": "Kolom breadth 100% dari data; kolom scope ini bisa dikoreksi. Beberapa call ambigu ditandai di 'reason' (mis. dev-only eval, guard-yang-selalu-nulis-tapi-hanya-menggigit-kelas)."
+  },
+  "annotations": {
+    "MD-R-evidence-first": { "scope": "always-on", "reason": "Gate DONE menuntut FAIL tersaksikan tiap kali, tanpa syarat kasus." },
+    "MD-R-self-check": { "scope": "always-on", "reason": "Pertanyaan self-check disisipkan sebelum tiap DONE-pertama, semua run." },
+    "MD-R-pass-observable-verify": { "scope": "always-on", "reason": "Tiap klaim PASS_OBSERVABLE diverifikasi grep/emit-script, selalu." },
+    "MD-R-fresh-world-verdict": { "scope": "always-on", "reason": "Tiap eksekusi repro.py di loop divonis dari container segar." },
+    "MD-R-fresh-pair-precheck": { "scope": "always-on", "reason": "Pre-check 2x sandbox segar dijalankan tiap DONE (mirror gate)." },
+    "MD-R-judge": { "scope": "always-on", "reason": "Reviewer LLM fresh-context dipanggil sebelum tiap DONE final (advisory tapi selalu jalan)." },
+    "MD-R-exact-status": { "scope": "always-on", "reason": "Standar token baris-eksak dipakai tiap parse output repro." },
+    "MD-R-feedback-notes": { "scope": "conditional", "reason": "Nota disuntik HANYA saat sinyal mekanis menyala (mixed-block/repeated-error/token-format/next-step)." },
+    "MD-R-rule-catalog": { "scope": "conditional", "reason": "Blok detail rule di-inject verbatim hanya saat detector sinyal menyala; system-prompt ramping default." },
+    "MD-R-prompt-rules": { "scope": "always-on", "reason": "Rule bentuk-repro selalu hadir di system prompt tiap run REPRODUCE." },
+    "MD-R-app-runtime": { "scope": "targeted", "reason": "pipe_runtime.App hanya menggigit kelas repro yang butuh server/settle/readiness; repro one-shot murni tak memakainya." },
+    "MD-R-docker-timeout-restart": { "scope": "conditional", "reason": "Guard kill+restart aktif hanya saat docker_exec timeout." },
+    "MD-R-checkpoint": { "scope": "conditional", "reason": "Skrip diamankan hanya di momen FAIL-pertama tersaksikan." },
+    "MD-R-gates": { "scope": "always-on", "reason": "evaluate_gates 4-gate memvonis tiap 2-run sandbox, selalu." },
+    "MD-R-flip-test": { "scope": "always-on", "reason": "Tiap repro qualified diuji flip FAIL@base->PASS@gold." },
+    "MD-R-compose-slots": { "scope": "always-on", "reason": "Slot mekanis repro.md diisi harness tiap compose." },
+    "LV-01": { "scope": "targeted", "reason": "Perketat repro khusus kelas jalur global-name-resolution (else selalu-true). Roadmap." },
+    "LV-05": { "scope": "always-on", "reason": "Usul aturan agar app-runtime/judge tak batalkan bukti tersaksikan — perilaku default tiap DONE. Roadmap." },
+    "LV-06": { "scope": "targeted", "reason": "Mode one-shot run_once untuk kelas skenario non-server. Roadmap." },
+    "LV-07": { "scope": "always-on", "reason": "Kunci PASS observable ke token kanonik, dicek tiap klaim. Roadmap." },
+    "LV-08": { "scope": "conditional", "reason": "Reinstate checkpoint hanya saat model mengembara/merusak skrip setelah churn. Roadmap." },
+    "LV-12": { "scope": "targeted", "reason": "Preferensi repro in-process untuk kelas tertentu (prompt-only). Roadmap." },
+    "R2": { "scope": "always-on", "reason": "Labeling 5-bucket verdict dihitung tiap gate REPRODUCE (observability, selalu)." },
+    "R3": { "scope": "conditional", "reason": "Reminder bentuk (tool-call-marker/fence) hanya saat marker terdeteksi di balasan." },
+    "R5": { "scope": "conditional", "reason": "no_progress watcher hanya bertindak saat stall (reply identik / 0-aksi / turn>=15). Marker parsial-fase (REPRODUCE-only)." },
+    "R9": { "scope": "conditional", "reason": "Injeksi konteks antar-rerun hanya di rerun r(N) dari artefak r(N-1). Roadmap." },
+    "R13": { "scope": "targeted", "reason": "run_once one-shot untuk kelas non-server (bentuk konkret LV-06). Roadmap." },
+    "R14": { "scope": "conditional", "reason": "Slot CONTROL-MARKER opt-in; gate cek literal hanya bila model memakai slot. Roadmap." },
+    "R17": { "scope": "always-on", "reason": "Mengubah perilaku default judge terhadap checkpoint observed-FAIL (tiap DONE). Roadmap." },
+    "MD-L-write-guard": { "scope": "always-on", "reason": "Guard tulis-file /testbed/.pipe/ aktif tiap aksi file di LOCALIZE." },
+    "L-lever-3-trace-injection": { "scope": "always-on", "reason": "repro dijalankan under trace + pool diinject tiap case L; gagal trace = abort (no-silent-caps)." },
+    "L-lever-2-candidates": { "scope": "always-on", "reason": "candidates.md di-enforce >=2 file berbeda tiap DONE L." },
+    "L-lever-4-probe-runtime": { "scope": "targeted", "reason": "probe_runtime helper hanya kepakai saat model probe ber-Model (kelas Django app-registry)." },
+    "L-lever-a-range-validation": { "scope": "always-on", "reason": "Validasi rentang baris (6-slot, span<=200, EOF) dihitung tiap DONE L." },
+    "MD-L-explore-first": { "scope": "always-on", "reason": "Tolak DONE tanpa >=1 aksi bash, tiap run L." },
+    "MD-L-gate": { "scope": "always-on", "reason": "Gate L1 memvonis localize.md di container segar tiap run." },
+    "LV-04": { "scope": "always-on", "reason": "Prompt kriteria-outcome selalu hadir di prompt L. CATATAN: marker 'terpasang-tapi-gugur' (tak menyelesaikan 13660) — always-on tapi terbukti tak cukup sendiri." },
+    "LV-13": { "scope": "always-on", "reason": "Citation-check klaim kode (usul; verifikasi tiap evidence localize.md). Roadmap." },
+    "R7": { "scope": "always-on", "reason": "Fix CRLF raw-bytes di tiap docker_write_file LOCALIZE." },
+    "R8": { "scope": "always-on", "reason": "Trace hook via .pth site-packages aktif tiap init child (usul; tutup L-B). Roadmap." },
+    "R10": { "scope": "always-on", "reason": "Gate L baca trace_pool.json tiap vonis (usul; tutup lubang max-turns tanpa DONE). Roadmap. Marker bug-terbuka." },
+    "MD-F-candidate-iteration": { "scope": "always-on", "reason": "Harness mengiterasi seluruh shortlist kandidat tiap FIX (attempt=kandidat=sesi fresh)." },
+    "MD-F-evidence-first": { "scope": "always-on", "reason": "Tolak DONE tanpa PASS tersaksikan + fix.md, tiap attempt." },
+    "MD-F-single-evaluator": { "scope": "always-on", "reason": "Evaluator patch tunggal dipakai tiap pre-check DONE & gate L1." },
+    "MD-F-edit-guard": { "scope": "always-on", "reason": "Pagar edit hanya file kandidat + apply bersih, dicek tiap attempt." },
+    "MD-F-fresh-pair": { "scope": "always-on", "reason": "Pair 2x PASS dunia segar ber-patch dijalankan tiap evaluasi." },
+    "MD-F-compose-slots": { "scope": "always-on", "reason": "Slot fix.md diisi harness + seed lihat repro tiap attempt." },
+    "LV-02": { "scope": "targeted", "reason": "Validasi py_compile khusus kelas SyntaxError. Koreksi: py_compile tak tersedia di harness (host3.12 vs container3.6). Roadmap." },
+    "LV-03": { "scope": "always-on", "reason": "Samakan himpunan file pagar-vs-ekstraksi diff, dicek tiap attempt (tutup celah). Roadmap." },
+    "LV-09": { "scope": "always-on", "reason": "Ship pipe_runtime.py ke dunia kerja F/L tiap run (dependency repro qualified). Marker entri-katalog-stale (sebenarnya terpasang via R1)." },
+    "LV-10": { "scope": "always-on", "reason": "Validasi ulang repro beku FAIL di container kerja pristine tiap attempt (usul). Roadmap." },
+    "LV-11": { "scope": "always-on", "reason": "Repro beku read-only ditegakkan sepanjang FIX (usul; sebagian sudah dijamin desain). Roadmap." },
+    "R1": { "scope": "always-on", "reason": "Implementasi konkret LV-09: ship pipe_runtime tiap run F/L." },
+    "R12": { "scope": "conditional", "reason": "Guard timeout docker_exec FIX aktif saat timeout + backoff chat saat endpoint gagal. Roadmap." },
+    "R16": { "scope": "always-on", "reason": "Tutup celah pagar edit FIX (pre-check off-candidate) dicek tiap attempt. Roadmap. Marker bug-terbuka." },
+    "MD-V-swebench-checker": { "scope": "always-on", "reason": "Grading L2 resmi swebench dijalankan tiap case setelah FIX (container Epoch segar)." },
+    "R4": { "scope": "targeted", "reason": "Fix encoding charmap: kode selalu nulis salinan log ber-locale, TAPI hanya menggigit kelas base non-ASCII (astropy dll)." },
+    "MD-CRLF-writefile": { "scope": "always-on", "reason": "Tulis raw bytes (guard CRLF) di tiap docker_write_file R/F/L." },
+    "MD-O-emit-single-writer": { "scope": "always-on", "reason": "emit.py satu-satunya penulis events/verdict/runs/campaign, tiap emit." },
+    "MD-O-gpu-coord": { "scope": "always-on", "reason": "Tunggu antrean vLLM waiting==0 sebelum tiap pemanggilan Gemma." },
+    "MD-O-rerun-slot": { "scope": "always-on", "reason": "Pilih slot rerun bebas + qualified_rerun tiap penyusunan run batch." },
+    "MD-O-resume": { "scope": "always-on", "reason": "Batch aman-diulang: state per-case + skip yang sudah punya swebench_eval tiap run batch (skip-nya kondisional pada state, mekanismenya struktural)." },
+    "MD-O-fix-gold-eval": { "scope": "always-on", "reason": "Eval gold FIX dev-only jalan tiap case di batch dev (di LUAR loop model; penangkap false-PASS)." },
+    "MD-O-localize-gold-eval": { "scope": "always-on", "reason": "Eval gold LOCALIZE dev-only jalan tiap case di batch dev (qualified shortlist)." },
+    "LV-14": { "scope": "conditional", "reason": "Detektor divergensi region-hunk hanya flag saat mismatch subset/superset (realm EVAL). Roadmap." },
+    "R6": { "scope": "conditional", "reason": "Dedup papan skor batch hanya saat resume/re-run menimbulkan entri ganda per case." },
+    "R11": { "scope": "conditional", "reason": "Graceful-shutdown emit_abort('interrupted') hanya saat KeyboardInterrupt/SystemExit. Roadmap." },
+    "R15": { "scope": "conditional", "reason": "Detektor dua-arah region-hunk (bentuk konkret LV-14) hanya flag saat mismatch. Roadmap." },
+    "R18": { "scope": "always-on", "reason": "git-apply-check gold.patch (fail-keras) dijalankan tiap setup case (prepare_cases)." },
+    "R19": { "scope": "always-on", "reason": "Prune keying qualified dihitung tiap orkestrasi case (dev, gold di luar loop model)." }
+  }
+};
+const ANN = (SCOPE && SCOPE.annotations) || {};
+
+/* ---------- distribusi: breadth (data) x runtime-scope (anotasi) ---------- */
+function caseCount(r){ return ((r.origin && r.origin.case_ids) || []).length; }
+function breadthKey(r){ const n=caseCount(r); return n===0?"Fondasi":n===1?"Single":n<=3?"Few":"Broad"; }
+function ruleScope(r){ return (ANN[r.id] && ANN[r.id].scope) || "always-on"; }
+function scopeReason(r){ return (ANN[r.id] && ANN[r.id].reason) || ""; }
+// tier prioritas: ambang scope (always-on vs bukan) x ambang breadth (>=2 case vs <=1)
+function tierOf(r){
+  const ao = ruleScope(r)==="always-on";
+  const broad = caseCount(r)>=2;
+  if(ao && broad) return "p1";
+  if(ao && !broad) return "p2";
+  if(!ao && broad) return "p3";
+  return "p4";
+}
+const SCOPE_ROWS = [
+  {k:"always-on",   label:"Always-on",   hint:"jalan tiap run/DONE, tanpa syarat kasus"},
+  {k:"conditional", label:"Conditional", hint:"bertindak hanya saat sinyal/detektor menyala"},
+  {k:"targeted",    label:"Targeted",    hint:"hanya untuk kelas kasus tertentu"}
+];
+const BREADTH_COLS = [
+  {k:"Fondasi", label:"Fondasi", sub:"0 case"},
+  {k:"Single",  label:"Single",  sub:"1 case"},
+  {k:"Few",     label:"Few",     sub:"2–3 case"},
+  {k:"Broad",   label:"Broad",   sub:"4+ case"}
+];
+const TIER = {
+  p1:{icon:"🟥", label:"Pertahankan & perkuat", desc:"always-on + terbukti ≥2 case — load-bearing, banyak case gantung di sini"},
+  p2:{icon:"🟧", label:"Fondasi struktural",     desc:"always-on tapi 0–1 case — tulang punggung desain, jaga tetap utuh"},
+  p3:{icon:"🟨", label:"Bertarget tapi terbukti", desc:"conditional/targeted tapi ≥2 case — kandidat diperkuat"},
+  p4:{icon:"⬜", label:"Niche / review",          desc:"conditional/targeted + 0–1 case — review, apalagi kalau roadmap / ber-marker gugur"}
+};
+
 /* ---------- setup: derive marker map, order ---------- */
 const PHASE_ORDER = ["REPRODUCE","LOCALIZE","FIX","VERIFY","ORCHESTRATION"];
 const MARKER_LABEL = {
@@ -1814,7 +1981,7 @@ const markersByRule = {};
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ---------- state ---------- */
-const state = { q:"", status:"terpasang", layer:"all", marked:"off" };
+const state = { q:"", status:"terpasang", layer:"all", marked:"off", view:"phase", cell:null };
 
 function ruleText(r){
   return [r.id, r.name, r.what, r.phase, r.layer, r.status,
@@ -1933,6 +2100,17 @@ function openDrawer(id){
         <div><span class="mtitle">${esc(MARKER_LABEL[m.marker]||m.marker)}</span>${esc(m.note)}</div>
       </div>`).join("") : "";
 
+  const tier = tierOf(r), scK = ruleScope(r), brK = breadthKey(r), nCase = caseCount(r);
+  const distHTML = `
+      <div class="sec">
+        <div class="sec-label">Klasifikasi distribusi</div>
+        <div class="meta-grid">
+          <span class="chip"><span class="k">breadth</span> ${esc(brK)} · ${nCase} case</span>
+          <span class="chip"><span class="k">runtime</span> ${esc(scK)}</span>
+          <span class="chip"><span class="k">tier</span> ${TIER[tier].icon} ${esc(TIER[tier].label)}</span>
+        </div>
+        ${scopeReason(r)?`<div class="none" style="font-style:normal; margin-top:9px; font-size:12.5px; line-height:1.5"><b style="color:var(--muted)">Alasan scope (klasifikasi bot-06, bisa dikoreksi):</b> ${esc(scopeReason(r))}</div>`:""}
+      </div>`;
   const drawer = document.getElementById("drawer");
   drawer.innerHTML = `
     <div class="drawer-head">
@@ -1960,6 +2138,8 @@ function openDrawer(id){
         ${(!(o.case_ids&&o.case_ids.length) && !(o.kh_refs&&o.kh_refs.length) && !o.lv_ref)
           ? `<div class="none" style="margin-top:8px">Tanpa anchor case/KH/lever — keputusan desain langsung.</div>` : ""}
       </div>
+
+      ${distHTML}
 
       <div class="sec">
         <div class="sec-label">Bukti (di kode &amp; doc)</div>
@@ -2022,10 +2202,102 @@ function wireSeg(segId, key){
     rerender();
   });
 }
-function rerender(){ renderSummary(); renderBoard(); }
+/* ---------- distribution view ---------- */
+function renderDistribution(){
+  const box = document.getElementById("distribution");
+  const pool = DATA.rules.filter(passFilter);            // hormati filter status/layer/marker/search
+  // hitung tier + isi sel
+  const cellMap = {};                                     // "scope|breadth" -> [rules]
+  const tierCount = {p1:0,p2:0,p3:0,p4:0};
+  pool.forEach(r=>{
+    const key = ruleScope(r)+"|"+breadthKey(r);
+    (cellMap[key] = cellMap[key] || []).push(r);
+    tierCount[tierOf(r)]++;
+  });
+
+  const intro = `<p class="dist-intro">
+    Dua sumbu: <b>kolom = origin breadth</b> (dihitung mekanis dari <code>case_ids</code>, jujur dari data) ×
+    <b>baris = runtime scope</b> (klasifikasi bot-06 dari isi rule — bisa dikoreksi, alasan ada di tiap drawer).
+    Warna sel = tier prioritas. Angka mengikuti filter di atas (default: <b>terpasang</b> saja — ganti ke <i>Semua</i> untuk lihat termasuk roadmap).
+  </p>`;
+
+  const tierbar = `<div class="tierbar">` + ["p1","p2","p3","p4"].map(t=>`
+    <div class="tierchip"><span>${TIER[t].icon}</span><b>${tierCount[t]}</b>
+      <span><span style="font-weight:600">${esc(TIER[t].label)}</span><br><span class="tdesc">${esc(TIER[t].desc)}</span></span>
+    </div>`).join("") + `</div>`;
+
+  // matrix table
+  let head = `<tr><th class="corner"></th>`;
+  BREADTH_COLS.forEach(c=> head += `<th class="colh"><b>${esc(c.label)}</b><span class="ch-sub">${esc(c.sub)}</span></th>`);
+  head += `</tr>`;
+
+  let rows = "";
+  SCOPE_ROWS.forEach(sr=>{
+    let tr = `<th class="rowh"><b>${esc(sr.label)}</b><span class="rh-hint">${esc(sr.hint)}</span></th>`;
+    BREADTH_COLS.forEach(bc=>{
+      const key = sr.k+"|"+bc.k;
+      const rs = cellMap[key] || [];
+      // tier sel ditentukan oleh kombinasi (sama utk semua rule di sel)
+      const ao = sr.k==="always-on";
+      const broad = (bc.k==="Few"||bc.k==="Broad");
+      const tier = ao&&broad?"p1": ao&&!broad?"p2": !ao&&broad?"p3":"p4";
+      const roadmap = rs.filter(r=>r.status!=="terpasang").length;
+      const flagged = rs.some(r=> (markersByRule[r.id]||[]).length);
+      const sel = (state.cell===key) ? " sel":"";
+      const empty = rs.length===0 ? " empty0":"";
+      tr += `<td>
+        <div class="cell tier-${tier}${sel}${empty}" data-key="${key}" ${rs.length?'role="button" tabindex="0"':""}>
+          ${flagged?`<span class="cflag" title="ada rule ber-catatan kurator">⚑</span>`:""}
+          <div class="cnum">${rs.length}</div>
+          <div class="cmeta">${roadmap?`${roadmap} roadmap`:(rs.length?"semua terpasang":"—")}</div>
+          <div class="ctier">${TIER[tier].icon}</div>
+        </div></td>`;
+    });
+    rows += `<tr>${tr}</tr>`;
+  });
+  const matrix = `<div class="matrix-scroll"><table class="matrix"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+
+  // daftar rule (sel terpilih atau semua pool)
+  let listRules, listLabel;
+  if(state.cell && cellMap[state.cell]){
+    const [sc,br] = state.cell.split("|");
+    listRules = cellMap[state.cell];
+    listLabel = `<span class="phase-tag">${esc(sc)} × ${esc(br)}</span> <span class="muted">${listRules.length} rule</span> <span class="pill" id="clearCell">✕ tampilkan semua</span>`;
+  } else {
+    listRules = pool.slice().sort((a,b)=>{
+      const ord={p1:0,p2:1,p3:2,p4:3}; return ord[tierOf(a)]-ord[tierOf(b)];
+    });
+    listLabel = `<span class="muted">Semua ${listRules.length} rule (klik sel untuk fokus) — diurut tier</span>`;
+  }
+  const list = `<div class="dist-list-head"><h2>Rule</h2>${listLabel}</div>
+    ${listRules.length?`<div class="grid">${listRules.map(cardHTML).join("")}</div>`:`<div class="empty">Tidak ada rule pada filter/sel ini.</div>`}`;
+
+  box.innerHTML = intro + tierbar + matrix + list;
+
+  // wire cells
+  box.querySelectorAll(".cell:not(.empty0)").forEach(c=>{
+    const go = ()=>{ state.cell = (state.cell===c.dataset.key)?null:c.dataset.key; renderDistribution(); };
+    c.addEventListener("click", go);
+    c.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); go();} });
+  });
+  const clr = document.getElementById("clearCell");
+  if(clr) clr.addEventListener("click", ()=>{ state.cell=null; renderDistribution(); });
+  box.querySelectorAll(".card").forEach(c=>{
+    c.addEventListener("click", ()=>openDrawer(c.dataset.id));
+    c.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); openDrawer(c.dataset.id);} });
+  });
+}
+
+function rerender(){
+  renderSummary();
+  const distMode = state.view==="dist";
+  document.getElementById("board").hidden = distMode;
+  document.getElementById("distribution").hidden = !distMode;
+  if(distMode) renderDistribution(); else renderBoard();
+}
 
 document.getElementById("q").addEventListener("input", e=>{ state.q = e.target.value.trim(); rerender(); });
-wireSeg("statusSeg","status"); wireSeg("layerSeg","layer"); wireSeg("markSeg","marked");
+wireSeg("statusSeg","status"); wireSeg("layerSeg","layer"); wireSeg("markSeg","marked"); wireSeg("viewSeg","view");
 document.getElementById("scrim").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", e=>{
   if(e.key==="Escape") closeDrawer();
