@@ -374,3 +374,37 @@ prioritas pemasangan: p2 dulu. SEMUA keranjang MENUNGGU keputusan Mirza (STOP ek
   13768, astropy-14365, 13757, 11848, l-dev 11019/13158/15320/12284/12908).
 
 Data penunjang: `scan_out.json` scratchpad sesi claude-mac (angka bisa dihitung ulang).
+
+### §-A0j — HASIL malam retest 23-jul (claude-mac): PASS 43→46; R20 kausal; dinding tersisa = oracle + P2P
+
+Papan: `artifacts/papan-skor-retest-a0i-r20-mac.md`. Dua rezim: A = G1+G2+p2
+(kode 5d9c3db..d5a4ef1, parallel 4), B = +R20 (merge 4248bea, parallel 3).
+**PASS PERDANA ×3: 15851 (2/2, historis 0/6), 14752 (2/2, 0/3), 14855 (2/2 rezim-B,
+0/12 R-wall — VALIDASI KAUSAL R20**: diagnosa membuktikan dinding = dialek
+`call:file:` tak terparse; pasca-R20 langsung tembus, 76+52 hit dialek di console).
+Dinding R 13265 (0/9) & 15902 (0/9) juga PECAH (masing2 via G-gate & R20) — dinding
+mereka BERPINDAH ke FIX/oracle. p2: first-firing 15902 f-r1 t28 (hemat ~12 turn) +
+validasi-negatif 12184 r16. Falsifikasi 11910 TUTUP (2 draw, f-exp-neutral, luar
+rate): netralisasi teks GAGAL memadamkan modus hapus-guard → pengikat = ORACLE
+EKSEKUSI. Insiden: venv tersapu (wasit L2 hilang senyap; swebench → pyproject
+d5a4ef1) + 1 void-infra 12184 (gpu-timeout, flag --parallel 1 tanpa bypass).
+
+**Konvergensi diagnosa (7 laporan subagent, semua terkatalog):**
+1. **R14/N3 oracle-eksekusi = dinding dominan** — 5 spesimen semalam (falsif r1+r2,
+   13265 d1+d2, 12470 d2) + bom false-flip 15902-r10 (branch exception→PASS).
+   HARUS menyerang repro.py (multi-skenario dari test tetangga), bukan narasi md.
+2. **P2P-regression = kelas kedua** — 3 spesimen (11910-falsif p2p-fail eksak,
+   15902-d2 f2p-100%-lulus-p2p-gagal, 12470-d2 laten). "Gate subset P2P /
+   regression sniff" (ide #5 handoff 22-jul) kini berbukti kalibrasi kuat.
+3. **Edit-mechanics** = kelas ketiga (15902-f-r1 clobber+escaping-quicksand,
+   12470-d1 no-op-edit buta, 12184-r16 korupsi-skrip, 13265-d2 truncation
+   whole-file) — 4 kandidat catat-only terdaftar di katalog.
+
+**Keranjang berikut (MENUNGGU keputusan Mirza):**
+- Keranjang desain (diskusi dulu, JANGAN koding): R14/N3 (spec: repro.py
+  multi-skenario + larang exception→PASS), P2P-sniff/regression gate, R17/LV-13a
+  (pengurang varians terbukti: 12470 d1 vs d2), promosi dedup intra-reply
+  (spesimen ±70 blok/reply).
+- Keranjang retest pasca-lever: 15902 (satu lever dari PASS — P2P-sniff ATAU
+  R14), 13265 & 12470 (R14), 12184 (edit-mechanics/lock), 11910 (R14 oracle).
+- JANGAN retest tanpa lever baru: semua case menang (46), 14855/15851/14752.
