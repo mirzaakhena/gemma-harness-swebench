@@ -24,6 +24,17 @@ diawali `#` diabaikan), atau daftar dipisah koma lewat `--case-list`.
 Aman diulang: state disimpan per case, dan `--resume` (default) melewati case yang
 sudah punya `swebench_eval.json`. Jadi kalau mati di tengah, jalankan ulang saja.
 
+Mode pool (2026-07-22): `--parallel N` menjalankan rolling pool N lane thread
+dalam SATU proses — selalu ada N draw aktif; begitu satu selesai, slotnya
+langsung diisi dari antrean (`next_launchable`). Invarian same-case-serial: dua
+draw untuk case yang SAMA tak pernah aktif bersamaan, karena `next_free_rerun`
+membaca direktori saat start — dua start simultan bisa memilih nomor rerun yang
+sama, dan tabrakan run dir = korupsi (append-only mutlak). Duplikat di antrean
+sah (mis. A,A,A,B,B = 3 draw A + 2 draw B): serial per case, paralel lintas
+case. Tiap lane submit langsung ke Gemma (bypass gate ala --allow-concurrent):
+endpoint eksklusif milik kita, gate `waiting==0` + cek container case lain akan
+deadlock antar-lane. N=1 (default) = jalur serial lama, tidak berubah.
+
 Yang TIDAK dilakukan script ini, sengaja: autopsi katalog lever, commit, dan
 pelaporan ke user. Itu tugas bot yang menjalankannya (lihat docs/sop-rlfv-case-run.md
 §5-§7).
@@ -35,9 +46,11 @@ import json
 import re
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from queue import Queue
 
 MAIN = Path(__file__).resolve().parent.parent
 ARTIFACTS = MAIN.parent / "artifacts"
@@ -145,6 +158,21 @@ def qualified_rerun(campaign_dir: Path, campaign: str, case: str) -> int | None:
     return best
 
 
+def next_launchable(queue, active_cases) -> int | None:
+    """Scheduler murni mode pool: indeks item antrean paling AWAL yang case-nya
+    tidak sedang aktif; None bila tak ada yang boleh diluncurkan.
+
+    Invarian anti slot-race: dua draw untuk case yang SAMA tak boleh aktif
+    bersamaan — `next_free_rerun` membaca direktori saat start, dua start
+    simultan bisa memilih nomor rerun yang sama (append-only mutlak; tabrakan
+    run dir = korupsi). Duplikat di antrean sah (multi-draw, mis. A,A,A,B,B):
+    serial per case, paralel lintas case."""
+    for i, case in enumerate(queue):
+        if case not in active_cases:
+            return i
+    return None
+
+
 def dedup_results(results):
     """R6: papan skor batch tahan-resume. State di-append lintas resume
     (main() :350-370), jadi satu `case` bisa muncul >1 kali di list akumulasi
@@ -163,12 +191,22 @@ def dedup_results(results):
 # eksekusi
 # --------------------------------------------------------------------------
 
+# Mode pool berjalan multi-thread: log dan state/results dilindungi lock
+# terpisah supaya baris log tak saling menyisip dan state tak korup. Di mode
+# serial lock ini tak pernah kontensi (no-op praktis).
+_LOG_LOCK = threading.Lock()
+_STATE_LOCK = threading.Lock()
+_LOG_CTX = threading.local()  # per-thread: prefiks "[lane-N] " utk keterbacaan
+
+
 def log(state_path: Path, msg: str) -> None:
     stamp = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
-    line = f"[{stamp}] {msg}"
-    print(line, flush=True)
-    with open(state_path.with_suffix(".log"), "a", encoding="utf-8") as fh:
-        fh.write(line + "\n")
+    prefix = getattr(_LOG_CTX, "prefix", "")
+    line = f"[{stamp}] {prefix}{msg}"
+    with _LOG_LOCK:
+        print(line, flush=True)
+        with open(state_path.with_suffix(".log"), "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
 
 
 def run(cmd: list[str], cwd: Path = MAIN) -> tuple[int, str]:
@@ -343,6 +381,72 @@ def run_case(state_path: Path, case: str,
     return res
 
 
+def run_pool(state_path: Path, queue: list[str], parallel: int,
+             results: list, prune_localize_miss: bool = False) -> None:
+    """Jalankan antrean draw dengan rolling pool `parallel` lane (threading).
+
+    Selalu ada <=N draw aktif; begitu satu selesai, slot langsung diisi item
+    launchable berikutnya (`next_launchable` — same-case tetap serial, lihat
+    docstring modul). Tiap lane submit langsung ke Gemma
+    (allow_concurrent=True): endpoint eksklusif milik kita, gate `waiting==0`
+    + cek container case lain akan deadlock antar-lane. Exception satu lane
+    TIDAK mematikan pool (ditangkap per draw, sama seperti loop serial).
+    Hasil tiap draw di-append ke `results` + ditulis ke state di bawah
+    _STATE_LOCK, format persis mode serial."""
+    total = len(queue)
+    pending = list(queue)
+    done_q: Queue = Queue()  # lane id yang selesai, diisi worker
+    active: dict[int, tuple[threading.Thread, str]] = {}
+    free_lanes = list(range(1, parallel + 1))
+    launched = 0
+
+    log(state_path,
+        f"mode pool: {parallel} lane, {total} draw — tiap lane BYPASS gate GPU "
+        f"(allow_concurrent; endpoint eksklusif, gate akan deadlock antar-lane)")
+
+    def lane_worker(lane: int, case: str, no: int) -> None:
+        _LOG_CTX.prefix = f"[lane-{lane}] "
+        log(state_path, f"[{no}/{total}] {case} — mulai")
+        try:
+            res = run_case(state_path, case, allow_concurrent=True,
+                           prune_localize_miss=prune_localize_miss)
+        except Exception as exc:  # noqa: BLE001 — pool tidak boleh mati karena satu draw
+            res = {"case": case, "error": f"exception: {exc!r}"}
+            log(state_path, f"  EXCEPTION: {exc!r}")
+        res["finished"] = datetime.now(timezone.utc).astimezone().isoformat()
+        with _STATE_LOCK:
+            results.append(res)
+            state_path.write_text(
+                json.dumps({"results": results}, ensure_ascii=False, indent=1),
+                encoding="utf-8")
+        sw = res.get("swebench_eval") or {}
+        log(state_path, f"[{no}/{total}] {case} — selesai: "
+                        f"resolved={sw.get('resolved')} error={res.get('error')}")
+        done_q.put(lane)
+
+    while pending or active:
+        # isi semua lane kosong dengan item launchable paling awal
+        while free_lanes:
+            active_cases = {c for _, c in active.values()}
+            idx = next_launchable(pending, active_cases)
+            if idx is None:
+                break
+            case = pending.pop(idx)
+            lane = free_lanes.pop(0)
+            launched += 1
+            t = threading.Thread(target=lane_worker, name=f"lane-{lane}",
+                                 args=(lane, case, launched))
+            active[lane] = (t, case)
+            t.start()
+        if not active:
+            break  # defensif: mustahil selama pending hanya berisi case valid
+        lane = done_q.get()  # blokir sampai ada lane selesai → slot diisi lagi
+        t, _case = active.pop(lane)
+        t.join()
+        free_lanes.append(lane)
+        free_lanes.sort()
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--cases", help="file berisi satu case id per baris")
@@ -354,6 +458,12 @@ def main(argv=None) -> int:
                     help="EKSPERIMEN: lewati cek container Gemma case lain "
                          "supaya beberapa proses batch bisa jalan paralel "
                          "(gate waiting==0 tetap dijaga)")
+    ap.add_argument("--parallel", type=int, default=1,
+                    help="jumlah lane rolling pool dalam SATU proses (default "
+                         "1 = serial lama, jalur kode tak berubah). N>=2: "
+                         "N draw aktif sekaligus via thread; same-case tetap "
+                         "serial (invarian next_free_rerun); tiap lane bypass "
+                         "gate GPU ala --allow-concurrent.")
     ap.add_argument("--prune-localize-miss", action="store_true",
                     help="ORKESTRASI hemat-compute (default OFF): SKIP FIX bila "
                          "gold_eval.json LOCALIZE menandai file_match=false. "
@@ -379,25 +489,46 @@ def main(argv=None) -> int:
             results = []
 
     log(state_path, f"=== BATCH MULAI: {len(cases)} case ===")
-    for i, case in enumerate(cases, 1):
-        if not args.no_resume and already_done(case):
-            log(state_path, f"[{i}/{len(cases)}] {case} — SUDAH ADA swebench_eval, dilewati")
-            continue
-        log(state_path, f"[{i}/{len(cases)}] {case} — mulai")
-        try:
-            res = run_case(state_path, case, args.allow_concurrent,
-                           args.prune_localize_miss)
-        except Exception as exc:  # noqa: BLE001 — batch tidak boleh mati karena satu case
-            res = {"case": case, "error": f"exception: {exc!r}"}
-            log(state_path, f"  EXCEPTION: {exc!r}")
-        res["finished"] = datetime.now(timezone.utc).astimezone().isoformat()
-        results.append(res)
-        state_path.write_text(
-            json.dumps({"results": results}, ensure_ascii=False, indent=1),
-            encoding="utf-8")
-        sw = res.get("swebench_eval") or {}
-        log(state_path, f"[{i}/{len(cases)}] {case} — selesai: "
-                        f"resolved={sw.get('resolved')} error={res.get('error')}")
+    if args.parallel > 1:
+        # Mode pool: resume/already_done dicek SEKALI di scheduling awal
+        # (semantik sama dgn loop serial yang cek di awal tiap case).
+        queue_run = []
+        for i, case in enumerate(cases, 1):
+            if not args.no_resume and already_done(case):
+                log(state_path, f"[{i}/{len(cases)}] {case} — SUDAH ADA swebench_eval, dilewati")
+                continue
+            queue_run.append(case)
+        run_pool(state_path, queue_run, args.parallel, results,
+                 args.prune_localize_miss)
+        # Jumlah draw per case DI-LOG sebelum ringkasan: dedup_results hanya
+        # menyisakan entri terakhir per case (semantik lama, sengaja), jadi
+        # info multi-draw harus tercatat di sini agar tak hilang.
+        draws: dict[str, int] = {}
+        for c in queue_run:
+            draws[c] = draws.get(c, 0) + 1
+        if draws:
+            log(state_path, "draw per case: " +
+                ", ".join(f"{c}={n}" for c, n in draws.items()))
+    else:
+        for i, case in enumerate(cases, 1):
+            if not args.no_resume and already_done(case):
+                log(state_path, f"[{i}/{len(cases)}] {case} — SUDAH ADA swebench_eval, dilewati")
+                continue
+            log(state_path, f"[{i}/{len(cases)}] {case} — mulai")
+            try:
+                res = run_case(state_path, case, args.allow_concurrent,
+                               args.prune_localize_miss)
+            except Exception as exc:  # noqa: BLE001 — batch tidak boleh mati karena satu case
+                res = {"case": case, "error": f"exception: {exc!r}"}
+                log(state_path, f"  EXCEPTION: {exc!r}")
+            res["finished"] = datetime.now(timezone.utc).astimezone().isoformat()
+            results.append(res)
+            state_path.write_text(
+                json.dumps({"results": results}, ensure_ascii=False, indent=1),
+                encoding="utf-8")
+            sw = res.get("swebench_eval") or {}
+            log(state_path, f"[{i}/{len(cases)}] {case} — selesai: "
+                            f"resolved={sw.get('resolved')} error={res.get('error')}")
 
     log(state_path, "=== BATCH SELESAI ===")
     board = dedup_results(results)  # R6: tiap case dihitung sekali lintas resume

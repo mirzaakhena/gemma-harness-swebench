@@ -12,6 +12,8 @@ Fokus utamanya dua invarian yang lahir dari insiden nyata:
 """
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -20,6 +22,7 @@ import run_rlfv_batch  # noqa: E402
 from run_rlfv_batch import (  # noqa: E402
     dedup_results,
     next_free_rerun,
+    next_launchable,
     parse_case_list,
     parse_waiting,
     qualified_rerun,
@@ -300,6 +303,104 @@ def test_should_prune_fix_real_localize_hit_keeps():
     if hit is None:
         pytest.skip("tak ada run l-dev dgn file_match=true")
     assert should_prune_fix(hit, enabled=True) is False
+
+
+# --- next_launchable (scheduler murni mode --parallel) ----------------------
+# Invarian anti slot-race: `next_free_rerun` membaca direktori SAAT START; dua
+# draw same-case yang start simultan bisa memilih nomor rerun yang SAMA →
+# tabrakan run dir = korupsi (append-only mutlak, lihat insiden 2026-07-20).
+# Maka duplikat di antrean (multi-draw, mis. A,A,A,B,B) harus SERIAL per case
+# tapi boleh paralel lintas case.
+
+def test_next_launchable_same_case_blocked_while_active():
+    """Item same-case tidak launchable saat case itu aktif; item beda case
+    launchable (paralel lintas case, serial per case)."""
+    queue = ["django__django-1", "django__django-1", "astropy__astropy-2"]
+    # django-1 sedang aktif di lane lain → draw kedua django-1 dilewati,
+    # astropy-2 (indeks 2) yang boleh diluncurkan
+    assert next_launchable(queue, {"django__django-1"}) == 2
+    # tak ada yang aktif → item paling awal
+    assert next_launchable(queue, set()) == 0
+
+
+def test_next_launchable_respects_queue_order():
+    """Kandidat paling AWAL yang boleh — urutan antrean dihormati."""
+    assert next_launchable(["b", "a", "c"], set()) == 0
+    # b aktif → kandidat paling awal berikutnya adalah a (indeks 1), bukan c
+    assert next_launchable(["b", "a", "c"], {"b"}) == 1
+
+
+def test_next_launchable_empty_or_all_active_returns_none():
+    assert next_launchable([], set()) is None
+    assert next_launchable([], {"a"}) is None
+    assert next_launchable(["a", "a"], {"a"}) is None
+    assert next_launchable(["a", "b"], {"a", "b"}) is None
+
+
+# --- run_pool (mode --parallel N, rolling pool) -----------------------------
+# Integrasi ringan: run_case dipalsukan (tanpa docker/GPU), N=2. Yang
+# dibuktikan: (a) tak pernah ada 2 draw same-case aktif bersamaan, (b) semua
+# item antrean dieksekusi, (c) results lengkap tersimpan di state, (d) tiap
+# lane submit ala allow_concurrent=True (gate GPU akan deadlock antar-lane).
+
+def test_run_pool_all_draws_executed_same_case_never_concurrent(tmp_path, monkeypatch):
+    lock = threading.Lock()
+    active_now: set = set()
+    peak = [0]
+    violations: list = []
+    calls: list = []
+
+    def fake_run_case(state_path, case, allow_concurrent=False,
+                      prune_localize_miss=False):
+        with lock:
+            if case in active_now:
+                violations.append(case)  # slot-race: dua draw same-case aktif
+            active_now.add(case)
+            peak[0] = max(peak[0], len(active_now))
+            calls.append((case, allow_concurrent))
+        time.sleep(0.02)  # beri kesempatan lane lain tumpang tindih
+        with lock:
+            active_now.discard(case)
+        return {"case": case, "swebench_eval": {"resolved": True}}
+
+    monkeypatch.setattr(run_rlfv_batch, "run_case", fake_run_case)
+    state = tmp_path / "batch-state.json"
+    results: list = []
+    queue = ["A", "A", "A", "B", "B", "C"]  # 3 draw A + 2 draw B + 1 draw C
+    run_rlfv_batch.run_pool(state, queue, parallel=2, results=results)
+
+    assert violations == []  # invarian same-case-serial tak pernah dilanggar
+    assert sorted(c for c, _ in calls) == sorted(queue)  # semua draw jalan
+    assert all(ac is True for _, ac in calls)  # pool bypass gate GPU
+    assert peak[0] <= 2  # tak pernah melebihi N lane
+    saved = json.loads(state.read_text(encoding="utf-8"))["results"]
+    assert len(saved) == len(queue)
+    assert all("finished" in r for r in saved)  # format entri sama dgn serial
+
+
+def test_run_pool_exception_in_one_lane_does_not_kill_pool(tmp_path, monkeypatch):
+    """Satu draw meledak → dicatat sebagai error (semantik loop serial),
+    draw lain tetap dieksekusi sampai antrean habis. Entri lama di results
+    (resume) tidak boleh hilang dari state."""
+    def fake_run_case(state_path, case, allow_concurrent=False,
+                      prune_localize_miss=False):
+        if case == "BOOM":
+            raise RuntimeError("meledak di lane")
+        return {"case": case, "swebench_eval": {"resolved": True}}
+
+    monkeypatch.setattr(run_rlfv_batch, "run_case", fake_run_case)
+    state = tmp_path / "batch-state.json"
+    results: list = [{"case": "LAMA", "swebench_eval": {"resolved": False},
+                      "finished": "2026-07-21T00:00:00+00:00"}]
+    run_rlfv_batch.run_pool(state, ["BOOM", "A", "B"], parallel=2,
+                            results=results)
+
+    assert len(results) == 4  # 1 lama + 3 draw
+    boom = next(r for r in results if r["case"] == "BOOM")
+    assert "exception" in boom["error"]
+    saved = json.loads(state.read_text(encoding="utf-8"))["results"]
+    assert len(saved) == 4
+    assert saved[0]["case"] == "LAMA"  # entri resume tetap di depan
 
 
 # --- case_paths ------------------------------------------------------------
