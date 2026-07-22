@@ -41,10 +41,10 @@ from pathlib import Path
 
 MAIN = Path(__file__).resolve().parent.parent
 ARTIFACTS = MAIN.parent / "artifacts"
-GPU_CHECK = Path(
-    r"C:\Users\Mirza\workspace-shared\smartm2m-bench\swe\harness-uplift"
-    r"\swebench-original\gpu_check.py"
-)
+# 2026-07-22: skrip Windows lama (C:\...\swebench-original\gpu_check.py) tidak
+# ikut ke mesin ini; direkonstruksi lintas-platform di scripts/gpu_check.py
+# (kontrak output sama — baris terakhir `vLLM queue: {...}`).
+GPU_CHECK = Path(__file__).resolve().parent / "gpu_check.py"
 IMAGE_TMPL = "ghcr.io/epoch-research/swe-bench.eval.x86_64.{case}:latest"
 MAX_RERUN = 3
 GPU_POLL_SECONDS = 10
