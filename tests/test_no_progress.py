@@ -58,6 +58,61 @@ def test_whitespace_only_differences_count_as_identical():
     assert d.trigger == "identical-replies"
 
 
+# --- Trigger #1b: periode-2 (r[N] == r[N-2], A-B-A-B) ----------------------
+# Promosi sweep 2026-07-23: siklus periode-2 LOLOS trigger identik-3
+# (spesimen 15902 r2/r3 fase R; 19 run periode-2 murni di korpus).
+
+def test_period2_replies_inject_then_break():
+    K = K_NO_PROGRESS
+    replies = ["form A", "form B", "form A", "form B", "form A"]  # 3 hit p2
+    counts = [1] * len(replies)
+    d = no_progress_decision(replies, counts, turn_idx=5,
+                             observed_fail=True, already_injected=set())
+    assert d.action == "inject"
+    assert d.trigger == "period-2-replies"
+    assert str(5) in d.message  # pesan unik: menyebut nomor turn
+
+    d2 = no_progress_decision(replies + ["form B"], counts + [1],
+                              turn_idx=6, observed_fail=True,
+                              already_injected={"period-2-replies"})
+    assert d2.action == "break"
+    assert d2.trigger == "period-2-replies"
+    assert K == 3  # jendela = K perbandingan jarak-2 (5 reply)
+
+
+def test_period2_below_window_returns_none():
+    # A-B-A-B = baru 2 perbandingan (< K) -> belum sinyal.
+    d = no_progress_decision(["form A", "form B", "form A", "form B"],
+                             [1, 1, 1, 1], turn_idx=4,
+                             observed_fail=True, already_injected=set())
+    assert d.action == "none"
+
+
+def test_period2_normalizes_whitespace_edges():
+    replies = ["form A\n", "form B", "form A  ", "form B\t", "form A"]
+    d = no_progress_decision(replies, [1] * 5, turn_idx=5,
+                             observed_fail=True, already_injected=set())
+    assert d.action == "inject"
+    assert d.trigger == "period-2-replies"
+
+
+def test_constant_replies_prefer_identical_trigger_over_period2():
+    # Reply konstan memenuhi keduanya; label identical-replies yang menang.
+    d = no_progress_decision(["x"] * 5, [1] * 5, turn_idx=5,
+                             observed_fail=True, already_injected=set())
+    assert d.trigger == "identical-replies"
+
+
+def test_period2_message_hygiene():
+    m = no_progress_decision(["A", "B", "A", "B", "A"], [1] * 5, turn_idx=7,
+                             observed_fail=True,
+                             already_injected=set()).message
+    low = m.lower()
+    assert "watcher" not in low and "detector" not in low  # §4b
+    for w in ("kamu", "jalankan", "tulis ", "berkas", "balasan"):  # §4
+        assert w not in low
+
+
 # --- Trigger #2: >=K turn beruntun dengan 0 aksi ter-parse -----------------
 
 def test_zero_action_turns_inject_then_break():

@@ -35,7 +35,8 @@ from harness.stages.chat_transport import (CHAT_BACKOFF_BASE_S, CHAT_RETRIES,
                                            is_transport_error)
 from harness.stages.fix_gates import compose_fix_md, fix_rejection_message
 from harness.stages.fix_patch_runner import evaluate_patch_in_fresh_world
-from harness.stages.fix_watchers import (DEGENERATE_REPLY_STREAK,
+from harness.stages.fix_watchers import (DEGENERATE_P2_STREAK,
+                                         DEGENERATE_REPLY_STREAK,
                                          ReplyHashWatcher, record_insist,
                                          shortlist_strays)
 from harness.stages.gemma_protocol import (done_rejection_fix, exact_status,
@@ -306,21 +307,26 @@ def main() -> int:
                 messages.append({"role": "assistant", "content": reply})
                 log(f"[gemma a{k} t{turn}] {reply}")
 
-                # N1: loop degenerat temp-0 — 3 reply md5-identik beruntun.
+                # N1: loop degenerat temp-0 — 3 reply md5-identik beruntun,
+                # ATAU (N1b) siklus periode-2 A-B-A-B (3 hit jarak-2).
                 # TANPA injeksi konten: akhiri attempt dini, biarkan rotasi
                 # kandidat mengambil alih (mekanisme penyelamat 12184 r9).
+                # Label event mengikuti pola yang menembak (watcher.trigger).
                 if hash_watcher.observe(reply):
+                    limit = (DEGENERATE_REPLY_STREAK
+                             if hash_watcher.trigger == "reply-hash"
+                             else DEGENERATE_P2_STREAK)
                     em.event("fix", "retry", attempt=k,
                              budget={"msg_used": turn,
                                      "msg_limit": args.max_turns},
                              detail={"why": ("attempt-ended: degenerate-loop "
-                                             "reply-hash "
-                                             f"x{DEGENERATE_REPLY_STREAK}"),
+                                             f"{hash_watcher.trigger} "
+                                             f"x{limit}"),
                                      "reply_md5": hash_watcher.last_md5,
                                      "turns_saved": args.max_turns - turn})
                     log(f"[driver] attempt {k} ended early at turn {turn}: "
-                        f"{DEGENERATE_REPLY_STREAK} byte-identical replies "
-                        f"in a row (md5 {hash_watcher.last_md5}); "
+                        f"degenerate loop {hash_watcher.trigger} x{limit} "
+                        f"(md5 {hash_watcher.last_md5}); "
                         f"{args.max_turns - turn} turns saved")
                     break
 

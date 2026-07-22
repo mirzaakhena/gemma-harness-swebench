@@ -17,6 +17,9 @@ BASE-WORLD (gold-blind by construction) -> aksi dua langkah:
 
 Trigger yang diimplementasi (subset deterministik bernilai tertinggi):
   #1 >=K reply byte-identik berturut (normalisasi whitespace) -> inject->break.
+  #1b >=K perbandingan jarak-2 identik berturut (siklus periode-2 A-B-A-B;
+      promosi sweep 2026-07-23 — spesimen 15902 r2/r3 LOLOS trigger #1)
+      -> inject->break. #1 preseden bila keduanya terpenuhi.
   #2 >=K turn beruntun dengan 0 aksi ter-parse -> inject->break.
   #8 turn >= X dan observed_fail masih False -> inject-only (tak eskalasi break).
 
@@ -33,6 +36,7 @@ X_OBSERVE_FAIL = 15  # #8: turn saat "belum menyaksikan FAIL" jadi sinyal.
 
 # Nama trigger (identifier internal, BUKAN model-facing).
 _T_IDENTICAL = "identical-replies"
+_T_PERIOD2 = "period-2-replies"
 _T_ZERO_ACTIONS = "zero-actions"
 _T_NOT_OBSERVED = "not-observed"
 
@@ -57,6 +61,16 @@ def _identical_tail(replies: list[str], k: int) -> bool:
     return len(tail) == 1
 
 
+def _period2_tail(replies: list[str], k: int) -> bool:
+    """#1b: k perbandingan jarak-2 identik berturut di ekor (A-B-A-B-A utk
+    k=3). Normalisasi sama dgn #1; reply konstan juga memenuhi — caller
+    memeriksa #1 lebih dulu (preseden)."""
+    if len(replies) < k + 2:
+        return False
+    tail = [_norm(r) for r in replies[-(k + 2):]]
+    return all(tail[i] == tail[i + 2] for i in range(k))
+
+
 def _zero_action_tail(counts: list[int], k: int) -> bool:
     if len(counts) < k:
         return False
@@ -70,6 +84,15 @@ def _identical_msg(turn_idx: int, k: int) -> str:
             "with a ```bash action to read the real code, or write your "
             "script to ```file:/testbed/.pipe/repro.py and run it with a "
             "```bash action.")
+
+
+def _period2_msg(turn_idx: int, k: int) -> str:
+    return (f"Turn {turn_idx}: your recent replies are alternating between "
+            "the same two messages. Cycling between them cannot change "
+            "anything. Take a different, concrete next step now: open a "
+            "relevant source file with a ```bash action to read the real "
+            "code, or write your script to ```file:/testbed/.pipe/repro.py "
+            "and run it with a ```bash action.")
 
 
 def _zero_action_msg(turn_idx: int, k: int) -> str:
@@ -109,12 +132,17 @@ def no_progress_decision(recent_replies: list[str],
     """
     already = set(already_injected or ())
     identical = _identical_tail(recent_replies, K)
+    # #1b hanya relevan bila #1 tidak terpicu (#1 preseden; reply konstan
+    # memenuhi keduanya).
+    period2 = (not identical) and _period2_tail(recent_replies, K)
     zero_actions = _zero_action_tail(recent_action_counts, K)
 
     # Langkah 2 (eskalasi): trigger yang SUDAH di-inject dan MASIH terpicu ->
     # break. Caller memakai `break` (bukan emit_abort) — biar gate memvonis.
     if identical and _T_IDENTICAL in already:
         return NoProgressDecision("break", trigger=_T_IDENTICAL)
+    if period2 and _T_PERIOD2 in already:
+        return NoProgressDecision("break", trigger=_T_PERIOD2)
     if zero_actions and _T_ZERO_ACTIONS in already:
         return NoProgressDecision("break", trigger=_T_ZERO_ACTIONS)
 
@@ -122,6 +150,9 @@ def no_progress_decision(recent_replies: list[str],
     if identical:
         return NoProgressDecision("inject", trigger=_T_IDENTICAL,
                                   message=_identical_msg(turn_idx, K))
+    if period2:
+        return NoProgressDecision("inject", trigger=_T_PERIOD2,
+                                  message=_period2_msg(turn_idx, K))
     if zero_actions:
         return NoProgressDecision("inject", trigger=_T_ZERO_ACTIONS,
                                   message=_zero_action_msg(turn_idx, K))
