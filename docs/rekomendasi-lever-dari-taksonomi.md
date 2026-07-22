@@ -133,6 +133,17 @@ tetap bebas meng-expose gold di log/artefak untuk dikonsumsi bot analis.)
   `messages`. Semua sinyal trigger di atas base-world (disaksikan driver) → gold-blind
   by construction.
 - **Risiko:** false-positive reply pendek sah — kalibrasi K & normalisasi. Kompleksitas: kecil-sedang.
+- **⚠ R5 TERPASANG HANYA di REPRODUCE (bukan FIX/LOCALIZE)** — konfirmasi kode +
+  inventory. **Kandidat PORT ke FIX diperkuat bukti 2026-07-22 (autopsi 15347 r2,
+  temuan Mirza):** di fase FIX, model memasang fix BENAR (identik gold) lalu
+  menembakkan `python /testbed/.pipe/repro.py` **58× identik dalam SATU reply**
+  (semua PASS) sebelum DONE — degenerate repetition, boros budget. Trigger #6
+  (command+output identik ≥K) akan menangkapnya. Benign di 15347 (keburu hijau,
+  kanari stabil) TAPI pola yg sama di case sulit = bakar budget besar. **Catatan
+  desain porting:** trigger #1 (reply byte-identik) TAK cukup untuk FIX (reply FIX
+  bervariasi — stokastisitas KH-20, §-A0d); yang efektif di FIX = trigger #5/#6/#7
+  (signature/command/output/DONE-reject berulang), bukan byte-identity reply.
+  Sekaligus flag mekanis "≥K PASS identik" bisa memicu cek-vacuous otomatis (§3a).
 
 ### R6. Dedup papan skor batch saat resume
 
