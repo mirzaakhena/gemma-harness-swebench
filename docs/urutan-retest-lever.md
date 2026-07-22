@@ -132,6 +132,23 @@ di FIX rerun sudah bervariasi sendiri.
 batch-1 R1 origins di-re-run n≥3 utk resolve-rate riil (0/4 single-run belum final).
 Kandidat KH utk bot-03: "temp-0 tak bit-reproducible untuk FIX; FIX stokastik run-to-run".
 
+### §-A0e — KEPUTUSAN Mirza (2026-07-22): PROTOKOL RATE DIADOPSI + gating G2
+
+**Disetujui & DIJALANKAN:**
+1. **Protokol resolve-rate** (§-A0d) resmi jadi cara ukur. Vonis FIX = k/n (n≥3),
+   bukan biner. Verdict REPRODUCE-wall tetap boleh single-run (andal — 12856 9/9,
+   14411 byte-identik; stokastisitas spesifik FIX).
+2. **Gating G2:** bot-03 re-run 4 origin R1 (11422, 11910, 15388, 12184) n=3 dulu →
+   resolve-rate riil → autopsi bot-04 → BARU brief G2. G2 TIDAK mulai sebelum itu.
+   (Dispatched ke bot-03 2026-07-22.)
+3. **Definisi "solved" (threshold headline):** BELUM dipatok — lapor rate mentah k/n
+   dulu (+ pass@n≥1 optimistik & majority robust), threshold diputus saat lihat angka.
+4. **Kanari valid = rate-based** (11049/15347/6938 stabil; 13230/15790 goyang → butuh
+   rate). Opsional bot-03 naikkan 13230/15790 ke n=3 utk baseline rate kanari.
+
+Status kerja: G1 terpasang; batch-1 diagnosa selesai (semua single-run → known-noisy);
+**menunggu resolve-rate origins (bot-03) sebelum G2.**
+
 ---
 
 ## §0 — Prinsip pengukuran (WAJIB dibaca sebelum menjalankan urutan)
