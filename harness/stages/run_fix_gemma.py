@@ -19,8 +19,11 @@ Pemakaian (dari root main):
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import subprocess
+import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,11 +31,25 @@ from pathlib import Path
 from harness.emit import Emitter
 from harness.stages.fix_gates import compose_fix_md, fix_rejection_message
 from harness.stages.fix_patch_runner import evaluate_patch_in_fresh_world
+from harness.stages.fix_watchers import (DEGENERATE_REPLY_STREAK,
+                                         ReplyHashWatcher, record_insist,
+                                         shortlist_strays)
 from harness.stages.gemma_protocol import (done_rejection_fix, exact_status,
                                            has_done, is_repro_run,
                                            no_action_feedback, parse_actions,
                                            retry_reason, token_format_note)
 from harness.stages.localize_gates import parse_candidates_md
+
+# --- R12: konstanta timeout/retry (docs/rekomendasi-lever §7 butir 3) -------
+# Bukti 12184 r11 & 15388 r9: koneksi HTTP ke vLLM jadi half-open (host
+# sleep) dan driver menunggu SELAMANYA. Kebijakan: gagal CEPAT dan jujur.
+CHAT_READ_TIMEOUT_S = 600   # read-timeout HTTP model — generasi FIX bisa
+                            # lama, jadi longgar TAPI berhingga.
+CHAT_RETRIES = 3            # retry transport maksimal setelah gagal pertama.
+CHAT_BACKOFF_BASE_S = 5     # jeda backoff naik: 5, 10, 20 dtk (x2 per retry).
+DOCKER_EXEC_TIMEOUT_S = 180  # guard exec perintah model di container kerja.
+DOCKER_WRITE_TIMEOUT_S = 60  # guard tulis file ke container kerja.
+DOCKER_CTL_TIMEOUT_S = 120   # guard kontrol docker (run/rm/stop).
 
 # Bentuk aksi sah untuk pengingat no-action (R3): dikonsumsi no_action_feedback.
 _ACTION_FORMS = (
@@ -107,7 +124,7 @@ def compose_fix_seed(problem: str, repro_md: str, repro_py: str,
 
 
 def chat(endpoint: str, model: str, messages: list[dict],
-         timeout: int = 600) -> str:
+         timeout: int = CHAT_READ_TIMEOUT_S) -> str:
     req = urllib.request.Request(
         endpoint.rstrip("/") + "/chat/completions",
         data=json.dumps({
@@ -118,18 +135,79 @@ def chat(endpoint: str, model: str, messages: list[dict],
         }).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
+    # timeout = socket timeout urlopen: berlaku utk connect DAN tiap read —
+    # koneksi half-open (R12) berujung timeout, bukan gantung selamanya.
     with urllib.request.urlopen(req, timeout=timeout) as r:
         data = json.load(r)
     return data["choices"][0]["message"]["content"] or ""
 
 
-def docker_exec(container: str, cmd: str, timeout: int = 180) -> tuple[str, int]:
+class ChatTransportError(RuntimeError):
+    """R12: kegagalan TRANSPORT final ke endpoint model — kelas INFRA,
+    bukan kesalahan model. Ditangkap main() utk abort cepat + jujur."""
+
+
+def is_transport_error(e: BaseException) -> bool:
+    """R12: klasifikasi retry — hanya kegagalan TRANSPORT yang boleh
+    diulang (idempoten-aman). HTTPError = server MERESPONS (response valid
+    walau error) -> bukan transport; error parse response juga bukan."""
+    if isinstance(e, urllib.error.HTTPError):
+        return False
+    return isinstance(e, (urllib.error.URLError, http.client.HTTPException,
+                          TimeoutError, OSError))
+
+
+def chat_with_retry(endpoint: str, model: str, messages: list[dict],
+                    retries: int = CHAT_RETRIES,
+                    backoff_base: int = CHAT_BACKOFF_BASE_S,
+                    log=None, sleep=time.sleep) -> str:
+    """R12: panggilan model dengan retry-backoff KHUSUS kegagalan transport.
+
+    Tiap percobaan MEMBUAT ULANG koneksi (urlopen tak me-reuse koneksi) —
+    koneksi half-open lama tidak dipakai lagi. Kegagalan transport final ->
+    ChatTransportError (kelas infra); kegagalan non-transport diteruskan
+    apa adanya tanpa retry."""
+    attempt = 0
+    while True:
+        try:
+            return chat(endpoint, model, messages)
+        except Exception as e:
+            if not is_transport_error(e):
+                raise
+            if attempt >= retries:
+                raise ChatTransportError(
+                    f"model endpoint transport failure after "
+                    f"{attempt + 1} attempts: {e!r}") from e
+            delay = backoff_base * (2 ** attempt)
+            attempt += 1
+            if log is not None:
+                log(f"[driver] chat transport error: {e!r}; "
+                    f"retry {attempt}/{retries} in {delay}s "
+                    "(fresh connection)")
+            sleep(delay)
+
+
+def docker_exec(container: str, cmd: str,
+                timeout: int = DOCKER_EXEC_TIMEOUT_S) -> tuple[str, int]:
     p = subprocess.run(
         ["docker", "exec", container, "bash", "-lc", cmd],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         timeout=timeout,
     )
     return (p.stdout or "") + (p.stderr or ""), p.returncode
+
+
+def docker_ctl(cmd: list[str], check: bool = False):
+    """R12: perintah kontrol docker (rm/run/stop) ber-guard timeout —
+    daemon macet tak boleh menggantung driver. check=False = best-effort:
+    timeout ditelan (kegagalan cleanup bukan kegagalan run)."""
+    try:
+        return subprocess.run(cmd, check=check, capture_output=True,
+                              timeout=DOCKER_CTL_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        if check:
+            raise
+        return None
 
 
 def docker_write_file(container: str, path: str, body: str) -> None:
@@ -139,7 +217,7 @@ def docker_write_file(container: str, path: str, body: str) -> None:
     subprocess.run(
         ["docker", "exec", "-i", container, "bash", "-lc",
          f"mkdir -p $(dirname '{path}') && cat > '{path}'"],
-        input=data, check=True, timeout=60,
+        input=data, check=True, timeout=DOCKER_WRITE_TIMEOUT_S,
     )
 
 
@@ -238,21 +316,30 @@ def main() -> int:
                      "candidates": [c["file"] for c in inputs.candidates]})
 
     winner: int | None = None
+    winner_file: str | None = None
     attempts_meta: list[dict] = []
     container = ""
+    # N4: rotasi kandidat lewat ANTRIAN indeks 0-based (urutan default =
+    # urutan tulis shortlist, persis perilaku lama); relaksasi attempt-lock
+    # bisa MEMPROMOSIKAN kandidat spesifik ke depan antrian. Tiap kandidat
+    # tetap di-attempt maksimal SEKALI.
+    pending = list(range(len(inputs.candidates)))
+    total = len(inputs.candidates)
+    k = 0
     try:
-        for k, cand in enumerate(inputs.candidates, start=1):
-            # Attempt = kandidat ke-k: container kerja BARU + sesi FRESH
-            # (spec §2 — pristine by construction, nol kontaminasi).
+        while pending:
+            ci = pending.pop(0)
+            cand = inputs.candidates[ci]
+            k += 1
+            # Attempt ke-k = kandidat peringkat ci+1: container kerja BARU +
+            # sesi FRESH (spec §2 — pristine by construction).
             container = (f"gemma-work-{args.campaign}-{args.case}"
                          f"-r{args.rerun}-a{k}")
-            subprocess.run(["docker", "rm", "-f", container],
-                           capture_output=True)
-            subprocess.run(["docker", "run", "-d", "--name", container,
-                            args.image, "sleep", "infinity"],
-                           check=True, capture_output=True)
+            docker_ctl(["docker", "rm", "-f", container])
+            docker_ctl(["docker", "run", "-d", "--name", container,
+                        args.image, "sleep", "infinity"], check=True)
             shipped = ship_repro_to_container(container, repro_dir)
-            log(f"[driver] attempt {k}/{len(inputs.candidates)}: container "
+            log(f"[driver] attempt {k}/{total}: container "
                 f"{container} started; candidate {cand['file']}; "
                 f"repro inputs shipped: {', '.join(shipped)}")
 
@@ -264,14 +351,31 @@ def main() -> int:
             observed_pass = False
             fix_md: str | None = None
             turn = 0
+            hash_watcher = ReplyHashWatcher()   # N1: satu watcher per attempt
+            insist_counts: dict[int, int] = {}  # N4: penolakan per peringkat
             for turn in range(1, args.max_turns + 1):
-                try:
-                    reply = chat(args.endpoint, args.model, messages)
-                except Exception as e:
-                    log(f"[driver] chat error: {e}; retrying once")
-                    reply = chat(args.endpoint, args.model, messages)
+                reply = chat_with_retry(args.endpoint, args.model, messages,
+                                        log=log)
                 messages.append({"role": "assistant", "content": reply})
                 log(f"[gemma a{k} t{turn}] {reply}")
+
+                # N1: loop degenerat temp-0 — 3 reply md5-identik beruntun.
+                # TANPA injeksi konten: akhiri attempt dini, biarkan rotasi
+                # kandidat mengambil alih (mekanisme penyelamat 12184 r9).
+                if hash_watcher.observe(reply):
+                    em.event("fix", "retry", attempt=k,
+                             budget={"msg_used": turn,
+                                     "msg_limit": args.max_turns},
+                             detail={"why": ("attempt-ended: degenerate-loop "
+                                             "reply-hash "
+                                             f"x{DEGENERATE_REPLY_STREAK}"),
+                                     "reply_md5": hash_watcher.last_md5,
+                                     "turns_saved": args.max_turns - turn})
+                    log(f"[driver] attempt {k} ended early at turn {turn}: "
+                        f"{DEGENERATE_REPLY_STREAK} byte-identical replies "
+                        f"in a row (md5 {hash_watcher.last_md5}); "
+                        f"{args.max_turns - turn} turns saved")
+                    break
 
                 actions = parse_actions(reply)
                 feedback_parts: list[str] = []
@@ -328,15 +432,19 @@ def main() -> int:
                             args.input_repro_files)
                         if result.ok:
                             winner = k
+                            winner_file = cand["file"]
                             (files_dir / "fix.diff").write_text(
                                 _ensure_nl(diff_text),
                                 encoding="utf-8", newline="\n")
                             (attempts_dir / f"attempt-{k}.diff").write_text(
                                 _ensure_nl(diff_text),
                                 encoding="utf-8", newline="\n")
+                            # Slot CANDIDATE = peringkat kandidat di
+                            # shortlist (ci+1) — identik dgn nomor attempt
+                            # kecuali N4 mengubah urutan rotasi.
                             (files_dir / "fix.md").write_text(
                                 compose_fix_md(
-                                    fix_md, cand["file"], k,
+                                    fix_md, cand["file"], ci + 1,
                                     "PASS,PASS (frozen repro, fresh "
                                     "container pair)"),
                                 encoding="utf-8", newline="\n")
@@ -360,6 +468,44 @@ def main() -> int:
                                                  result.run2_tail[:200]}})
                         log("[driver] DONE rejected: pre-check "
                             f"{result.reason}")
+                        # N4: relaksasi attempt-lock — model berkeras
+                        # menyentuh kandidat SAH shortlist peringkat lain.
+                        # >= ambang -> akhiri attempt dini + promosikan
+                        # kandidat itu ke depan antrian (bila belum pernah
+                        # di-attempt; kalau sudah, keterbatasan rotasi:
+                        # cukup akhiri dini, tercatat promoted=False).
+                        # File di LUAR shortlist tetap ditolak spt biasa.
+                        if result.reason == "off-candidate-files":
+                            hit = record_insist(
+                                insist_counts,
+                                shortlist_strays(
+                                    result.touched,
+                                    [c["file"] for c in inputs.candidates],
+                                    cand["file"]))
+                            if hit is not None:
+                                target = hit - 1
+                                promoted = target in pending
+                                if promoted:
+                                    pending.remove(target)
+                                    pending.insert(0, target)
+                                em.event(
+                                    "fix", "retry", attempt=k,
+                                    budget={"msg_used": turn,
+                                            "msg_limit": args.max_turns},
+                                    detail={
+                                        "why": ("attempt-ended: model-"
+                                                f"insists-candidate-{hit}"),
+                                        "insisted_file":
+                                            inputs.candidates[target]["file"],
+                                        "rejections": insist_counts[hit],
+                                        "promoted": promoted})
+                                log(f"[driver] attempt {k} ended early at "
+                                    f"turn {turn}: model insisted on "
+                                    f"shortlist candidate {hit} "
+                                    f"({inputs.candidates[target]['file']}) "
+                                    f"{insist_counts[hit]}x; "
+                                    f"promoted={promoted}")
+                                break
                         feedback_parts.append(
                             fix_rejection_message(result, cand["file"]))
 
@@ -378,8 +524,7 @@ def main() -> int:
                 {"attempt": k, "candidate_file": cand["file"],
                  "turns": turn,
                  "result": "win" if winner == k else "exhausted"})
-            subprocess.run(["docker", "stop", container],
-                           capture_output=True)
+            docker_ctl(["docker", "stop", container])
             log(f"[driver] attempt {k} finished: "
                 f"{'win' if winner == k else 'exhausted'} "
                 f"after {turn} turns")
@@ -390,20 +535,28 @@ def main() -> int:
                      detail={"why": (f"candidate {k} exhausted without an "
                                      "accepted DONE"),
                              "candidate_file": cand["file"]})
+    except ChatTransportError as e:
+        # R12: kegagalan transport final = kelas INFRA, bukan model —
+        # gagal CEPAT dan jujur, jangan menggantung (12184 r11, 15388 r9).
+        log(f"[driver] INFRA failure (model endpoint transport): {e}")
+        emit_abort(em, f"infra transport failure: {e}")
+        if container:
+            docker_ctl(["docker", "stop", container])
+        print(json.dumps({"winner_attempt": None, "aborted": True,
+                          "error": f"infra-transport: {e}"}))
+        return 1
     except Exception as e:
         import traceback
         log(f"[driver] crash: {e!r}\n{traceback.format_exc()}")
         emit_abort(em, f"driver crash: {e!r}")
         if container:
-            subprocess.run(["docker", "stop", container],
-                           capture_output=True)
+            docker_ctl(["docker", "stop", container])
         print(json.dumps({"winner_attempt": None, "aborted": True,
                           "error": str(e)}))
         return 1
 
     fix_run = {"winner_attempt": winner,
-               "candidate_file": (inputs.candidates[winner - 1]["file"]
-                                  if winner is not None else None),
+               "candidate_file": winner_file,
                "candidates": [c["file"] for c in inputs.candidates],
                "attempts": attempts_meta}
     (files_dir / "fix_run.json").write_text(

@@ -240,3 +240,186 @@ def test_tool_call_marker_triggers_strong_reminder():
     assert "```file:" in msg and "```bash" in msg
     for w in ("kamu", "jalankan", "tulis", "berkas"):
         assert w not in msg.lower()
+
+
+# --- R12: klasifikasi transport + retry-backoff chat() ----------------------
+
+import http.client
+import urllib.error
+
+
+def test_is_transport_error_classification():
+    # Transport (boleh retry): koneksi putus/timeout/half-open.
+    assert drv.is_transport_error(urllib.error.URLError("refused"))
+    assert drv.is_transport_error(TimeoutError("read timed out"))
+    assert drv.is_transport_error(ConnectionResetError())
+    assert drv.is_transport_error(http.client.RemoteDisconnected("closed"))
+    # BUKAN transport (jangan retry): server merespons / response tak valid.
+    assert not drv.is_transport_error(
+        urllib.error.HTTPError("u", 400, "bad request", {}, None))
+    assert not drv.is_transport_error(ValueError("bad json"))
+    assert not drv.is_transport_error(KeyError("choices"))
+
+
+def test_chat_retry_constants_named():
+    assert drv.CHAT_READ_TIMEOUT_S == 600
+    assert drv.CHAT_RETRIES == 3
+    assert drv.CHAT_BACKOFF_BASE_S >= 1
+    assert drv.DOCKER_EXEC_TIMEOUT_S == 180
+    assert drv.DOCKER_CTL_TIMEOUT_S >= 60
+
+
+def test_chat_with_retry_backs_off_then_succeeds(monkeypatch):
+    calls, delays = [], []
+
+    def flaky(endpoint, model, messages, timeout=600):
+        calls.append(1)
+        if len(calls) < 3:
+            raise urllib.error.URLError("connection reset")
+        return "ok reply"
+
+    monkeypatch.setattr(drv, "chat", flaky)
+    out = drv.chat_with_retry("http://x", "m", [], sleep=delays.append)
+    assert out == "ok reply"
+    assert len(calls) == 3
+    # Backoff naik: base, base*2 (koneksi dibuat ulang tiap percobaan —
+    # urlopen tak me-reuse koneksi).
+    assert delays == [drv.CHAT_BACKOFF_BASE_S, drv.CHAT_BACKOFF_BASE_S * 2]
+
+
+def test_chat_with_retry_final_failure_raises_infra_class(monkeypatch):
+    delays = []
+    monkeypatch.setattr(drv, "chat", lambda *a, **k: (_ for _ in ()).throw(
+        urllib.error.URLError("host unreachable")))
+    try:
+        drv.chat_with_retry("http://x", "m", [], sleep=delays.append)
+        assert False, "harus raise ChatTransportError"
+    except drv.ChatTransportError as e:
+        assert "unreachable" in str(e)
+    assert len(delays) == drv.CHAT_RETRIES
+
+
+def test_chat_with_retry_does_not_retry_valid_response_errors(monkeypatch):
+    # Idempoten-aman: response valid-tapi-aneh BUKAN alasan retry.
+    calls = []
+
+    def bad_json(*a, **k):
+        calls.append(1)
+        raise ValueError("invalid json body")
+
+    monkeypatch.setattr(drv, "chat", bad_json)
+    try:
+        drv.chat_with_retry("http://x", "m", [],
+                            sleep=lambda s: (_ for _ in ()).throw(
+                                AssertionError("tak boleh sleep")))
+        assert False
+    except ValueError:
+        pass
+    assert len(calls) == 1
+
+
+# --- N1: e2e loop degenerat reply-hash -> attempt diakhiri dini -------------
+
+def test_degenerate_reply_loop_ends_attempt_early(monkeypatch, tmp_path):
+    # Attempt 1: 3 reply byte-identik beruntun (t1-t3) -> attempt diakhiri
+    # dini di t3 (bukan membakar sampai max_turns=5); rotasi kandidat yang
+    # sudah ada mengambil alih; attempt 2 menang.
+    OK2 = FixPatchResult(ok=True, reason=None,
+                         touched=("django/db/models/fields/__init__.py",),
+                         status1="PASS", status2="PASS", exit1=0, exit2=0)
+    replies = ["let me think.", "let me think.", "let me think.",
+               R_BASH, R_DONE]
+    run = _run_main(monkeypatch, tmp_path, replies, [OK2], max_turns=5)
+    meta = json.loads((run / "files" / "fix_run.json")
+                      .read_text(encoding="utf-8"))
+    assert meta["winner_attempt"] == 2
+    assert meta["attempts"][0]["turns"] == 3          # terpotong dini di t3
+    events = [e for e in _events(run) if e["event"] == "retry"
+              and "degenerate-loop reply-hash" in e["detail"].get("why", "")]
+    assert events and events[0]["attempt"] == 1
+    assert events[0]["detail"]["why"] == (
+        "attempt-ended: degenerate-loop reply-hash x3")
+    assert events[0]["detail"]["turns_saved"] == 2    # autopsi: turn hemat
+
+
+def test_two_identical_replies_do_not_end_attempt(monkeypatch, tmp_path):
+    # 2 identik lalu berbeda -> TIDAK terpicu; attempt jalan normal.
+    replies = ["hmm.", "hmm.", R_BASH, R_DONE]
+    run = _run_main(monkeypatch, tmp_path, replies, [OK1], max_turns=4)
+    meta = json.loads((run / "files" / "fix_run.json")
+                      .read_text(encoding="utf-8"))
+    assert meta["winner_attempt"] == 1
+    assert not [e for e in _events(run)
+                if "degenerate-loop" in e["detail"].get("why", "")]
+
+
+# --- N4: e2e insist kandidat shortlist -> promosi lock ----------------------
+
+OFF2 = FixPatchResult(
+    ok=False, reason="off-candidate-files",
+    failures=["diff touches files outside the candidate: "
+              "django/db/models/fields/__init__.py"],
+    touched=("django/db/models/enums.py",
+             "django/db/models/fields/__init__.py"))
+
+# DONE bervariasi (md5 beda) supaya N1 tidak menyalip N4 di test ini.
+R_DONE_V = [("```fix.md\nWHAT CHANGED: fix attempt %d.\n"
+             "WHY: display value.\n```\nDONE") % i for i in (1, 2, 3)]
+
+
+def test_model_insists_shortlist_candidate_promotes_it(monkeypatch, tmp_path):
+    # Attempt 1 terkunci kandidat #1; model 3x tertolak off-candidate-files
+    # karena menyentuh kandidat #2 (SAH di shortlist) -> attempt diakhiri
+    # dini dan attempt 2 memakai kandidat #2 (bukti 12184 r9/r10).
+    OK2 = FixPatchResult(ok=True, reason=None,
+                         touched=("django/db/models/fields/__init__.py",),
+                         status1="PASS", status2="PASS", exit1=0, exit2=0)
+    replies = ([R_BASH] + R_DONE_V           # attempt 1: t1-t4
+               + [R_BASH, R_DONE])           # attempt 2: menang
+    run = _run_main(monkeypatch, tmp_path, replies,
+                    [OFF2, OFF2, OFF2, OK2], max_turns=6)
+    meta = json.loads((run / "files" / "fix_run.json")
+                      .read_text(encoding="utf-8"))
+    assert meta["winner_attempt"] == 2
+    assert meta["candidate_file"] == "django/db/models/fields/__init__.py"
+    assert meta["attempts"][0]["candidate_file"] == (
+        "django/db/models/enums.py")
+    assert meta["attempts"][1]["candidate_file"] == (
+        "django/db/models/fields/__init__.py")
+    events = [e for e in _events(run)
+              if "model-insists-candidate" in e["detail"].get("why", "")]
+    assert events and events[0]["attempt"] == 1
+    assert events[0]["detail"]["why"] == (
+        "attempt-ended: model-insists-candidate-2")
+    assert events[0]["detail"]["promoted"] is True
+    assert events[0]["detail"]["insisted_file"] == (
+        "django/db/models/fields/__init__.py")
+    # fix.md memuat peringkat kandidat shortlist (#2), bukan nomor attempt.
+    fix_md = (run / "files" / "fix.md").read_text(encoding="utf-8")
+    assert "CANDIDATE: 2" in fix_md
+
+
+def test_insist_on_attempted_candidate_only_ends_attempt(monkeypatch,
+                                                         tmp_path):
+    # Kandidat yang diminta SUDAH pernah di-attempt -> tak bisa dipromosikan;
+    # fallback: akhiri attempt dini saja (rotasi normal; keterbatasan
+    # tercatat via promoted=False).
+    OFF1 = FixPatchResult(
+        ok=False, reason="off-candidate-files",
+        failures=["diff touches files outside the candidate: "
+                  "django/db/models/enums.py"],
+        touched=("django/db/models/enums.py",
+                 "django/db/models/fields/__init__.py"))
+    replies = ([R_BASH, R_DONE, "prose", "prose"]   # attempt 1: exhausted
+               + [R_BASH] + R_DONE_V)               # attempt 2: insist #1
+    run = _run_main(monkeypatch, tmp_path, replies,
+                    [BAD, OFF1, OFF1, OFF1], max_turns=4)
+    meta = json.loads((run / "files" / "fix_run.json")
+                      .read_text(encoding="utf-8"))
+    assert meta["winner_attempt"] is None
+    events = [e for e in _events(run)
+              if "model-insists-candidate" in e["detail"].get("why", "")]
+    assert events and events[0]["attempt"] == 2
+    assert events[0]["detail"]["why"] == (
+        "attempt-ended: model-insists-candidate-1")
+    assert events[0]["detail"]["promoted"] is False
