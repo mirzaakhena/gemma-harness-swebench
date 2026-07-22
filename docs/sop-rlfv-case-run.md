@@ -10,9 +10,13 @@ SWE-bench lewat pipeline RLFV (REPRODUCE → LOCALIZE → FIX → VERIFY).
 karena kamu akan menemui situasi yang tidak persis sama dan harus memutuskan sendiri.
 Aturan tanpa alasan akan kamu langgar di saat yang salah.
 
-**Baca juga:** `prinsip-pengembangan.md` (arah dari Mirza), `katalog-lever.md` (perbaikan
-harness yang tercatat), `koreksi-hipotesis.md` (klaim yang sudah dibantah — jangan
-mengulanginya), `kontrak-output.md` (kontrak data).
+**Baca juga:** [[prinsip-pengembangan]] (arah dari Mirza), [[katalog-lever]] (perbaikan
+harness yang tercatat), [[koreksi-hipotesis]] (klaim yang sudah dibantah — jangan
+mengulanginya), [[kontrak-output]] (kontrak data), [[taksonomi-kegagalan-per-fase]]
+(peta kelas kegagalan), [[rekomendasi-lever-dari-taksonomi]] (lever ter-prioritas),
+[[urutan-retest-lever]] (strategi validasi lever), [[rlfv-papan-skor-grup12-dan-retest]]
+(papan skor lintas-sesi), [[audit-integritas-cases-selesai]] (audit data cases),
+[[adopsi-eksternal-dari-riset]] (pinjaman dari riset OSS).
 
 ---
 
@@ -269,7 +273,7 @@ Angka agregat tanpa pembedaan itu menyesatkan pemilik proyek.
 ## 5. Autopsi setiap case → katalog lever
 
 **Aturan tetap (keputusan Mirza):** setiap satu RLFV selesai, utus **satu subagent** untuk
-membedah lognya, hasilnya masuk `docs/katalog-lever.md`, lalu **langsung commit**.
+membedah lognya, hasilnya masuk [[katalog-lever]], lalu **langsung commit**.
 
 Jalankan autopsi **serial, tidak paralel** — semuanya menulis ke file yang sama dan bisa
 saling menimpa. Tidak memperlambat apa pun karena autopsi tidak memakai GPU.
@@ -307,13 +311,13 @@ periksa kalau kamu hanya sempat sebagian — jangan mengekstrapolasi diam-diam.
 
 Saat mengutus subagent, sertakan fakta yang sudah kamu ketahui **plus perintah
 memverifikasi sendiri** ("verifikasi sendiri, jangan telan mentah"). **Enam dari sepuluh
-koreksi** di `koreksi-hipotesis.md` lahir dari mekanisme ini — termasuk koreksi terhadap
+koreksi** di [[koreksi-hipotesis]] lahir dari mekanisme ini — termasuk koreksi terhadap
 kesimpulan yang sudah terlanjur dilaporkan ke pemilik proyek.
 
 Kalau subagent membantahmu dan buktinya kuat, **verifikasi sendiri lalu koreksi ke pemilik
 proyek secara eksplisit**. Jangan diam-diam memperbaiki.
 
-### 6b. Catat koreksi di `koreksi-hipotesis.md`
+### 6b. Catat koreksi di [[koreksi-hipotesis]]
 
 Bedakan tiga derajat, jangan disamakan:
 
@@ -400,4 +404,4 @@ Laporkan dengan angka: apakah `repro.py` tiap rerun mengimpornya, dan berapa kej
 7. Lapor pemilik proyek: hasil per fase + papan skor yang membedakan hijau asli/palsu
 8. Utus subagent autopsi → katalog lever (serial)
 9. **Commit** katalog + data case
-10. Koreksi apa pun yang muncul → `koreksi-hipotesis.md`, dengan derajat dan buktinya
+10. Koreksi apa pun yang muncul → [[koreksi-hipotesis]], dengan derajat dan buktinya

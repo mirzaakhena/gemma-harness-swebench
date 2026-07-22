@@ -4,7 +4,7 @@
 
 **Goal:** Modul eval realm-dev `eval/swebench_checker.py` yang memvonis `resolved` via grading resmi SWE-bench (F2P+P2P), plus dashboard status 2-lapisan (PASS = `pass_l1` ∧ `resolved`) di tab "FIX and VERIFY".
 
-**Architecture:** Checker = pure functions (komposisi skrip eval + grading host-side via paket `swebench` v4.1.0) + lapisan docker terpisah (container Epoch segar sekali pakai). Hasil ke file terpisah `swebench_eval.json` di run dir (pola `gold_eval.json`); `verdict.json`/`events.jsonl` TIDAK PERNAH disentuh. Dashboard merge saat render (viewer read-only). Spec: `docs/superpowers/specs/2026-07-20-swebench-checker-l2-design.md`.
+**Architecture:** Checker = pure functions (komposisi skrip eval + grading host-side via paket `swebench` v4.1.0) + lapisan docker terpisah (container Epoch segar sekali pakai). Hasil ke file terpisah `swebench_eval.json` di run dir (pola `gold_eval.json`); `verdict.json`/`events.jsonl` TIDAK PERNAH disentuh. Dashboard merge saat render (viewer read-only). Spec: [[2026-07-20-swebench-checker-l2-design]].
 
 **Tech Stack:** Python stdlib + pytest; paket terpasang `swebench` 4.1.0 (grading + konstanta + log parser resmi) dan `datasets` 4.8.5 (fetch spec beku dari cache HF); docker image Epoch `ghcr.io/epoch-research/swe-bench.eval.x86_64.<case_id>:latest`.
 
@@ -490,7 +490,7 @@ Expected: FAIL `ModuleNotFoundError: No module named 'eval.swebench_checker'`
 ```python
 """SWE-bench checker (L2) — eval realm-dev, penghasil vonis `resolved`.
 
-Spec: docs/superpowers/specs/2026-07-20-swebench-checker-l2-design.md.
+Spec: [[2026-07-20-swebench-checker-l2-design]].
 Vonis via grading RESMI paket swebench (get_eval_report); eksekusi test di
 container Epoch segar (lapisan docker: eval/swebench_runner.py, Task 5;
 CLI: Task 6). Hasil ke swebench_eval.json — TIDAK menyentuh verdict.json /

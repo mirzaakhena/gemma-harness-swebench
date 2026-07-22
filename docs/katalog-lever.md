@@ -8,12 +8,18 @@ File ini adalah **daftar lever yang bisa dikoleksi lintas waktu**: tiap perbaika
 yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan asal-usul
 (run bukti), diagnosa, usulan konkret, dan status vonisnya. Bedanya dengan dokumen tetangga:
 
-- `docs/prinsip-pengembangan.md` — prinsip umum, bukan daftar aksi.
+- [[prinsip-pengembangan]] — prinsip umum, bukan daftar aksi.
 - Vault: `Asal-usul Rule & Lever — katalog cerita.md` — **retrospektif naratif** untuk lever
   yang SUDAH terpasang (bahan presentasi, punya commit). File ini melengkapinya dari sisi
   depan: lever yang belum diputuskan atau belum dipasang.
 - Vault: `P25 — Backlog & Divergence Retrospective.md` — backlog proyek lintas fase
   (termasuk item non-lever seperti re-run dan koordinasi antar-bot).
+
+> **Terkait:** [[koreksi-hipotesis]] (KH-xx yang mengoreksi entri di sini) ·
+> [[taksonomi-kegagalan-per-fase]] (kelas kegagalan → lever) ·
+> [[rekomendasi-lever-dari-taksonomi]] (R1–R20 ter-prioritas) ·
+> [[urutan-retest-lever]] (validasi lever) · [[sop-rlfv-case-run]] (SOP autopsi §5) ·
+> [[rlfv-papan-skor-grup12-dan-retest]] (papan skor)
 
 ## Aturan main
 
@@ -241,7 +247,7 @@ yang diusulkan untuk harness dicatat sebagai satu entri ber-ID, lengkap dengan a
   (`any(issubclass(subclass, s) for s in self._subclasses)` vs `issubclass(subclass,
   self._subclasses)`; setara karena `_subclasses` adalah tuple). Jadi sekali lagi: hijau
   yang benar, didapat **tanpa** bantuan yardstick.
-  - Empat sabotase, empat PASS (rincian di `koreksi-hipotesis.md` KH-07):
+  - Empat sabotase, empat PASS (rincian di [[koreksi-hipotesis]] KH-07):
     `__subclasscheck__` diganti `return True` → PASS; gold benar tapi `QuerySet.create()`
     disabotase → PASS; file repo ditinggalkan `SyntaxError` → PASS; **Django sama sekali
     tidak bisa di-import → PASS**.
@@ -2554,7 +2560,7 @@ Aturan katalog #5 mewajibkan ini ditulis, lengkap dengan syarat kapan boleh naik
 1. **"LV-15 — cabang fallback wajib token ketiga" (sebagai entri sendiri) — DITOLAK.**
    Alasan: ini **persis** LV-10(b), hanya dengan rumusan yang lebih tepat. Menamainya ulang
    akan memindahkan label, bukan menambah pengetahuan — pola kesalahan yang sudah dicatat
-   di `koreksi-hipotesis.md` ("terlalu cepat menamai kelas baru").
+   di [[koreksi-hipotesis]] ("terlalu cepat menamai kelas baru").
    **Syarat naik:** kalau kelak (b) dipasang **dan** terbukti bahwa menuntut token ketiga
    saja tidak cukup karena ada bentuk kegagalan yang bahkan tidak sampai ke cabang mana pun
    (mis. proses dibunuh OOM/timeout), maka *deteksi kematian di luar cabang* layak jadi
@@ -3966,7 +3972,7 @@ terbantah di artefak** (15061 `line_overlap`; sub-mode 14155/12856). Katalog jen
 baru sweep penuh → target = **ukur frekuensi + reinforcement**; TAPI dua defek harness/data
 mekanis BARU muncul yang lolos bar (corrupt gold.patch; false-prune) — dicatat sebagai
 **kandidat lever (BELUM DITERAPKAN)**, bukan keluhan. Nama kelas mengikuti taksonomi bot-04
-(`taksonomi-kegagalan-per-fase.md` §R/§L/§F) — **tak diduplikasi, hanya ditunjuk**.
+([[taksonomi-kegagalan-per-fase]] §R/§L/§F) — **tak diduplikasi, hanya ditunjuk**.
 
 ### Papan skor PEMBEDA (10 case per sub-mode SEBENARNYA, bukan label mentah — SOP §4)
 
@@ -4041,7 +4047,7 @@ Tabel A (K1–K5) **tak bertambah**: 3 reached-VERIFY grup-3 repro-nya qualified
 13964/14997/14999; REPRODUCE-wall: 13933/15695/15738. Autopsi read-only, izin membantah
 pemanggil (SOP §6a). **Katalog jenuh + taksonomi bot-04 mapan → target = ukur frekuensi +
 reinforcement + validasi fix (KH-16 corrupt-gold).** Nama kelas mengikuti taksonomi
-(`taksonomi-kegagalan-per-fase.md` §R/§L/§F/§H) — **tak diduplikasi, hanya ditunjuk**. NOL lever
+([[taksonomi-kegagalan-per-fase]] §R/§L/§F/§H) — **tak diduplikasi, hanya ditunjuk**. NOL lever
 mekanis baru; **satu koreksi hipotesis** (F-5 "punah oleh prune" DIPERSEMPIT — 13448 counterexample).
 
 ### Papan skor PEMBEDA (11 case per sub-mode SEBENARNYA, bukan label mentah — SOP §4)
@@ -4095,7 +4101,7 @@ grup-4** — 15202 (dulu 1 dari 5 korup KH-16) kini VALIDASI: flip PASS, adjudik
 - **15738** (`r-dev--…--r3`, `wrong-logic` 3/3; orkestrasi `App(["bash","run_migrate.sh"])`). base=FAIL benar (`ValueError: Found wrong number (0) of constraints for repro_app_authors(...)` = gejala asli); gold=FAIL juga → won't-flip. **Sebab:** gold fix `db/migrations/autodetector.py` (urutan operasi saat **makemigrations**); repro **hand-author migration** dgn urutan buruk hardcoded → autodetector tak pernah dipanggil → jalur yang gold ubah tak tereksekusi → tak flip. **Repro BYPASS kode yang gold perbaiki.** akar-MODEL (R-4). Orkestrasi subprocess = sekunder (LV-12 territory, bukan akar dominan). gold `numstat 3 2` clean.
 - **15695** (`r-dev--…--r3`, r1/r2=`fail` [scaffolding], r3=`wrong-logic`). base=FAIL DAN gold=FAIL, kedua-nya `AttributeError: 'Options' object has no attribute 'get_index_by_name'` (`operations/models.py:962`, RenameIndex.database_forwards). **Sebab:** repro bikin `MockState` yang serahkan `model_class._meta` (**Options**) sebagai `from_model_state`, padahal kode nyata mengharap **ModelState** (yang punya `get_index_by_name`) → crash identik dua-dunia → predikat tak pernah dievaluasi → vacuous FAIL. **Repro scaffolding buggy (mock salah-tipe / API-hallucination pada objek salah)**. akar-MODEL (R-4 sub-sebab: mock-type-mismatch, melengkapi "scaffolding SyntaxError" 11564). gold `numstat 3 0` clean.
 
-### Koreksi hipotesis (derajat + bukti; pemanggil yang tulis ke koreksi-hipotesis.md)
+### Koreksi hipotesis (derajat + bukti; pemanggil yang tulis ke [[koreksi-hipotesis]])
 
 **"F-5 wrong-file = kelas yang akan PUNAH oleh `--prune-localize-miss`" (taksonomi §F-5) — DIPERSEMPIT.**
 - **Yang benar:** prune hanya memunahkan F-5 **hilir L-A** (localize MISS, `file_match=false` di
@@ -4185,7 +4191,7 @@ Re-run `13033`/`13964` TANPA prune (approval Mirza) + scan seluruh signature fal
 **Scan 6 case signature false-prune + disposisi FIX (fix_file_match = patch AKHIR vs gold):**
 - `13033`: resolved=true, fix_file_match=TRUE → 🟢 GENUINE solve (recovered).
 - `11964`: resolved=true, fix_file_match=TRUE → 🟢 GENUINE solve. **KOREKSI:** audit-integritas
-  (`audit-integritas-cases-selesai.md`) menandai 11964 "lulus-palsu kandidat" berbasis *l-dev*
+  ([[audit-integritas-cases-selesai]]) menandai 11964 "lulus-palsu kandidat" berbasis *l-dev*
   file_match=false — TAPI FIX patch-nya di file gold (fix_file_match=true) → **SEJATI, bukan lulus-palsu**.
 - `11620`: resolved=true, fix_file_match=FALSE → ⚠️ lulus-palsu kandidat SEJATI (FIX di file non-gold,
   0 regresi = condong valid-alt-location; tetap perlu §3b sabotase).
@@ -4228,5 +4234,5 @@ TETAP catat-only sampai perintah Mirza berikutnya.
 
 **Catatan kejujuran (BELUM divalidasi):** "DITERAPKAN" = kode terpasang + unit-test hijau,
 BUKAN klaim unlock. Efek pada case-asal + kanari diukur di fase retest berikut (bot-02) per
-`docs/urutan-retest-lever.md` §0 (unlock/efficiency/observability, wasit L2, label rezim
+[[urutan-retest-lever]] §0 (unlock/efficiency/observability, wasit L2, label rezim
 injeksi). K/X di R5 = kalibrasi awal, tunggu data retest.

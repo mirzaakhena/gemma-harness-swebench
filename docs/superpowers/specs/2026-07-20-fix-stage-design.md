@@ -2,9 +2,11 @@
 
 Status: menunggu review Mirza. Sumber keputusan: vault "Desain Stage FIX —
 Keputusan Brainstorm (gemma-harness-swebench)" (sesi Telegram 2026-07-20,
-semua butir disetujui Mirza) + kontrak-output.md + prinsip-pengembangan.md +
+semua butir disetujui Mirza) + [[kontrak-output]] + [[prinsip-pengembangan]] +
 vault Prinsip Stabilisasi §2-§3. Dokumen bahasa Indonesia; SEMUA teks yang
 dilihat model = English (prinsip-pengembangan §4).
+
+> **Terkait:** [[2026-07-20-fix-stage]] (implementation plan)
 
 ## 1. Tujuan & definisi sukses
 

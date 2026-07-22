@@ -2,9 +2,13 @@
 
 Dibuat 2026-07-22 (bot-04, arahan Mirza via Telegram). Eksekusi dipegang **bot-02**
 (estafet board-103-lever-strategy); dokumen ini = urutan + protokol ukurnya.
-Basis: `taksonomi-kegagalan-per-fase.md` (kelas & anggota),
-`rekomendasi-lever-dari-taksonomi.md` (R1–R19), fingerprint vault
+Basis: [[taksonomi-kegagalan-per-fase]] (kelas & anggota),
+[[rekomendasi-lever-dari-taksonomi]] (R1–R19), fingerprint vault
 `Papan 103 — Corong Penuh.md`.
+
+> **Terkait:** [[katalog-lever]] (LV-xx) · [[koreksi-hipotesis]] (KH-20 →
+> protokol rate §-A0d) · [[sop-rlfv-case-run]] (SOP eksekusi & GPU) ·
+> [[rlfv-papan-skor-grup12-dan-retest]] (papan skor & daftar re-test)
 
 **Prinsip Mirza yang dioperasionalkan:** lever lahir dari kasus yang dicatat →
 setelah lever dipasang, re-test **case asalnya** (dan case sekelas) untuk melihat

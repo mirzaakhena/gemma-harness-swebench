@@ -2,6 +2,10 @@
 
 Dibuat 2026-07-20 (bot-01). Dokumen internal, bahasa Indonesia.
 
+> **Terkait:** [[katalog-lever]] (lever yang lahir/terkoreksi dari KH) ·
+> [[taksonomi-kegagalan-per-fase]] (kelas yang direvisi KH) · [[sop-rlfv-case-run]]
+> (disiplin epistemik §6) · [[urutan-retest-lever]] (KH-20 → protokol rate)
+
 ## Tujuan
 
 File ini mencatat **hipotesis yang pernah kami pegang lalu dibantah**, beserta bukti
@@ -338,7 +342,7 @@ lever salah-arah di ~3 dari 4 case.
 
 ## KH-15 — "django-11564 REPRODUCE-wall = KH-10 Python 3.6 (`subprocess.run(text=)`)"
 
-- **Yang dinyatakan (bot-02, papan grup-1, `katalog-lever.md` baris 3802):** `11564` = REPRODUCE-wall
+- **Yang dinyatakan (bot-02, papan grup-1, [[katalog-lever]] baris 3802):** `11564` = REPRODUCE-wall
   kelas **KH-10 Python 3.6** — *"`subprocess.run(text=...)` TypeError berulang, exec JALAN tapi
   crash API-version"*.
 - **Derajat: DIPERSEMPIT** (plus salah-atribusi mekanisme churn).
@@ -409,4 +413,4 @@ lever salah-arah di ~3 dari 4 case.
 - **Derajat: TERBANTAH** (untuk fase FIX) / **DIPERSEMPIT** (untuk 14411/REPRODUCE-pendek).
 - **Yang benar (data n=3, retest 2026-07-22, rezim harness `02dc710`=G1):** fase FIX **stokastik run-to-run**, BUKAN deterministik. `13230` tiga sampel rezim-identik = **tiga trajektori berbeda total**: r2 `no-flip` (patch 14685B tak-flip repro), r3 `no-flip` (attempt-1 KOSONG 0B), r4 `flip` L1 tapi L2 katastrofik (F2P `test_rss2_feed` fail + **23 P2P regresi** seluruh `SyndicationFeedTest`). md5 attempt beda antar-sampel → BUKAN byte-identik. **Resolve-rate 13230 rezim-kini = 0/3**, hijau historis r1 (20-jul) = satu draw beruntung. Korroborasi: kanari `15790` **goyang** dalam rezim identik (r2 resolved=true; r3 flip-L1 tapi P2P regresi ×2 → resolved=false), **resolve-rate 1/2**. Sumber non-determinisme = vLLM greedy non-determinism (beban/urutan-batch server bersama), tampak lintas jeda & antar-rerun; temp-0 byte-identik hanya terbukti untuk **REPRODUCE pendek same-session** (14411), tak berlaku untuk FIX panjang.
 - **Bukti pembantah (deterministik, dari artefak):** `f-dev--django__django-13230--r{2,3,4}/verdict.json` (no-flip/no-flip/flip) + `swebench_eval.json` r4 (resolved=false, f2p_failed=[`test_rss2_feed`], 23 p2p_failed) + `md5sum` `files/attempts/attempt-2.diff` r2≠r3; `f-dev--django__django-15790--r{2,3}` (resolved true vs false, p2p_failed 2× `CheckTemplateTagLibrariesWithSameName`). Papan skor: `artifacts/papan-skor-retest-batch1-g1.md` §FASE 2.
-- **Pelajaran:** (1) **vonis per-case single-run TIDAK reliable** — termasuk papan skor origin R1 batch-1 (0/4 semua single-run); satu `no-flip`/`resolved=false` BUKAN bukti case tak-terpecahkan (13230 sendiri hasilkan flip-L1 di r4). (2) **Ukur RESOLVE-RATE k/n (n≥3)**, bukan biner; kanari/baseline WAJIB same-session + rate (bahkan n=2 kurang — 15790 tak sepakat dgn dirinya). (3) Kejatuhan kanari **BUKAN bukti regresi lever** kecuali di luar pita varians rate-based. Diformalkan bot-04 di `urutan-retest-lever.md` §A0c/A0d (commit 7d4e023). Konsekuensi: G2 sebaiknya menunggu protokol ukur berbasis-rate agar angka unlock tak noisy.
+- **Pelajaran:** (1) **vonis per-case single-run TIDAK reliable** — termasuk papan skor origin R1 batch-1 (0/4 semua single-run); satu `no-flip`/`resolved=false` BUKAN bukti case tak-terpecahkan (13230 sendiri hasilkan flip-L1 di r4). (2) **Ukur RESOLVE-RATE k/n (n≥3)**, bukan biner; kanari/baseline WAJIB same-session + rate (bahkan n=2 kurang — 15790 tak sepakat dgn dirinya). (3) Kejatuhan kanari **BUKAN bukti regresi lever** kecuali di luar pita varians rate-based. Diformalkan bot-04 di [[urutan-retest-lever]] §A0c/A0d (commit 7d4e023). Konsekuensi: G2 sebaiknya menunggu protokol ukur berbasis-rate agar angka unlock tak noisy.

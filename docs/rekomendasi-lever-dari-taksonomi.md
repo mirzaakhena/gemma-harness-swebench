@@ -1,17 +1,22 @@
 # Rekomendasi Lever dari Taksonomi Kegagalan — mekanis & prompt, ter-prioritas
 
 Dibuat 2026-07-21 (bot-04, Fable 5). Plane: SMARTXRESE-398 (permintaan Mirza,
-lanjutan SMARTXRESE-397 `docs/taksonomi-kegagalan-per-fase.md`).
+lanjutan SMARTXRESE-397 [[taksonomi-kegagalan-per-fase]]).
 
 **Status (update 2026-07-22): GELOMBANG 1 DITERAPKAN — 9 lever, GO Mirza,
 TDD, pytest 465 hijau, satu commit per lever:**
 R19 `0d835b6` · R1 `0444b81` (bot-04) · R2 `8933a06` · R3 `d592ccc` ·
 R4 `8aac0d0` · R5 `d4c455b` (`no_progress.py`, trigger #1/#2/#8, K=3/X=15,
 inject-unik→break) · R6 `6aff344` · R7 `2279cbc` · R18 `84c70e8` (bot-02).
-Status DITERAPKAN + tabel hash juga tercatat di `katalog-lever.md` (`3faf24e`).
+Status DITERAPKAN + tabel hash juga tercatat di [[katalog-lever]] (`3faf24e`).
 **Gelombang 2/3 (R8–R17) tetap CATAT-ONLY** sampai instruksi Mirza berikutnya.
-Nomor LV-xx merujuk `katalog-lever.md`; kelas R-x/L-x/F-x/V-x/H-x merujuk
-`taksonomi-kegagalan-per-fase.md`.
+Nomor LV-xx merujuk [[katalog-lever]]; kelas R-x/L-x/F-x/V-x/H-x merujuk
+[[taksonomi-kegagalan-per-fase]].
+
+> **Terkait:** [[urutan-retest-lever]] (urutan validasi R1–R19) ·
+> [[adopsi-eksternal-dari-riset]] (komponen OSS yang bisa dipinjam) ·
+> [[koreksi-hipotesis]] (KH yang jadi basis bukti) ·
+> [[audit-integritas-cases-selesai]] (asal R18/R19)
 
 **Basis bukti (tiga sumber, dua di antaranya via subagent ber-izin-membantah):**
 1. Taksonomi per-fase + sweep mekanis seluruh artefak (220 r-dev / 135 l-dev / 66 f-dev).
@@ -323,7 +328,7 @@ tetap bebas meng-expose gold di log/artefak untuk dikonsumsi bot analis.)
 - **Kaitan riset bot-05 (sub-problem 4 tool-call robustness):** **mini-SWE-agent**
   ("no tool-calling API, bash saja") = preseden yang menghindari masalah ini sepenuhnya
   — **riset-lanjutan mini-SWE-agent WAJIB dulu** untuk menginformasikan desain (a) vs
-  pendekatan bash-only. Lihat `adopsi-eksternal-dari-riset.md`.
+  pendekatan bash-only. Lihat [[adopsi-eksternal-dari-riset]].
 - **Risiko:** format native mungkin tak memetakan bersih ke grammar aksi kita (ambiguitas
   parse); butuh contoh riil `<|tool_call>` model + TDD. **Status: KANDIDAT, research-gated**
   (butuh riset mini-SWE-agent + desain). Kompleksitas: sedang-besar.
@@ -375,7 +380,7 @@ status semua lever try-then-drop.
 ## Addendum 2026-07-22 — integrasi temuan grup-3/4 bot-03 (KH-16/17/18)
 
 Dua kandidat lever bot-03 yang layak MASUK Gelombang 1 (Tier-1; detail di ekor
-`katalog-lever.md`):
+[[katalog-lever]]):
 
 - **R18 = KL-G3-1 — `git apply --check gold.patch` saat setup case, gagal-KERAS.**
   Menyerang kelas baru R-8 (5/97 gold korup → flip vacuous, mislabel `wrong-logic`,

@@ -7,6 +7,10 @@ SEMUA teks yang dilihat model = English (lihat §4).
 Sumber keputusan: percakapan Telegram Mirza ↔ bot-06, 2026-07-18. Update
 dokumen ini setiap Mirza menambah/mengubah arah — ini living document.
 
+> **Terkait:** [[kontrak-output]] (kontrak data) · [[sop-rlfv-case-run]] (SOP
+> operasional) · [[katalog-lever]] (daftar lever) · [[koreksi-hipotesis]] (klaim
+> terbantah) · [[taksonomi-kegagalan-per-fase]] (peta kegagalan)
+
 ## 1. Tujuan utama
 
 **Output Gemma harus QUALIFIED SETARA dengan output frontier model, per fase.**
@@ -103,7 +107,7 @@ run + container segar per gate run + container ber-gold-patch utk flip).
 Host Windows hanya orkestrasi tipis: driver, emitter, viewer, test suite.
 Full-containerization harness = opsi nanti saat stabil/portabel, bukan sekarang.
 
-## 6. Aturan repo & data (ringkas; detail di kontrak-output.md)
+## 6. Aturan repo & data (ringkas; detail di [[kontrak-output]])
 
 - Emitter tunggal (harness/emit.py); UTF-8 tanpa BOM, LF; append-only;
   rerun = direktori baru r<N+1>; artifacts\ di LUAR git tree, TANPA symlink.

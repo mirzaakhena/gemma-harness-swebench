@@ -2,9 +2,12 @@
 
 Dibuat 2026-07-22 (bot-04, sintesis dari `riset-komparatif-scaffold-swebench.md`
 [bot-05]). Tujuan: memetakan temuan riset OSS ke **kelas kegagalan & lever kita**
-(`taksonomi-kegagalan-per-fase.md`, `rekomendasi-lever-dari-taksonomi.md`) —
+([[taksonomi-kegagalan-per-fase]], [[rekomendasi-lever-dari-taksonomi]]) —
 mana yang bisa DIPINJAM alih-alih dibangun dari nol. Status: **usulan analisa,
 catat-only**; keputusan pemasangan = Mirza.
+
+> **Terkait:** [[urutan-retest-lever]] (gelombang lever G2/G3) ·
+> [[koreksi-hipotesis]] (disiplin verifikasi klaim riset)
 
 ## Peta: solusi eksternal → kelas/lever kita
 

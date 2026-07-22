@@ -5,15 +5,20 @@ Dibuat 2026-07-21 (bot-04, Fable 5; handoff parsial dari bot-03,
 (induk retest 103) / SMARTXRESE-397 (task dokumen ini).
 
 **Apa dokumen ini:** SATU peta kegagalan pipeline, dipecah per fase, yang menyatukan
-taksonomi parsial yang selama ini tersebar (Kelas A/B/C di ekor `katalog-lever.md`,
-sub-signature REPRODUCE-wall di `koreksi-hipotesis.md` KH-10/12/15, papan skor
-`rlfv-papan-skor-grup12-dan-retest.md`). Tiap kelas memuat: **signature/cara deteksi
+taksonomi parsial yang selama ini tersebar (Kelas A/B/C di ekor [[katalog-lever]],
+sub-signature REPRODUCE-wall di [[koreksi-hipotesis]] KH-10/12/15, papan skor
+[[rlfv-papan-skor-grup12-dan-retest]]). Tiap kelas memuat: **signature/cara deteksi
 operasional** (artefak + field), **akar** (model / harness / metodologi — by-AKAR, bukan
 by-gejala), **lever terpetakan** (tunjuk LV-xx, tidak menulis ulang isinya), **frekuensi
 absolut + denominator + apa yang benar-benar diperiksa**, dan **daftar case anggota**.
 
 **Apa yang BUKAN dokumen ini:** strategi pemasangan lever dan urutan re-test — itu milik
 Mirza (keputusan brainstorming handoff). Dokumen ini bahan mentahnya.
+
+> **Terkait:** [[rekomendasi-lever-dari-taksonomi]] (hilir: R1–R20) ·
+> [[urutan-retest-lever]] (strategi retest per kelas) ·
+> [[audit-integritas-cases-selesai]] (audit data 95 case) ·
+> [[adopsi-eksternal-dari-riset]] (solusi OSS per kelas) · [[sop-rlfv-case-run]] (SOP)
 
 ---
 
@@ -285,7 +290,7 @@ robustness: wall REPRODUCE ini **9/9 KONSISTEN** — kontras dgn stokastisitas F
   sitecustomize tak termuat di child; induk tak mengeksekusi file repo in-process →
   pool kosong → abort. Model TAK PERNAH dipanggil; retry 3× mustahil menolong.
 - **Lever:** pindahkan hook ke site-packages container via file `.pth` (kebal
-  penimpaan PYTHONPATH) — lihat `rekomendasi-lever-dari-taksonomi.md` R8. Alternatif
+  penimpaan PYTHONPATH) — lihat [[rekomendasi-lever-dari-taksonomi]] R8. Alternatif
   "gate R melarang repro subprocess" TIDAK disarankan (pola sah).
 - **Frekuensi:** **1 case × 3 run = 3/3** (`14580`) — satu-satunya L-wall di korpus.
 - **Anggota:** 14580.
@@ -318,7 +323,7 @@ lemah yardstick repro-model dibanding oracle resmi** — dan memvalidasi arsitek
 (L2 = jaring pengaman; tanpa L2, 38 hijau-palsu). Pecahan by-sebab-repro-buta:
 - **15** F-3/F-1 under-general (F2P gagal, P2P 0) — repro terlalu sempit → **lever LV-01/R14**.
 - **10** F-2 over-broad (F2P lulus, P2P REGRESI) — repro tak jalankan P2P → **lever
-  gate-jalankan-P2P / TestPrune** (konvergensi riset bot-05, `adopsi-eksternal-dari-riset.md`).
+  gate-jalankan-P2P / TestPrune** (konvergensi riset bot-05, [[adopsi-eksternal-dari-riset]]).
 - **9** campuran (F2P gagal DAN P2P regresi).
 - **4** F-5 wrong-file (`file_match=false`) — patch di file salah, repro-gejala tetap lolos.
 **Kenapa gap ini ADA (bukan bug):** dipaksa gold-blind — oracle F2P = gold-derived (lihat
@@ -582,7 +587,7 @@ Kandidat untuk dipindahkan ke katalog oleh penulis berikutnya:
    `f-dev/runs.jsonl`) pada sesi bot-04 sebelumnya, atas keputusan Mirza, untuk
    membereskan anomali dashboard FV>L-PASS (11797 dijalankan batch gold-blind vs
    dashboard gold-aware; FV 52→51 = L-PASS). Analisis autopsinya tetap tersimpan di
-   `katalog-lever.md`; artefak r-dev/l-dev 11797 utuh. Sel F-5 tetap 2 run
+   [[katalog-lever]]; artefak r-dev/l-dev 11797 utuh. Sel F-5 tetap 2 run
    (11742, 13158) dan klasifikasi 11797 di L-A tetap berlaku (bukti dari katalog +
    l-dev, bukan dari f-dev yang terhapus).
 6. **Diskrepansi denominator Tabel A katalog:** section batch A2 menaikkan sampel ke
@@ -620,7 +625,7 @@ Kandidat untuk dipindahkan ke katalog oleh penulis berikutnya:
 
 ---
 
-*Sumber: katalog-lever.md (LV-01..14, Kelas A/B/C, Tabel A–D, batch bot-02/03/04, A2,
-backlog, grup-1+2, batch-A undone), koreksi-hipotesis.md (KH-01..15 + addenda),
-rlfv-papan-skor-grup12-dan-retest.md, sop-rlfv-case-run.md §3/§5/§6, sweep mekanis
+*Sumber: [[katalog-lever]] (LV-01..14, Kelas A/B/C, Tabel A–D, batch bot-02/03/04, A2,
+backlog, grup-1+2, batch-A undone), [[koreksi-hipotesis]] (KH-01..15 + addenda),
+[[rlfv-papan-skor-grup12-dan-retest]], [[sop-rlfv-case-run]] §3/§5/§6, sweep mekanis
 bot-04 2026-07-21 (220 r-dev / 135 l-dev / 66 f-dev run — seluruhnya, bukan sampel).*

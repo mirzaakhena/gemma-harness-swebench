@@ -3,9 +3,11 @@
 Status: DISETUJUI Mirza (brainstorm Telegram 2026-07-20, sesi bot-05; semua
 butir dikunci via button/pesan eksplisit). Sumber keputusan: vault "Desain
 SWE-bench Checker L2 — Keputusan Brainstorm" + README §"Aturan status
-2-lapisan" + kontrak-output.md + prinsip-pengembangan.md. Dokumen bahasa
+2-lapisan" + [[kontrak-output]] + [[prinsip-pengembangan]]. Dokumen bahasa
 Indonesia; semua teks yang dilihat model = English (tidak relevan di sini —
 checker tidak pernah bicara dengan model).
+
+> **Terkait:** [[2026-07-20-swebench-checker-l2]] (implementation plan)
 
 ## 1. Tujuan & definisi
 

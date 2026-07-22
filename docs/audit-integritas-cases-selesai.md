@@ -2,6 +2,11 @@
 
 **Dibuat:** 2026-07-21 (bot-03, permintaan Mirza). **Metode:** 5 subagent Haiku paralel, read-only, audit **95 case** yang punya run r-dev (=sudah dijalankan). Tiap case dicek 5 sinyal "label-yang-bohong" / cacat data, verifikasi ke artefak (bukan label mentah). **Status: catat-only untuk di-revisit Mirza.**
 
+> **Terkait:** [[koreksi-hipotesis]] (KH-16/KH-17 — akar temuan) ·
+> [[rekomendasi-lever-dari-taksonomi]] (R18/R19 = KL-G3-1/2) ·
+> [[taksonomi-kegagalan-per-fase]] (kelas R-8 corrupt-gold) ·
+> [[sop-rlfv-case-run]] (§3b sabotase utk kandidat lulus-palsu)
+
 **Konsistensi:** temuan corrupt-patch Haiku (4 completed) COCOK dengan scan statis independen bot-03 `git apply --numstat` seluruh 97 gold.patch (5 corrupt; 15202 excluded dari audit ini karena belum-run/grup-4). Kecocokan dua metode = sinyal keyakinan.
 
 ---

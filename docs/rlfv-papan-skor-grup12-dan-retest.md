@@ -4,8 +4,9 @@
 **Tujuan:** koleksi PERSIST lintas-sesi (permintaan Mirza) — papan skor grup-1+2 +
 daftar case menarik untuk **re-test SETELAH 103 tuntas**. Sesi/bot baru baca ini
 supaya tak kehilangan konteks.
-**Terkait:** `docs/katalog-lever.md` (autopsi grup-1+2, commit `d453bc7`),
-`docs/sop-rlfv-case-run.md`, `docs/koreksi-hipotesis.md`, Plane **SMARTXRESE-391**
+**Terkait:** [[katalog-lever]] (autopsi grup-1+2, commit `d453bc7`),
+[[sop-rlfv-case-run]], [[koreksi-hipotesis]], [[taksonomi-kegagalan-per-fase]],
+[[urutan-retest-lever]], [[audit-integritas-cases-selesai]], Plane **SMARTXRESE-391**
 ("Retest ulang seluruh 103 cases"). Aturan main: **catat, jangan terapkan lever**
 tanpa instruksi Mirza; papan skor end-to-end HARUS hitung wrong-file/skip sebagai gagal.
 
@@ -62,7 +63,7 @@ Angka mentah resolved=3/17 MENYESATKAN. Pembedaan:
 | `11564` | KH-10 Python 3.6 | Sama; + kandidat feedback-injection antar-rerun (lihat §4) |
 | `12470`, `15388` | reached-FIX-no-VERIFY | Kenapa checker tak hasilkan `swebench_eval`? (spec ada) |
 
-## 4. Temuan sesi ini (detail di `katalog-lever.md`)
+## 4. Temuan sesi ini (detail di [[katalog-lever]])
 
 - **Throughput paralel NET-NEGATIF di GPU shared saturated.** Serial per-case 2.8–25.9 mnt;
   3-lane concurrent 18–**98** mnt (rerun-berat 4-6× lebih lambat). GPU owner `derry-gemma4-31b-dp`

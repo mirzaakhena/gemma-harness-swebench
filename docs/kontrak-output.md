@@ -7,6 +7,10 @@ rlfv-monitor (bot-03, adapter-per-format). Versi vault: design doc §3 +
 **Emitter tunggal:** `harness/emit.py` — satu-satunya modul yang boleh menulis
 file-file di bawah. Kontrak dijaga di satu titik, teruji unit.
 
+> **Terkait:** [[prinsip-pengembangan]] (arah proyek) · [[sop-rlfv-case-run]]
+> (cara pakai) · [[2026-07-20-swebench-checker-l2-design]] (checker L2) ·
+> [[2026-07-20-fix-stage-design]] (stage FIX)
+
 ## 1. Layout artifacts
 
 ```

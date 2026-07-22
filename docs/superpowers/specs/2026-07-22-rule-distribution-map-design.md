@@ -2,6 +2,9 @@
 
 **Oleh:** bot-06 · **Untuk:** Mirza · **Status:** disetujui (Telegram, 2026-07-22)
 
+> **Terkait:** [[katalog-lever]] (sumber lever) · [[prinsip-pengembangan]]
+> (higiene prompt §4b — konteks rule)
+
 ## Tujuan
 
 Melihat mana rule/lever/mekanik yang **dipakai umum** vs **dipakai khusus untuk
