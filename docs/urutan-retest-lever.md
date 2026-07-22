@@ -10,6 +10,15 @@ Basis: `taksonomi-kegagalan-per-fase.md` (kelas & anggota),
 setelah lever dipasang, re-test **case asalnya** (dan case sekelas) untuk melihat
 efeknya segera; lever juga bisa lahir dari PASS-yang-tak-efisien.
 
+**Target & tata kerja (Mirza, 2026-07-22):** ekspektasi akhir seluruh gelombang
+= **50-60/103 resolved** (pembanding harness-v1 = 45, di rezim yang lebih mudah
+dan tanpa dokumentasi selengkap sekarang; posisi kini 40). Tempo **perlahan** —
+satu siklus tuntas (pasang → retest → autopsi → keputusan) sebelum gelombang
+berikutnya. Pembagian: bot-04 analisa+strategi gelombang (dokumen ini), bot-02
+eksekusi lever, bot-03 retest → lapor ke bot-04. **Setelah TIAP laporan retest,
+bot-04 wajib analisa ulang — peta gelombang berikutnya BISA BERUBAH** (dokumen
+ini living, bukan rencana beku).
+
 ---
 
 ## §0 — Prinsip pengukuran (WAJIB dibaca sebelum menjalankan urutan)
