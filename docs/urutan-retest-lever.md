@@ -19,6 +19,49 @@ eksekusi lever, bot-03 retest → lapor ke bot-04. **Setelah TIAP laporan retest
 bot-04 wajib analisa ulang — peta gelombang berikutnya BISA BERUBAH** (dokumen
 ini living, bukan rencana beku).
 
+## §-A0 — AUTOPSI RETEST BATCH-1 (bot-04, 2026-07-22) — kanari 13230 & temuan metodologi
+
+**Ringkas hasil bot-03 (`artifacts/papan-skor-retest-batch1-g1.md`):** kanari 4/5
+selamat (11049, 15790, 15347, astropy-6938 tetap hijau); origin R1 4/4 pipe_err→0
+(kelas mekanis LV-09 tertutup) tapi unlock 0/4 (dinding lapis-2); **kanari 13230
+JATUH hijau→merah** (baseline r1 rezim-lama resolved, r2 G1 no-flip).
+
+**Autopsi 13230 — VERDIKT: red flag BUKAN regresi lever (false alarm terhadap G1).**
+Bukti dari artefak (deterministik, no-GPU):
+1. Regresi ada di **fase FIX** (r2 `no-flip`, 16.565 baris console vs r1 602 baris —
+   model thrashing rewrite-with-wrong-import `add_domain`, tak pernah hasilkan
+   `fix.diff`).
+2. **R5-watcher (tersangka bot-03) DIBANTAH:** `no_progress` hanya ter-wire ke
+   `run_reproduce_gemma.py`, TIDAK ke `run_fix_gemma.py`; string firing-nya NOL di
+   console r2. Watcher tak mungkin jadi sebab regresi fase-FIX.
+3. Input frozen **byte-identik** (input-repro.md + input-candidates.md); model,
+   driver (`run_fix_gemma-v0`), repro-dir sumber semua sama.
+4. **Reply t1 diverge di baris 82 — DI DALAM tulisan file pertama model, SEBELUM
+   feedback eksekusi apa pun.** Lever yang menyentuh FIX (R1 ship pipe_runtime; R3
+   no-action feedback) HANYA memengaruhi konteks PASCA-aksi; keduanya TIDAK mengubah
+   seed/PROTOCOL_NOTE/compose_fix_seed (diverifikasi dari diff `0444b81` & `d592ccc`).
+   Karena t1 seed identik tapi output t1 beda → **penyebabnya bukan lever**.
+5. Sisa penyebab = **non-komparabilitas rezim inferensi**: r1 dijalankan 2026-07-20,
+   r2 2026-07-22 (jeda 2 hari, server vLLM shared). Temp-0 byte-identik hanya
+   terbukti DALAM sesi (14411 r1/r2/r3); lintas jeda 2 hari di server yang mungkin
+   restart/reload, byte-identitas tak dijamin.
+
+**IMPLIKASI METODOLOGI (update aturan ukur §0):** membandingkan hasil G1 terhadap
+baseline hijau LAMA (mingguan) rawan confounder drift-inferensi. **Aturan baru:**
+- Kanari & baseline harus **same-session** (jalankan baseline ulang di rezim kini
+  sebagai titik banding), bukan hijau historis.
+- Vonis unlock/regresi per case butuh **n≥2-3 di rezim yang sama** sebelum
+  disimpulkan (bedakan drift-rezim dari efek lever). bot-03 sudah mengusulkan
+  re-run 13230 ×2-3 — **didukung**; prediksi bot-04: re-run G1 akan stabil-merah
+  antar-satu-sama-lain (drift-rezim), bukan varians acak per-run.
+- Angka "40 resolved" & "regression-territory" mengandung noise-rezim — pakai
+  sebagai kompas, bukan skor presisi (konsisten §0.5).
+
+**Konsekuensi keputusan:** kanari-jatuh 13230 **TIDAK memblokir G2** (bukan lever
+berbahaya). R1 tetap valid (pipe_err→0 = cek mekanis deterministik, kebal
+drift-inferensi). Payoff map tak berubah oleh temuan ini; yang berubah = protokol
+ukur (same-session baseline + n≥2-3).
+
 ---
 
 ## §0 — Prinsip pengukuran (WAJIB dibaca sebelum menjalankan urutan)
