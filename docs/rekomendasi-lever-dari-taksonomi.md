@@ -307,6 +307,27 @@ tetap bebas meng-expose gold di log/artefak untuk dikonsumsi bot analis.)
   + uji pada case yang dulu justru diselamatkan judge. Filter frontier-baseline layak
   dipakai dulu di 14752/11564. Kompleksitas: sedang-besar.
 
+### R20. Parse format `<|tool_call>` native model = aksi valid (UNLOCK token-loop) — BARU 2026-07-22
+
+- **Menyerang:** **dinding UNLOCK R-1/R-2 token-loop** (keluarga KH-12: 15851, 14411,
+  13265, 14855, 15902) — yang R3/R5 TIDAK tutup (mereka cuma efisiensi+observability).
+- **Bukti pemicu (batch-2, 15851 r4-r6, 2026-07-22):** dgn R2+R3+R5 aktif — label kini
+  jujur (`repro-missing`), turn anjlok 40→4-12 (R5 memutus loop), TAPI **tetap
+  repro-missing**: model ngotot emit `<|tool_call>` native, `parse_actions` cuma paham
+  fenced-block → 0 aksi → repro.py tak pernah ketulis. Akar = instruction-following
+  (model pakai "dialek" tool-call sendiri); R3/R5 tak memaksanya berubah.
+- **Bentuk (dua arah, perlu desain):** (a) **adaptasi ke model** — perluas
+  `parse_actions` mengenali `<|tool_call>…<tool_call|>` native model & petakan ke
+  action-type yang sama (bash/file/…); (b) **paksa model** — penegakan format lebih
+  keras (R3-style, sudah terbukti lemah). (a) lebih menjanjikan (terima dialek model).
+- **Kaitan riset bot-05 (sub-problem 4 tool-call robustness):** **mini-SWE-agent**
+  ("no tool-calling API, bash saja") = preseden yang menghindari masalah ini sepenuhnya
+  — **riset-lanjutan mini-SWE-agent WAJIB dulu** untuk menginformasikan desain (a) vs
+  pendekatan bash-only. Lihat `adopsi-eksternal-dari-riset.md`.
+- **Risiko:** format native mungkin tak memetakan bersih ke grammar aksi kita (ambiguitas
+  parse); butuh contoh riil `<|tool_call>` model + TDD. **Status: KANDIDAT, research-gated**
+  (butuh riset mini-SWE-agent + desain). Kompleksitas: sedang-besar.
+
 ---
 
 ## §4 — JANGAN di-invest (bukti negatif eksplisit)
