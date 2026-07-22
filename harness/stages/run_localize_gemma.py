@@ -20,10 +20,14 @@ from pathlib import Path
 from harness.emit import Emitter
 from harness.stages.gemma_protocol import (done_rejection_localize, has_done,
                                            no_action_feedback, parse_actions)
-from harness.stages.localize_gates import (MAX_SPAN, candidates_done_error,
+from harness.stages.localize_gates import (MAX_SPAN,
+                                           audit_candidate_evidence,
+                                           candidates_done_error,
+                                           demote_mismatched_candidates,
                                            evaluate_localize_gates,
                                            parse_candidates_md,
-                                           parse_localize_md)
+                                           parse_localize_md,
+                                           reorder_candidates_text)
 from harness.stages.localize_trace import (candidates_pool_error,
                                            format_trace_pool_message,
                                            run_trace)
@@ -153,6 +157,53 @@ def localize_range_error(container: str, localize_text: str) -> str | None:
             "lines: at a range that lies inside it (at most "
             f"{MAX_SPAN} lines wide), and submit a corrected "
             "```localize.md block, then declare DONE again.")
+
+
+def audit_candidates_evidence(container: str, candidates_text: str
+                              ) -> tuple[str, list[dict] | None]:
+    """Lever N2 (mandat Mirza 2026-07-22): audit konsistensi evidence<->file.
+
+    Bukti 12184: kandidat #1 django/urls/base.py dgn evidence menyebut
+    `URLPattern.resolve` — simbol itu tidak ada di base.py (adanya di
+    resolvers.py, kandidat #2) -> FIX dipenjara 40 turn di file salah.
+    Di sini, SEBELUM candidates.md dibekukan, simbol beridiom kode pada
+    evidence tiap kandidat dicek keberadaannya di isi file yang diklaim
+    (dibaca lewat jalur read-only docker_exec yang sudah dipakai driver);
+    simbol hilang -> evidence_mismatch -> DEMOSI ke ekor shortlist. Demosi
+    hanya mengubah urutan attempt FIX — kandidat tidak pernah dihapus, dan
+    format candidates.md tetap sesuai kontrak. File tak terbaca -> tidak
+    didemosi (gagal-aman, prinsip prune).
+
+    Keterbatasan sadar (varian 15388): evidence yang salah-atribusi
+    MEKANISME pada file yang BENAR lolos audit ini — simbolnya memang ada
+    di file. Cek simbol hanya menangkap varian salah-file (12184).
+
+    Return (teks_final, rows autopsi); rows None bila candidates.md tak
+    terparse (bentuk salah = urusan cek DONE/gate, bukan audit ini).
+    """
+    try:
+        cands = parse_candidates_md(candidates_text)
+    except ValueError:
+        return candidates_text, None
+    audits: list[dict] = []
+    for cand in cands:
+        target = cand["file"].lstrip("/")
+        out, code = docker_exec(container, f"cat '/testbed/{target}'")
+        audits.append(audit_candidate_evidence(
+            cand["evidence"], out if code == 0 else None))
+    order = demote_mismatched_candidates(audits)
+    rows = []
+    for new_rank, old_i in enumerate(order, start=1):
+        a = audits[old_i]
+        rows.append({"candidate": old_i + 1, "file": cands[old_i]["file"],
+                     "symbols": a["symbols"], "missing": a["missing"],
+                     "checked": a["checked"],
+                     "evidence_mismatch": a["evidence_mismatch"],
+                     "new_rank": new_rank})
+    rows.sort(key=lambda r: r["candidate"])
+    if order != list(range(len(cands))):
+        candidates_text = reorder_candidates_text(candidates_text, order)
+    return candidates_text, rows
 
 
 def main() -> int:
@@ -349,6 +400,22 @@ def main() -> int:
                                                encoding="utf-8", newline="\n")
         log("[driver] files/localize.md written")
     if candidates_md is not None:
+        # Lever N2: audit evidence<->file sebelum shortlist dibekukan;
+        # container kerja masih hidup di titik ini (stop baru di bawah).
+        candidates_md, audit_rows = audit_candidates_evidence(
+            container, candidates_md)
+        if audit_rows is not None:
+            (files_dir / "evidence_audit.json").write_text(
+                json.dumps(audit_rows, ensure_ascii=False, indent=1) + "\n",
+                encoding="utf-8", newline="\n")
+            n_mismatch = sum(1 for r in audit_rows
+                             if r["evidence_mismatch"])
+            em.event("localize", "evidence-audit",
+                     detail={"rows": audit_rows,
+                             "mismatch_count": n_mismatch})
+            log(f"[driver] audit evidence N2: {n_mismatch} dari "
+                f"{len(audit_rows)} kandidat evidence_mismatch "
+                "(files/evidence_audit.json)")
         (files_dir / "candidates.md").write_text(candidates_md + "\n",
                                                  encoding="utf-8", newline="\n")
         log("[driver] files/candidates.md written")

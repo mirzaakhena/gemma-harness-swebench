@@ -133,6 +133,82 @@ def candidates_done_error(candidates_text: str | None,
     return None
 
 
+# --- Lever N2: audit konsistensi evidence<->file (mandat Mirza 2026-07-22) --
+# Bukti 12184: kandidat #1 django/urls/base.py dgn evidence menyebut
+# `URLPattern.resolve` — simbol itu TIDAK ada di base.py (adanya di
+# resolvers.py, kandidat #2) -> FIX dipenjara 40 turn di file salah.
+# Cek mekanis gold-blind: simbol beridiom kode (snake_case/camelCase) yang
+# dikutip evidence harus muncul di isi file kandidat; miss ->
+# evidence_mismatch + DEMOSI urutan attempt (kandidat TIDAK dihapus — FIX
+# mengiterasi seluruh shortlist). File tak terbaca -> JANGAN demosi
+# (gagal-aman, prinsip prune). Logika murni di sini; baca file = driver.
+
+# Ambang panjang minimum token yang diaudit: token < 4 huruf (id, get, url)
+# terlalu ambigu dgn kata biasa/akronim -> di-skip demi anti-false-positive.
+MIN_SYMBOL_LEN = 4
+# Token kandidat: identifier ber-titik opsional (URLPattern.resolve).
+EVIDENCE_TOKEN_RE = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+# Idiom camelCase/CapsAcronym: transisi lower->UPPER (getResolver,
+# ResolverMatch) ATAU run akronim >=2 diikuti ekor lowercase >=2
+# (URLPattern; "URLs" — plural Inggris berekor 1 huruf — TIDAK lolos).
+MIXED_CASE_RE = re.compile(r"[a-z][A-Z]|[A-Z]{2,}[a-z]{2,}")
+
+
+def extract_evidence_symbols(evidence: str) -> list[str]:
+    """Ekstrak simbol beridiom kode dari teks evidence (urut, unik).
+
+    Yang diaudit hanya token yang TAMPAK seperti identifier kode: mengandung
+    underscore, campuran huruf besar-kecil (MIXED_CASE_RE), atau bentuk
+    panggilan `nama()`. Kata bahasa Inggris polos sengaja lolos (anti
+    false-positive). Token ber-titik dipecah dan tiap komponen dinilai
+    sendiri (URLPattern.resolve -> hanya URLPattern yang beridiom)."""
+    symbols: list[str] = []
+    for m in EVIDENCE_TOKEN_RE.finditer(evidence):
+        parts = m.group(0).split(".")
+        is_call = evidence[m.end():m.end() + 1] == "("
+        for j, part in enumerate(parts):
+            if len(part) < MIN_SYMBOL_LEN:
+                continue
+            shaped = "_" in part or MIXED_CASE_RE.search(part)
+            called = is_call and j == len(parts) - 1
+            if (shaped or called) and part not in symbols:
+                symbols.append(part)
+    return symbols
+
+
+def audit_candidate_evidence(evidence: str, file_text: str | None) -> dict:
+    """Audit satu kandidat: simbol evidence vs isi file yang diklaim.
+
+    file_text None = file tak terbaca -> checked False, TIDAK mismatch
+    (gagal-aman). Pencocokan substring (bukan word-boundary): lebih longgar
+    = lebih aman dari demosi keliru."""
+    symbols = extract_evidence_symbols(evidence)
+    if file_text is None:
+        return {"symbols": symbols, "missing": [], "checked": False,
+                "evidence_mismatch": False}
+    missing = [s for s in symbols if s not in file_text]
+    return {"symbols": symbols, "missing": missing, "checked": True,
+            "evidence_mismatch": bool(missing)}
+
+
+def demote_mismatched_candidates(audits: list[dict]) -> list[int]:
+    """Urutan indeks baru: kandidat bersih dulu (urutan asli dipertahankan),
+    kandidat evidence_mismatch ke ekor (urutan relatif juga dipertahankan)."""
+    clean = [i for i, a in enumerate(audits) if not a["evidence_mismatch"]]
+    demoted = [i for i, a in enumerate(audits) if a["evidence_mismatch"]]
+    return clean + demoted
+
+
+def reorder_candidates_text(text: str, order: list[int]) -> str:
+    """Susun ulang blok candidates.md sesuai `order` (indeks 0-based lama),
+    header dinomori ulang 1..n. Isi blok utuh — format kontrak FIX tetap."""
+    blocks = [b for b in _CAND_SPLIT_RE.split(text) if b.strip()]
+    out = [f"CANDIDATE {i}\n" + blocks[old].strip("\n")
+           for i, old in enumerate(order, start=1)]
+    return "\n\n".join(out) + "\n"
+
+
 def evaluate_localize_gates(md_text: str, file_exists: bool,
                             file_line_count: int | None) -> LocalizeResult:
     try:

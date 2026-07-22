@@ -119,3 +119,87 @@ def test_tool_call_marker_triggers_strong_reminder():
     assert "```file:" in msg and "```bash" in msg
     for w in ("kamu", "jalankan", "tulis", "berkas"):
         assert w not in msg.lower()
+
+
+# --- Lever N2: audit evidence<->file saat candidates.md dibekukan -----------
+# Reproduksi 12184: kandidat #1 base.py dgn evidence URLPattern.resolve
+# (simbol adanya di resolvers.py, kandidat #2) meracuni urutan attempt FIX.
+
+CANDS_12184 = """CANDIDATE 1
+file: django/urls/base.py
+evidence: URLPattern.resolve strips the script prefix before matching the route.
+expectation: reverse() would honor the changed urlconf as the user expects.
+
+CANDIDATE 2
+file: django/urls/resolvers.py
+evidence: URLPattern.resolve owns the per-pattern match the issue reports.
+expectation: resolving would pick the right pattern as the user expects.
+"""
+
+BASE_PY = "def resolve(path, urlconf=None):\n    return get_resolver(urlconf)\n"
+RESOLVERS_PY = "class URLPattern:\n    def resolve(self, path):\n        pass\n"
+
+
+def _mock_cat(monkeypatch, bodies: dict, fail_paths=()):
+    calls = []
+
+    def fake_exec(container, cmd, timeout=180):
+        calls.append((container, cmd))
+        for path, body in bodies.items():
+            if path in cmd:
+                return body, 0
+        return "cat: no such file\n", 1
+
+    monkeypatch.setattr(drv, "docker_exec", fake_exec)
+    return calls
+
+
+def test_evidence_audit_demotes_wrong_file_candidate(monkeypatch):
+    _mock_cat(monkeypatch, {"django/urls/base.py": BASE_PY,
+                            "django/urls/resolvers.py": RESOLVERS_PY})
+    text, rows = drv.audit_candidates_evidence("c1", CANDS_12184)
+    from harness.stages.localize_gates import parse_candidates_md
+    cands = parse_candidates_md(text)
+    # resolvers.py (evidence cocok) naik ke urutan 1; base.py didemosi
+    assert [c["file"] for c in cands] == [
+        "django/urls/resolvers.py", "django/urls/base.py"]
+    by_file = {r["file"]: r for r in rows}
+    assert by_file["django/urls/base.py"]["evidence_mismatch"] is True
+    assert by_file["django/urls/base.py"]["missing"] == ["URLPattern"]
+    assert by_file["django/urls/base.py"]["new_rank"] == 2
+    assert by_file["django/urls/resolvers.py"]["evidence_mismatch"] is False
+    assert by_file["django/urls/resolvers.py"]["new_rank"] == 1
+
+
+def test_evidence_audit_reads_via_container_readonly_path(monkeypatch):
+    calls = _mock_cat(monkeypatch, {"django/urls/base.py": BASE_PY,
+                                    "django/urls/resolvers.py": RESOLVERS_PY})
+    drv.audit_candidates_evidence("c1", CANDS_12184)
+    assert any("cat '/testbed/django/urls/base.py'" in c for _, c in calls)
+    assert any("cat '/testbed/django/urls/resolvers.py'" in c
+               for _, c in calls)
+
+
+def test_evidence_audit_unreadable_file_never_demotes(monkeypatch):
+    # Gagal-aman: cat gagal utk base.py -> kandidat TIDAK didemosi.
+    _mock_cat(monkeypatch, {"django/urls/resolvers.py": RESOLVERS_PY})
+    text, rows = drv.audit_candidates_evidence("c1", CANDS_12184)
+    assert text == CANDS_12184  # urutan asli utuh
+    by_file = {r["file"]: r for r in rows}
+    assert by_file["django/urls/base.py"]["checked"] is False
+    assert by_file["django/urls/base.py"]["evidence_mismatch"] is False
+
+
+def test_evidence_audit_clean_shortlist_untouched(monkeypatch):
+    _mock_cat(monkeypatch, {"django/urls/base.py": RESOLVERS_PY,
+                            "django/urls/resolvers.py": RESOLVERS_PY})
+    text, rows = drv.audit_candidates_evidence("c1", CANDS_12184)
+    assert text == CANDS_12184
+    assert all(r["evidence_mismatch"] is False for r in rows)
+
+
+def test_evidence_audit_malformed_candidates_passthrough(monkeypatch):
+    calls = _mock_cat(monkeypatch, {})
+    text, rows = drv.audit_candidates_evidence("c1", "bukan candidates.md")
+    assert text == "bukan candidates.md" and rows is None
+    assert not calls  # bentuk salah -> biar cek DONE/gate yang memvonis

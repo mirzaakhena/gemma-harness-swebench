@@ -268,3 +268,105 @@ def test_candidates_done_error_accepts_three():
 def test_contract_names_shortlist_bounds():
     text = _contract_text()
     assert "at most THREE" in text
+
+
+# --- Lever N2: audit konsistensi evidence<->file (mandat Mirza 2026-07-22) --
+# Bukti 12184: kandidat #1 django/urls/base.py dgn evidence menyebut
+# URLPattern.resolve — simbol itu tidak ada di base.py (adanya di
+# resolvers.py, kandidat #2) -> FIX dipenjara 40 turn di file salah.
+# Cek mekanis gold-blind: simbol beridiom kode di evidence harus muncul di
+# isi file kandidat; miss -> evidence_mismatch + demosi urutan (bukan hapus).
+
+
+def test_extract_symbols_camel_and_snake():
+    from harness.stages.localize_gates import extract_evidence_symbols
+    syms = extract_evidence_symbols(
+        "URLPattern.resolve walks url_patterns before the include is applied.")
+    assert "URLPattern" in syms
+    assert "url_patterns" in syms
+    # kata Inggris polos & komponen dotted tanpa idiom kode tidak diaudit
+    assert "resolve" not in syms
+    assert "before" not in syms and "walks" not in syms
+
+
+def test_extract_symbols_call_form_qualifies():
+    from harness.stages.localize_gates import extract_evidence_symbols
+    syms = extract_evidence_symbols(
+        "the resolve() helper rebuilds the match before returning.")
+    assert syms == ["resolve"]
+
+
+def test_extract_symbols_skips_short_and_acronym_only():
+    from harness.stages.localize_gates import extract_evidence_symbols
+    # id() < MIN_SYMBOL_LEN; URL tanpa ekor lowercase; URLs ekor 1 huruf
+    # (plural bahasa Inggris, bukan identifier) — semuanya di-skip.
+    assert extract_evidence_symbols(
+        "the id() call maps a URL and the URLs are rewritten") == []
+
+
+def test_extract_symbols_dedup_preserves_order():
+    from harness.stages.localize_gates import extract_evidence_symbols
+    syms = extract_evidence_symbols(
+        "get_group_by feeds get_group_by again via GroupByHelper")
+    assert syms == ["get_group_by", "GroupByHelper"]
+
+
+def test_audit_mismatch_when_symbol_absent_from_file():
+    from harness.stages.localize_gates import audit_candidate_evidence
+    # Reproduksi 12184: evidence menyebut URLPattern, file base.py tidak
+    # memuat simbol itu.
+    a = audit_candidate_evidence(
+        "URLPattern.resolve strips the prefix before matching.",
+        "def resolve(path, urlconf=None):\n    return get_resolver()\n")
+    assert a["checked"] is True
+    assert a["evidence_mismatch"] is True
+    assert a["missing"] == ["URLPattern"]
+
+
+def test_audit_pass_when_symbols_present():
+    from harness.stages.localize_gates import audit_candidate_evidence
+    a = audit_candidate_evidence(
+        "URLPattern.resolve strips the prefix.",
+        "class URLPattern:\n    def resolve(self, path):\n        pass\n")
+    assert a["evidence_mismatch"] is False and a["missing"] == []
+
+
+def test_audit_unreadable_file_fails_safe():
+    from harness.stages.localize_gates import audit_candidate_evidence
+    # File tak terbaca -> JANGAN demosi (gagal-aman, prinsip prune).
+    a = audit_candidate_evidence("URLPattern.resolve does it.", None)
+    assert a["checked"] is False
+    assert a["evidence_mismatch"] is False
+
+
+def test_audit_prose_only_evidence_never_mismatch():
+    from harness.stages.localize_gates import audit_candidate_evidence
+    a = audit_candidate_evidence(
+        "this branch renders the wrong string for the user.", "x = 1\n")
+    assert a["symbols"] == [] and a["evidence_mismatch"] is False
+
+
+def test_demote_moves_mismatch_to_tail_keeps_relative_order():
+    from harness.stages.localize_gates import demote_mismatched_candidates
+    audits = [{"evidence_mismatch": True}, {"evidence_mismatch": False},
+              {"evidence_mismatch": True}, {"evidence_mismatch": False}]
+    assert demote_mismatched_candidates(audits) == [1, 3, 0, 2]
+
+
+def test_demote_identity_when_clean():
+    from harness.stages.localize_gates import demote_mismatched_candidates
+    audits = [{"evidence_mismatch": False}, {"evidence_mismatch": False}]
+    assert demote_mismatched_candidates(audits) == [0, 1]
+
+
+def test_reorder_candidates_text_renumbers_and_reparses():
+    from harness.stages.localize_gates import (parse_candidates_md,
+                                               reorder_candidates_text)
+    out = reorder_candidates_text(CANDS_OK, [1, 0])
+    cands = parse_candidates_md(out)
+    assert [c["file"] for c in cands] == [
+        "django/db/models/sql/query.py", "django/db/models/lookups.py"]
+    # header dinomori ulang urut 1..n — format kontrak FIX tidak berubah
+    assert "CANDIDATE 1\n" in out and "CANDIDATE 2\n" in out
+    assert cands[0]["evidence"].startswith("get_group_by")
+    assert cands[1]["expectation"]
