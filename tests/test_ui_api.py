@@ -83,3 +83,70 @@ def test_api_campaigns_empty_root(tmp_path):
     from ui.server import api_campaigns
     names = [c["name"] for c in api_campaigns(tmp_path)["campaigns"]]
     assert names == ["r-dev", "l-dev", "f-dev"]
+
+
+# --- api_runs ---------------------------------------------------------------
+
+def test_api_runs_fields_and_order(tmp_path):
+    from ui.server import api_runs
+    mk_run(tmp_path, "r-dev", "django__django-1", "r1",
+           verdict="pass", pass_l1=True,
+           started="2026-07-20T10:00:00+07:00")
+    mk_run(tmp_path, "r-dev", "sympy__sympy-2", "r1",
+           verdict="wrong-logic",
+           started="2026-07-21T14:03:00+07:00")
+    out = api_runs(tmp_path, "r-dev")
+    assert out["campaign"] == "r-dev"
+    assert out["total"] == 2 and out["total_pages"] == 1
+    # urut started desc: run terbaru dulu
+    assert [r["case"] for r in out["runs"]] == \
+        ["sympy__sympy-2", "django__django-1"]
+    fail = out["runs"][0]
+    assert fail["rerun"] == "r1"
+    assert fail["verdict"] == "wrong-logic"
+    assert fail["status"] == "FAIL" and fail["category"] == "wrong-logic"
+    assert fail["wall"] == 12.3
+    assert fail["started"] == "2026-07-21 14:03"
+    ok = out["runs"][1]
+    assert ok["status"] == "PASS" and ok["verdict"] == "pass"
+
+
+def test_api_runs_filter_status_and_q(tmp_path):
+    from ui.server import api_runs
+    mk_run(tmp_path, "r-dev", "django__django-1", "r1",
+           verdict="pass", pass_l1=True)
+    mk_run(tmp_path, "r-dev", "django__django-1", "r2",
+           verdict="wrong-logic")
+    mk_run(tmp_path, "r-dev", "sympy__sympy-2", "r1",
+           verdict="wrong-logic")
+    out = api_runs(tmp_path, "r-dev", status="FAIL")
+    assert out["total"] == 2
+    assert all(r["status"] == "FAIL" for r in out["runs"])
+    out = api_runs(tmp_path, "r-dev", status="FAIL", q="django")
+    assert out["total"] == 1
+    assert out["runs"][0]["run_id"] == "r-dev--django__django-1--r2"
+
+
+def test_api_runs_paging_clamps(tmp_path):
+    from ui.server import api_runs
+    for i in range(4):
+        mk_run(tmp_path, "r-dev", f"case-{i}", "r1",
+               verdict="pass", pass_l1=True)
+    out = api_runs(tmp_path, "r-dev", page=99, per_page=3)
+    assert out["total"] == 4 and out["total_pages"] == 2
+    assert out["page"] == 2 and len(out["runs"]) == 1
+
+
+def test_api_runs_unknown_campaign_empty(tmp_path):
+    from ui.server import api_runs
+    out = api_runs(tmp_path, "tidak-ada")
+    assert out["runs"] == [] and out["total"] == 0
+
+
+def test_api_runs_run_without_verdict_is_unknown(tmp_path):
+    from ui.server import api_runs
+    mk_run(tmp_path, "r-dev", "django__django-1", "r1")  # tanpa verdict
+    out = api_runs(tmp_path, "r-dev")
+    r = out["runs"][0]
+    assert r["status"] == "?" and r["verdict"] == "-"
+    assert r["category"] == "tanpa verdict.json"

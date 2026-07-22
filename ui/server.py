@@ -28,6 +28,8 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 # run lambat-tapi-hidup sebagai stale.
 STALE_THRESHOLD_SECONDS = 300
 
+PAGE_SIZE = 15
+
 
 # --- logika inti (dites di tests/test_ui_core.py) ---------------------------
 
@@ -709,6 +711,36 @@ def api_campaigns(root: Path) -> dict:
                            "phase": campaign_phase(c)} for c in campaigns]}
 
 
+def api_runs(root: Path, campaign: str, status: str | None = None,
+             q: str | None = None, page: int = 1,
+             per_page: int = PAGE_SIZE) -> dict:
+    """Payload /api/runs: run individual sebuah kampanye, urut started desc
+    (paritas tabel UI). status/category/reasons = case_status() run itu;
+    verdict = teks gabungan kolom UI (run_index_verdict). `total` = jumlah
+    run SETELAH filter status+q, sebelum paging."""
+    campaign_dir = Path(root) / campaign
+    runs = sort_runs_desc(list_runs(campaign_dir), campaign_dir)
+    runs = filter_runs_by_case(runs, q)
+    entries = []
+    for r in runs:
+        rid = r["run_id"]
+        run_dir = campaign_dir / rid
+        case_id, rerun = split_run_id(rid)
+        st = case_status(campaign, run_dir)
+        vtext, _ = run_index_verdict(campaign, run_dir)
+        entries.append({"run_id": rid, "case": case_id, "rerun": rerun,
+                        "verdict": vtext, "status": st["status"],
+                        "category": st["category"],
+                        "reasons": st["reasons"], "wall": r.get("wall"),
+                        "started": run_started_str(run_dir)})
+    if status is not None:
+        entries = [e for e in entries if e["status"] == status]
+    total = len(entries)
+    page_items, total_pages = paginate(entries, page, per_page)
+    return {"campaign": campaign, "page": max(1, min(page, total_pages)),
+            "total_pages": total_pages, "total": total, "runs": page_items}
+
+
 # --- rendering HTML ----------------------------------------------------------
 
 _STYLE = """<style>
@@ -895,9 +927,6 @@ def _verdict_summary(v) -> str:
     if v is None:
         return "-"
     return str(v)
-
-
-PAGE_SIZE = 15
 
 
 def _search_box(active: str, q: str | None) -> str:
