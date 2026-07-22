@@ -394,3 +394,57 @@ def test_page_index_case_link_carries_status(tmp_path):
     mk_run(tmp_path, "r-dev", "case-bad", "r1", verdict="wrong-logic")
     out = page_index(tmp_path, tab="r-dev", status="FAIL")
     assert "href='/?tab=r-dev&q=case-bad&status=FAIL'" in out
+
+
+# --- kartu statistik ringkasan + posisi radio (Mirza 2026-07-22) --------
+
+def test_render_stage_summary_cards_markup():
+    from ui.server import render_stage_summary
+    s = {"total": 4, "pass": 3, "fail": 1, "unknown": 0,
+         "items": [
+             {"case": "case-a", "rerun": "r2", "status": "PASS",
+              "category": "pass", "reasons": []},
+             {"case": "case-b", "rerun": "r1", "status": "FAIL",
+              "category": "wrong-logic", "reasons": ["x"]},
+         ]}
+    out = render_stage_summary(s)
+    assert "class='scards'" in out
+    assert "<div class='num'>4</div><div class='lbl'>cases</div>" in out
+    assert "✅ 3" in out and "PASS 75%" in out
+    assert "❌ 1" in out and "FAIL 25%" in out
+    # bar proporsi + [info] tetap
+    assert "class='sbar'" in out and "width:75%" in out
+    assert "[info]" in out and "showInfo()" in out
+
+
+def test_render_stage_summary_cards_wait_only_when_present():
+    from ui.server import render_stage_summary
+    s = {"total": 2, "pass": 1, "fail": 1, "unknown": 0, "wait": 0,
+         "anomaly": 0,
+         "items": [
+             {"case": "a", "rerun": "r1", "status": "PASS",
+              "category": "pass", "reasons": []},
+             {"case": "b", "rerun": "r1", "status": "FAIL",
+              "category": "fail", "reasons": []},
+         ]}
+    out = render_stage_summary(s)
+    assert "WAIT" not in out.replace("menunggu VERIFY", "")
+    s2 = dict(s, wait=1, fail=0,
+              items=[{"case": "a", "rerun": "r1", "status": "PASS",
+                      "category": "pass", "reasons": []},
+                     {"case": "b", "rerun": "r1", "status": "WAIT",
+                      "category": "product-pass", "reasons": [],
+                      "started": "?"}])
+    out2 = render_stage_summary(s2)
+    assert "⏳ 1" in out2 and "WAIT 50%" in out2
+
+
+def test_page_index_radio_directly_below_search(tmp_path):
+    from ui.server import page_index
+    mk_run(tmp_path, "r-dev", "case-a", "r1", verdict="pass",
+           pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev")
+    i_search = out.index("class='search'")
+    i_radio = out.index("class='rfilter'")
+    i_summary = out.index("class='summary'")
+    assert i_search < i_radio < i_summary

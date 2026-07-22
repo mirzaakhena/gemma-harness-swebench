@@ -342,8 +342,9 @@ def test_render_stage_summary_text_bar_and_info():
               "reasons": ["flip test failed: predicate"]},
          ]}
     out = render_stage_summary(s)
-    assert "4 cases" in out
-    assert "PASS 3 (75%)" in out and "FAIL 1 (25%)" in out
+    assert "<div class='num'>4</div>" in out and "cases" in out
+    assert "✅ 3" in out and "PASS 75%" in out
+    assert "❌ 1" in out and "FAIL 25%" in out
     assert "class='sbar'" in out and "width:75%" in out  # bar bertumpuk CSS
     # rincian FAIL/ANOMALY tak lagi di panel (pindah ke modal ikon tabel utama)
     assert "rincian FAIL" not in out
@@ -370,7 +371,7 @@ def test_render_stage_summary_no_fail_details_table_in_panel():
                     "category": "wrong-logic", "reasons": [],
                     "started": "2026-07-19 11:30"}]}
     out = render_stage_summary(s)
-    assert "FAIL 1 (100%)" in out
+    assert "❌ 1" in out and "FAIL 100%" in out
     assert "rincian FAIL" not in out
     assert "<th>kategori</th>" not in out
 
@@ -389,7 +390,7 @@ def test_render_stage_summary_no_pass_list_block():
          ]}
     out = render_stage_summary(s)
     assert "daftar PASS" not in out
-    assert "PASS 1 (50%)" in out
+    assert "PASS 50%" in out
 
 
 def test_render_stage_summary_no_pass_no_pass_list():
@@ -428,8 +429,9 @@ def test_page_index_shows_summary_panel(tmp_path):
                     pass_l1=False)
     _write_event(run_b, "exit", {"failures": ["flip gagal total"]})
     out = page_index(tmp_path, tab="r-dev")
-    assert "2 cases" in out
-    assert "PASS 1 (50%)" in out and "FAIL 1 (50%)" in out
+    assert "<div class='num'>2</div>" in out and "cases" in out
+    assert "✅ 1" in out and "PASS 50%" in out
+    assert "❌ 1" in out and "FAIL 50%" in out
     assert "flip gagal total" in out
 
 
@@ -439,7 +441,8 @@ def test_page_index_summary_covers_all_pages_not_just_page_one(tmp_path):
         _mk_run(tmp_path, "r-dev", f"case-{i:02d}", 1,
                 {"reproduce": "pass"}, pass_l1=True)
     out = page_index(tmp_path, tab="r-dev", page=1)
-    assert "20 cases" in out and "PASS 20 (100%)" in out
+    assert "<div class='num'>20</div>" in out and "cases" in out
+    assert "✅ 20" in out and "PASS 100%" in out
 
 
 def test_page_index_run_table_shows_started_column(tmp_path):

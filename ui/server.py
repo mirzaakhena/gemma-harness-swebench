@@ -544,6 +544,13 @@ def _stage_legend(s: dict) -> str:
                if s.get("anomaly") else ""))
 
 
+def _stat_card(num_html: str, label: str) -> str:
+    """Satu kartu statistik panel ringkasan: angka besar (+ikon) di atas,
+    label kecil di bawah (permintaan Mirza 2026-07-22)."""
+    return ("<div class='scard'><div class='num'>" + num_html
+            + "</div><div class='lbl'>" + label + "</div></div>")
+
+
 def render_stage_summary(s: dict) -> str:
     """Panel infografik: angka+persen berikut label "[info]" (klik -> modal
     legenda) dan bar bertumpuk CSS. Rincian FAIL/ANOMALY per case sekarang
@@ -553,19 +560,22 @@ def render_stage_summary(s: dict) -> str:
     n = s["total"]
     if n == 0:
         return ""
-    head = (f"<b>{n} cases</b> &middot; "
-            f"PASS {s['pass']} ({_pct(s['pass'], n)}) &middot; "
-            f"FAIL {s['fail']} ({_pct(s['fail'], n)})")
+    cards = [_stat_card(str(n), "cases")]
+    if s["pass"]:
+        cards.append(_stat_card("✅ " + str(s["pass"]),
+                                f"PASS {_pct(s['pass'], n)}"))
+    if s["fail"]:
+        cards.append(_stat_card("❌ " + str(s["fail"]),
+                                f"FAIL {_pct(s['fail'], n)}"))
     if s.get("wait"):
-        head += (f" &middot; {status_icon('WAIT')}WAIT {s['wait']} "
-                 f"({_pct(s['wait'], n)})")
+        cards.append(_stat_card("⏳ " + str(s["wait"]),
+                                f"WAIT {_pct(s['wait'], n)}"))
     if s.get("anomaly"):
-        head += (f" &middot; {status_icon('ANOMALY')}ANOMALY {s['anomaly']} "
-                 f"({_pct(s['anomaly'], n)})")
+        cards.append(_stat_card("⚠️ " + str(s["anomaly"]),
+                                f"ANOMALY {_pct(s['anomaly'], n)}"))
     if s["unknown"]:
-        head += f" &middot; ? {s['unknown']} ({_pct(s['unknown'], n)})"
-    # label "[info]" di paling akhir head -> buka modal legenda
-    head += " <a class='info-link' onclick='showInfo()'>[info]</a>"
+        cards.append(_stat_card(str(s["unknown"]),
+                                f"? {_pct(s['unknown'], n)}"))
     segs = []
     for cnt, cls in ((s["pass"], "sp"), (s["fail"], "sf"),
                      (s.get("wait", 0), "sw"), (s.get("anomaly", 0), "sa"),
@@ -573,11 +583,14 @@ def render_stage_summary(s: dict) -> str:
         if cnt:
             segs.append(f"<span class='{cls}' "
                         f"style='width:{_pct(cnt, n)}'></span>")
-    parts = ["<div class='summary'><p>", head, "</p>",
+    parts = ["<div class='summary'><div class='scards'>", "".join(cards),
+             "</div>",
              # legenda tersembunyi; isinya disalin JS ke modal saat "[info]"
              "<div id='legendBody' style='display:none'>"
              + _stage_legend(s) + "</div>",
-             "<div class='sbar'>", "".join(segs), "</div>"]
+             "<div class='sbar'>", "".join(segs), "</div>",
+             "<p class='dim' style='margin:.2em 0'>"
+             "<a class='info-link' onclick='showInfo()'>[info]</a></p>"]
 
     waiting = [i for i in s["items"] if i["status"] == "WAIT"]
     if waiting:
@@ -801,6 +814,11 @@ td,th{padding:.15em .8em;text-align:left;border-bottom:1px solid #2a2a2a}
 .summary{margin:.6em 0;padding:.5em .8em;border:1px solid #333;
          background:#181818;border-radius:4px;max-width:640px}
 .summary p{margin:.2em 0}
+.scards{display:flex;gap:.6em;flex-wrap:wrap;margin:.1em 0 .5em}
+.scard{background:#141414;border:1px solid #333;border-radius:5px;
+       padding:.45em .95em;min-width:6.5em;text-align:center}
+.scard .num{font-size:20px;font-weight:bold;color:#fff;line-height:1.2}
+.scard .lbl{color:#888;font-size:12px;margin-top:.1em}
 .sbar{display:flex;height:10px;background:#333;border-radius:3px;
       overflow:hidden;margin:.45em 0}
 .sp{background:#2e7d32}.sf{background:#b03030}.su{background:#666}
@@ -1046,6 +1064,9 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
             f"{html.escape(campaign_label(camp))}</a>")
     parts.append("<div class='tabs'>" + "".join(tab_links) + "</div>")
     parts.append(_search_box(active, q, status))
+    # radio filter status — server-side, berlaku ke seluruh data
+    # posisi: persis di bawah kotak search (permintaan Mirza 2026-07-22)
+    parts.append(_status_filter_form(active, q, status))
 
     runs = sort_runs_desc(list_runs(root / active), root / active)
     if not runs:
@@ -1070,10 +1091,6 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
     # alasan per-CASE (kategori+reasons dari run yang dipilih summary) ->
     # dipakai modal saat ikon FAIL/ANOMALY di tabel utama diklik
     reason_by_case = {i["case"]: i for i in summary["items"]}
-
-    # radio filter status — server-side, berlaku ke seluruh data
-    # (permintaan Mirza 2026-07-22; dulu client-side filterRows)
-    parts.append(_status_filter_form(active, q, status))
 
     # pass 1: hitung status baris SEMUA run terfilter q — filter status
     # harus berlaku lintas seluruh data SEBELUM paginasi; field mahal
