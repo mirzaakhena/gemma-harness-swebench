@@ -311,6 +311,20 @@ resolved=false+fm=false **2** · resolved=false F2P-lulus-P2P-regresi **6** ·
 resolved=false target-fail-murni (f2p>0,p2p=0) **8** · resolved=false campuran
 (f2p>0,p2p>0) **8** · no-flip tanpa eval **4** · in-flight **1** (14534).
 
+**⭐ METRIK HEADLINE — "L1 lulus tapi L2 gagal" (bukti terkuantifikasi tema LV-01;
+sweep refresh 2026-07-22, temuan Mirza):** run yang **flip (repro model PASS / pass_l1
+=true) TAPI checker resmi resolved=false** = **38 run**. Ini **mengukur langsung seberapa
+lemah yardstick repro-model dibanding oracle resmi** — dan memvalidasi arsitektur berlapis
+(L2 = jaring pengaman; tanpa L2, 38 hijau-palsu). Pecahan by-sebab-repro-buta:
+- **15** F-3/F-1 under-general (F2P gagal, P2P 0) — repro terlalu sempit → **lever LV-01/R14**.
+- **10** F-2 over-broad (F2P lulus, P2P REGRESI) — repro tak jalankan P2P → **lever
+  gate-jalankan-P2P / TestPrune** (konvergensi riset bot-05, `adopsi-eksternal-dari-riset.md`).
+- **9** campuran (F2P gagal DAN P2P regresi).
+- **4** F-5 wrong-file (`file_match=false`) — patch di file salah, repro-gejala tetap lolos.
+**Kenapa gap ini ADA (bukan bug):** dipaksa gold-blind — oracle F2P = gold-derived (lihat
+§V catatan checker), model TAK bisa memakainya, jadi mengaproksimasi dgn repro; 38 run =
+selisih aproksimasi-vs-oracle. Mengecilkan gap ini = tujuan utama lever fase FIX.
+
 ### F-1 — Kelas-B: repro longgar meloloskan fix yang salah (akar-METODOLOGI/yardstick, LV-01)
 
 - **Signature:** FIX flip LULUS (patch lolos repro model), `file_match=true`, tapi
