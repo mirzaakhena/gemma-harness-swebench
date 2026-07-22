@@ -560,13 +560,13 @@ def render_stage_summary(s: dict) -> str:
     n = s["total"]
     if n == 0:
         return ""
-    cards = [_stat_card(str(n), "cases")]
-    if s["pass"]:
-        cards.append(_stat_card("✅ " + str(s["pass"]),
-                                f"PASS {_pct(s['pass'], n)}"))
-    if s["fail"]:
-        cards.append(_stat_card("❌ " + str(s["fail"]),
-                                f"FAIL {_pct(s['fail'], n)}"))
+    # PASS & FAIL SELALU tampil (FAIL 0 = kabar baik yang layak terlihat);
+    # hanya WAIT/ANOMALY/? yang kondisional (desain disetujui Mirza)
+    cards = [_stat_card(str(n), "cases"),
+             _stat_card("✅ " + str(s["pass"]),
+                        f"PASS {_pct(s['pass'], n)}"),
+             _stat_card("❌ " + str(s["fail"]),
+                        f"FAIL {_pct(s['fail'], n)}")]
     if s.get("wait"):
         cards.append(_stat_card("⏳ " + str(s["wait"]),
                                 f"WAIT {_pct(s['wait'], n)}"))

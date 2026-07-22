@@ -112,7 +112,8 @@ def test_page_index_row_icon_reflects_verify_fail(tmp_path):
     # <td>❌</td> polos; baris tetap data-status FAIL, tak ada ✅
     assert "❌" in out and "<button" in out
     assert 'data-status="FAIL"' in out
-    assert "✅" not in out
+    # ikon BARIS tabel tak boleh ✅; kartu ringkasan PASS 0 sah memuat ✅
+    assert "<td>✅" not in out
 
 
 def test_page_index_row_icon_wait_shows_hourglass(tmp_path):

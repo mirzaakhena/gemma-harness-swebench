@@ -460,7 +460,9 @@ def test_page_index_missing_gold_shows_no_eval_pending(tmp_path):
     from ui.server import page_index
     _mk_localize_run(tmp_path, "l-dev", "django__django-11422", None)
     out = page_index(tmp_path, tab="l-dev")
-    assert "pass (no-eval)" in out and "⏳" in out and "✅" not in out
+    # "<td>✅" = ikon BARIS tabel; kartu ringkasan PASS 0 sah memuat ✅
+    assert "pass (no-eval)" in out and "⏳" in out
+    assert "<td>✅" not in out
 
 
 # --- ikon marker STALE utk run tanpa verdict.json (permintaan Mirza 2026-07-22)

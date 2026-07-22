@@ -448,3 +448,18 @@ def test_page_index_radio_directly_below_search(tmp_path):
     i_radio = out.index("class='rfilter'")
     i_summary = out.index("class='summary'")
     assert i_search < i_radio < i_summary
+
+
+def test_render_stage_summary_fail_zero_card_still_shown():
+    # kartu FAIL tetap tampil saat 0 (kampanye 100% pass) — temuan review
+    from ui.server import render_stage_summary
+    s = {"total": 2, "pass": 2, "fail": 0, "unknown": 0,
+         "items": [
+             {"case": "a", "rerun": "r1", "status": "PASS",
+              "category": "pass", "reasons": []},
+             {"case": "b", "rerun": "r1", "status": "PASS",
+              "category": "pass", "reasons": []},
+         ]}
+    out = render_stage_summary(s)
+    assert "❌ 0" in out and "FAIL 0%" in out
+    assert "✅ 2" in out and "PASS 100%" in out
