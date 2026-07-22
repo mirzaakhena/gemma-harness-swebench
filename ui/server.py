@@ -1159,7 +1159,8 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
     return _page("log viewer", "".join(parts))
 
 
-def page_run(root: Path, campaign: str, run_id: str, n: int) -> str:
+def page_run(root: Path, campaign: str, run_id: str, n: int,
+             auto: bool = False) -> str:
     run_dir = root / campaign / run_id
     title = f"{campaign} / {run_id}"
     dur = fmt_duration(run_duration_seconds(run_dir))
@@ -1168,6 +1169,17 @@ def page_run(root: Path, campaign: str, run_id: str, n: int) -> str:
     parts = [f"<p><a href='/'>&larr; index</a></p>"
              f"<h1>{html.escape(title)}</h1>"
              f"<p class='dim'>durasi: {html.escape(dur)}</p>"]
+
+    # switch auto-refresh (default OFF — reload 3s me-reset seleksi
+    # teks saat copy; permintaan Mirza 2026-07-22)
+    base_url = ("/run?c=" + urllib.parse.quote(campaign)
+                + "&r=" + urllib.parse.quote(run_id) + f"&n={n}")
+    checked = " checked" if auto else ""
+    parts.append(
+        "<p class='dim'><label><input type='checkbox'" + checked
+        + " onchange=\"location.href='" + base_url
+        + ("'\"" if auto else "&auto=1'\"")
+        + "> auto-refresh (3s)</label></p>")
 
     vpath = run_dir / "verdict.json"
     if vpath.is_file():
@@ -1260,7 +1272,7 @@ def page_run(root: Path, campaign: str, run_id: str, n: int) -> str:
     else:
         parts.append("<pre>" + html.escape("\n".join(con_lines)) + "</pre>")
 
-    return _page(title, "".join(parts), refresh=True)
+    return _page(title, "".join(parts), refresh=auto)
 
 
 # --- HTTP layer ---------------------------------------------------------------
@@ -1361,7 +1373,8 @@ def make_handler(root: Path):
                 except ValueError:
                     nval = DEFAULT_TAIL
                 nval = max(1, min(nval, 5000))
-                self._send_html(page_run(root, camp, rid, nval))
+                auto = (qs.get("auto") or ["0"])[0] == "1"
+                self._send_html(page_run(root, camp, rid, nval, auto=auto))
             elif parsed.path.startswith("/api/"):
                 self._api(parsed.path, qs)
             else:

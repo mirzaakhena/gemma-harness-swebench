@@ -530,3 +530,52 @@ def test_render_stage_summary_no_info_no_legend():
     out = render_stage_summary(s)
     assert "[info]" not in out and "legendBody" not in out
     assert "showInfo" not in out
+
+
+# --- switch auto-refresh /run (Mirza 2026-07-22) ----------------------------
+
+def test_page_run_no_auto_refresh_by_default(tmp_path):
+    from ui.server import page_run
+    rid = mk_run(tmp_path, "r-dev", "case-a", "r1", verdict="pass",
+                 pass_l1=True)
+    out = page_run(tmp_path, "r-dev", rid, 200)
+    assert 'http-equiv="refresh"' not in out
+    assert "auto-refresh (3s)" in out
+    assert "&auto=1" in out           # centang -> URL dengan auto=1
+    assert "<input type='checkbox' onchange" in out  # tak tercentang
+
+
+def test_page_run_auto_refresh_when_enabled(tmp_path):
+    from ui.server import page_run
+    rid = mk_run(tmp_path, "r-dev", "case-a", "r1", verdict="pass",
+                 pass_l1=True)
+    out = page_run(tmp_path, "r-dev", rid, 200, auto=True)
+    assert 'http-equiv="refresh" content="3"' in out
+    assert "<input type='checkbox' checked" in out
+    # uncheck -> URL TANPA auto=1
+    assert "onchange=\"location.href='/run?c=r-dev&r=" in out
+
+
+def test_http_run_auto_param(tmp_path):
+    # lewat HTTP: default tanpa meta refresh; auto=1 menyalakan
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from ui.server import make_handler
+    rid = mk_run(tmp_path, "r-dev", "case-a", "r1", verdict="pass",
+                 pass_l1=True)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(tmp_path))
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_port}/run?c=r-dev&r={rid}"
+        with urllib.request.urlopen(base) as resp:
+            body = resp.read().decode("utf-8")
+        assert 'http-equiv="refresh"' not in body
+        with urllib.request.urlopen(base + "&auto=1") as resp:
+            body = resp.read().decode("utf-8")
+        assert 'http-equiv="refresh" content="3"' in body
+    finally:
+        srv.shutdown()
+        srv.server_close()
