@@ -7,7 +7,7 @@ from ui.server import run_index_verdict
 # --- fixture artifacts sintetis ---------------------------------------------
 
 def mk_run(root, campaign, case, rerun, verdict=None, pass_l1=None,
-           started="2026-07-21T14:03:00+07:00"):
+           started="2026-07-21T14:03:00+07:00", wall="reproduce"):
     """Satu run sintetis: dir + events.jsonl + runs.jsonl (+ verdict.json).
 
     verdict None -> run hidup tanpa verdict.json.
@@ -23,7 +23,7 @@ def mk_run(root, campaign, case, rerun, verdict=None, pass_l1=None,
         f.write(json.dumps({"run_id": run_id, "event": "start"}) + "\n")
         if verdict is not None:
             f.write(json.dumps({"run_id": run_id, "event": "end",
-                                "verdict": verdict, "wall": 12.3}) + "\n")
+                                "verdict": verdict, "wall": wall}) + "\n")
     if verdict is not None:
         vj = {"phases": {"reproduce": {"verdict": verdict}},
               "started": started, "finished": started}
@@ -105,7 +105,7 @@ def test_api_runs_fields_and_order(tmp_path):
     assert fail["rerun"] == "r1"
     assert fail["verdict"] == "wrong-logic"
     assert fail["status"] == "FAIL" and fail["category"] == "wrong-logic"
-    assert fail["wall"] == 12.3
+    assert fail["wall"] == "reproduce"
     assert fail["started"] == "2026-07-21 14:03"
     ok = out["runs"][1]
     assert ok["status"] == "PASS" and ok["verdict"] == "pass"
