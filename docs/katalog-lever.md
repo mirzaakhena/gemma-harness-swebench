@@ -4367,3 +4367,39 @@ runner (denominator run-ber-sinyal-model, KH-22)** — keduanya general murni, n
 overfit. **DITUNDA:** trigger periode-2 (menunggu spesimen kedua; mekanisme content-blind
 tapi bukti baru 1 case) dan dedup intra-reply (di atas). Prinsip yang dipegang: lever
 menyerang KELAS taksonomi, tak pernah meng-encode semantik case.
+
+## Pengukuran frekuensi kelas repetisi — sweep korpus penuh (claude-mac, 2026-07-23 00:1x)
+
+Sweep mekanis 608 run dir (577 ber-sinyal-model, 7.473 reply; 31 void-infra dieksklusi
+— daftarnya cocok dgn kelas "bangkai ber-verdict"). Skrip & output mentah di scratchpad
+sesi; metode: md5 reply per turn (2 varian marker), streak/periode dalam-attempt, era
+via mtime (ambang 22-jul 23:00 WIB = N1 terpasang).
+
+**Angka inti: ~22% seluruh reply korpus = repetisi terukur** (streak-turns 1.114 +
+periode-2-turns 502 = 1.616 turn; run terdampak ±149/577 ≈ 26%). Distribusi: streak &
+periode-2 dominan REPRODUCE; intra-reply dominan FIX/LOCALIZE.
+
+- **Kelas streak (N1/R5-target):** 52 run ≥3 (top: r-dev 11797-r5 48×; 14411 r1-r3 39×;
+  f-dev 13658-r1 38×). Pasca-G2 hanya 2 run ber-streak≥3 dan KEDUANYA dipotong N1 tepat
+  di 3: 11910 r12 (tercatat) + **11422 r10 = FIRING KEDUA** (a1 t26-t28, baru tercatat
+  di sini). N1 bekerja sesuai desain.
+- **Kelas periode-2 (kandidat tunda):** 52 run ≥1 hit (15 case), 36 run ≥3 hit, 502 hit;
+  **19 run periode-2 murni** (maxstreak<3) yang trigger streak-3 secara struktural tak
+  akan pernah sentuh. **Spesimen penentu: f-dev 12184-r14 (PASCA-G2, fase FIX)** —
+  A-B-A-B sempurna t11–t40, 26 hit, ~29 turn terbuang di bawah N1 aktif. **Syarat naik
+  ("spesimen periode-2 di FIX") TERPENUHI → REKOMENDASI: PROMOSIKAN** cek
+  `md5(N)==md5(N-2)` di N1+no_progress. Keputusan di Mirza.
+- **Kelas intra-reply (kandidat tunda):** 91 run (44 case), 56 parah ≥10×/reply (top:
+  13768-r1 72×; astropy-14365-r1 71×; keluarga 15347 r1-r9 pola ~45×+45× level-case,
+  masih terjadi pasca-G2 di r9 49×+48×). Syarat "spesimen kedua" jauh terlampaui; pola
+  spesimen besar = blok beruntun tanpa aksi lain di sela → **desain versi aman (dedup
+  blok identik BERURUTAN) didukung data. REKOMENDASI: rancang & pasang versi aman.**
+  Keputusan di Mirza.
+- **Kelas ke-4 BARU (catat-only): "near-duplicate full-file rewrite"** — spesimen
+  f-dev 13230-r4 (pra-G2): t4–t10 menulis-ulang seluruh views.py per turn, similarity
+  0,976–0,998, 2 revert byte-identik (file t9==t4, t10==t8); md5 reply semua unik →
+  TAK terlihat semua mekanisme exact-hash (N1, periode-k, dedup intra). Run berakhir
+  WIN t10 → pemborosan-konvergen, urgensi rendah. Syarat naik: spesimen kedua + desain
+  detektor non-exact (mis. similarity file-write beruntun) yang terbukti murah.
+- **Konfirmasi temuan Mirza:** 13230 r3 = streak-31 (a2 t10-t40, top-10 korpus) +
+  periode-2 ×9 (a1) — pra-lever murni; 13230 r4 = kelas-4 di atas.
