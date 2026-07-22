@@ -855,6 +855,23 @@ def index_row_verdict(phases: dict, wall) -> tuple[str, str]:
     return text, icon
 
 
+def run_index_verdict(campaign: str, run_dir: Path) -> tuple[str, str]:
+    """(vtext, ikon) kolom verdict tabel index utk SATU run — verdict L1
+    gabungan + merge gold_eval (dipakai page_index DAN /api/runs supaya
+    tak drift). verdict.json absen -> ("-", ""); rusak -> teks rusak."""
+    vpath = Path(run_dir) / "verdict.json"
+    if not vpath.is_file():
+        return "-", ""
+    try:
+        vj = json.loads(vpath.read_text(encoding="utf-8"))
+        phases = {k: (p or {}).get("verdict")
+                  for k, p in (vj.get("phases") or {}).items()}
+        vtext, icon = index_row_verdict(phases, vj.get("wall"))
+        return merge_gold_verdict(vtext, icon, campaign, Path(run_dir))
+    except (ValueError, OSError, AttributeError):
+        return "(verdict.json rusak)", ""
+
+
 def _verdict_summary(v) -> str:
     """Map fase->verdict jadi teks singkat berikon; non-dict apa adanya."""
     if isinstance(v, dict):
@@ -965,23 +982,13 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
     for r in page_runs:
         rid = r["run_id"]
         vpath = root / active / rid / "verdict.json"
-        vtext, icon = "-", ""
-        if vpath.is_file():
-            try:
-                vj = json.loads(vpath.read_text(encoding="utf-8"))
-                phases = {k: (p or {}).get("verdict")
-                          for k, p in (vj.get("phases") or {}).items()}
-                vtext, icon = index_row_verdict(phases, vj.get("wall"))
-                vtext, icon = merge_gold_verdict(vtext, icon, active,
-                                                 root / active / rid)
-                if active.startswith("f-"):
-                    # ikon baris disinkronkan ke status 2-lapisan (spec §6)
-                    # — teks verdict TETAP vonis L1 produk apa adanya
-                    # (permintaan Mirza: viewer verify-fail jangan lagi ✅).
-                    two_status = case_status(active, root / active / rid)
-                    icon = status_icon(two_status["status"])
-            except (ValueError, OSError, AttributeError):
-                vtext = "(verdict.json rusak)"
+        vtext, icon = run_index_verdict(active, root / active / rid)
+        if vpath.is_file() and active.startswith("f-"):
+            # ikon baris disinkronkan ke status 2-lapisan (spec §6)
+            # — teks verdict TETAP vonis L1 produk apa adanya
+            # (permintaan Mirza: viewer verify-fail jangan lagi ✅).
+            two_status = case_status(active, root / active / rid)
+            icon = status_icon(two_status["status"])
         href = ("/run?c=" + urllib.parse.quote(active)
                 + "&r=" + urllib.parse.quote(rid))
         dur = fmt_duration(run_duration_seconds(root / active / rid))
