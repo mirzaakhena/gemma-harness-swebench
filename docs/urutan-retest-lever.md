@@ -342,3 +342,15 @@ juga masih terbuka; data rate kini tersedia utk mematoknya).
 
 Aturan baru papan skor (KH-22): denominator k/n hanya run-ber-sinyal-model; void-infra
 (0-turn, driver-crash) dieksklusi + diusulkan verdict `infra-abort`.
+
+### §-A0h — HASIL validasi G2 (claude-mac, 2026-07-23 00:0x): pagar utuh, unlock menunggu G3
+
+27 draw rezim `mac-G2` (papan: `artifacts/papan-skor-validasi-g2-mac.md`):
+**kanari 15/15 HIJAU (nol regresi lever)**; origin: 11422 0/3 (flaky app-ready,
+pooled 2/8 — bukan regresi, tak ada mekanisme G2 di jalur itu), 11910 0/3 (signature
+identik; N1 firing 1×, hemat 25 turn), 15388 0/3, **12184 rantai-N2 1/3** (r15 PASS
+bersih; SEMUA draw langsung di file gold, turn ~3× hemat; r13 gagal 1-baris-dari-gold
+= weak-oracle). Kesimpulan: lever G2 bekerja sesuai kelasnya (efisiensi/robustness/
+observability, tanpa regresi); dinding unlock yang tersisa = weak-oracle (N3/R14) +
+cacat-evidence varian 2/3 (R17) = persis agenda desain G3. N4 belum pernah trigger
+penuh — pantau. Handoff sesi: `.handoff/202607222358-prompt-tutup-papan-g2-desain-g3.md`.
