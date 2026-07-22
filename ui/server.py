@@ -694,7 +694,7 @@ def render_event_line(ev: dict) -> str:
             f"{dtxt}").rstrip()
 
 
-# --- API JSON (kontrak: docs/api-ui-viewer.md) --------------------------------
+# --- API JSON (kontrak: docs/api-ui-viewer.md) -------------------------------
 # Read-only, paritas semantik dengan UI HTML: status per run/case dihitung
 # lewat jalur logika yang SAMA (case_status, stage_summary, dst.).
 
