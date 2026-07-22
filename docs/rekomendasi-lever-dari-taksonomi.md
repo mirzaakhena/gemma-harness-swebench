@@ -409,3 +409,37 @@ Koreksi/caveat atas rekomendasi yang sudah ada:
 *TDD wajib untuk semua perubahan harness (`python -m pytest` hijau sebelum commit);
 tests yang tersentuh minimal: test_reproduce_gates, test_pipe_runtime*, test_ui_*.
 Trailer `Agent: <bot>`.*
+
+## §7 — RE-PRIORITISASI G2 (keputusan Mirza 2026-07-22 malam, pasca rate-gating §-A0f)
+
+Empat lever baru sesi retest-rate (bukti: [[katalog-lever]] entri claude-mac 22-07,
+KH-21, papan `artifacts/papan-skor-rate-origin-r1-mac-g1.md`) menggeser lineup lama
+(R5+R9+R8+R10+R12). **G2-BARU, urutan pemasangan:**
+
+1. **N1 — watcher reply-hash di loop FIX** (habitat-FIX dari R5; trigger byte-identity
+   direhabilitasi KH-21). 2 spesimen same-day (12184 r12: 32×; 15388 r9: 30×+6×),
+   hematan ~30 turn/kejadian. Mekanis: md5(reply_N)==md5(reply_N−1) 2× berturut →
+   akhiri attempt dini (memicu rotasi kandidat yang SUDAH terbukti menyelamatkan r9
+   12184). Kecil, deterministik, gold-blind.
+2. **N4 — relaksasi attempt-lock berbasis-shortlist**: bila model berulang (≥3×
+   `off-candidate-files`) menyentuh file yang ADA di candidates.md (peringkat lebih
+   rendah), pindahkan lock ke kandidat itu alih-alih terus menolak. Bukti 12184: KEDUA
+   draw "tahu" resolvers.py di tengah attempt-1 tapi dipenjara. Gold-blind (hanya
+   perilaku model + shortlist produk).
+3. **R12 (peta lama, prioritas NAIK) — timeout+retry backoff `chat()` & guard
+   `docker_exec` FIX.** Bukti baru: 2 run mati-gantung tanpa timeout (12184 r11,
+   15388 r9 — koneksi half-open pasca sleep host). Menyerang kelas infra-hang yang
+   baru saja memakan 2 slot.
+4. **N2 — audit konsistensi evidence↔file di shortlist LOCALIZE**: cek mekanis simbol
+   yang dikutip evidence benar-benar ada di file yang diklaim (grep, gold-blind);
+   demosi/koreksi kandidat yang gagal. Menyerang akar hulu dua varian (12184: file
+   salah; 15388: teori salah di file benar).
+
+**Ditunda dari lineup lama:** R9 (injeksi antar-rerun; desain final tetap berlaku,
+tak ada bukti baru sesi ini), R8/.pth + R10 (kelas L-B tak muncul di rate-gating) →
+kandidat G3. **N3 (perkuat oracle repro)** dilebur ke R14 (CONTROL-MARKER, G3) —
+butuh desain, jangan dikodekan tergesa.
+
+Protokol validasi tetap §6: uji kelas-target + kanari (stabil 11049/15347/6938 n=3
+same-session; goyang rate-based), wasit L2, rezim berlabel, try-then-drop.
+Orkestrasi: `--parallel ≤7` (izin Mirza, endpoint eksklusif).
