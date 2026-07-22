@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 from harness.emit import Emitter
+from harness.stages.chat_transport import INFRA_ABORT_FILENAME
 from harness.stages.localize_gates import evaluate_localize_gates, parse_localize_md
 
 
@@ -42,16 +43,32 @@ def main() -> int:
         detail = ({"gates": "ok"} if verdict == "pass"
                   else {"failures": failures})
         em.event("localize", "exit", verdict=verdict, detail=detail)
-        wall = None if verdict == "pass" else "localize"
+        # Lever infra-abort: bangkai infra bukan dinding LOCALIZE —
+        # wall="abort" supaya statistik wall tak tercemar (KH-22).
+        infra = verdict == "infra-abort"
+        wall = ("abort" if infra
+                else None if verdict == "pass" else "localize")
         em.write_verdict(
             phases={"localize": {"verdict": verdict, "duration_s": None}},
-            wall=wall, pass_l1=(verdict == "pass"), pass_l2=None)
+            wall=wall, pass_l1=(verdict == "pass"), pass_l2=None,
+            infra_abort=infra)
         em.run_end(verdict={"localize": verdict}, wall=wall)
         log(f"[harness] gate localize selesai: verdict={verdict}"
             + (f" | {failures}" if failures else ""))
         print(json.dumps({"verdict": verdict, "failures": failures},
                          ensure_ascii=False))
         return 0
+
+    # Lever infra-abort (KH-22): penanda driver dihormati SEBELUM cek
+    # artefak — run crash transport/preflight bukan syntax-fail biasa.
+    marker = em.run_dir / INFRA_ABORT_FILENAME
+    if marker.is_file():
+        try:
+            reason = json.loads(marker.read_text(encoding="utf-8")
+                                ).get("reason", "unknown")
+        except Exception:
+            reason = "unreadable infra_abort.json"
+        return finish("infra-abort", [f"infra abort: {reason}"])
 
     if not md_path.is_file():
         return finish("syntax-fail", ["artefak wajib tidak ada: localize.md"])

@@ -25,10 +25,15 @@ VERDICTS = {
     # (repro-missing/vacuous-repro/syntax-error/gold-wont-flip/gold-flip-crash)
     # supplement the legacy catch-all buckets. Any verdict emitted MUST be
     # listed here or event() raises ValueError.
+    # 2026-07-22: + "infra-abort" (reproduce & localize) — lever infra-abort
+    # KH-22: run ber-penanda infra_abort.json (driver crash transport /
+    # preflight gagal) divonis kelasnya sendiri, BUKAN repro-missing/
+    # syntax-fail, supaya statistik wall tak tercemar bangkai endpoint mati.
     "reproduce": ("pass", "fail", "syntax-fail", "wrong-logic", "timeout", "abort",
                   "repro-missing", "vacuous-repro", "syntax-error",
-                  "gold-wont-flip", "gold-flip-crash"),
-    "localize": ("pass", "fail", "syntax-fail", "wrong-logic", "timeout", "abort"),
+                  "gold-wont-flip", "gold-flip-crash", "infra-abort"),
+    "localize": ("pass", "fail", "syntax-fail", "wrong-logic", "timeout", "abort",
+                 "infra-abort"),
     "verify": ("pass", "fail", "syntax-fail", "wrong-logic", "timeout", "abort"),
     "fix": ("flip", "no-flip", "empty-patch", "timeout", "abort"),
 }
@@ -109,10 +114,11 @@ class Emitter:
                        "verdict": verdict, "wall": wall})
 
     def write_verdict(self, phases: dict, wall: str | None,
-                      pass_l1: bool | None, pass_l2: bool | None) -> None:
+                      pass_l1: bool | None, pass_l2: bool | None,
+                      infra_abort: bool = False) -> None:
         if wall is not None and wall not in WALLS:
             raise ValueError(f"wall {wall!r} tidak sah (sah: {WALLS} atau None)")
-        _write_atomic_json(self.run_dir / "verdict.json", {
+        payload = {
             "schema_version": SCHEMA_VERSION,
             "run_id": self.run_id,
             "case_id": self.case_id,
@@ -124,7 +130,13 @@ class Emitter:
             "started": self._started,
             "finished": _now_iso(),
             "files": "files/",
-        })
+        }
+        # Lever infra-abort (KH-22): field baru HANYA hadir saat true —
+        # bentuk verdict lama tak berubah; downstream (batch runner, papan
+        # skor) mengecualikan run infra dari denominator tanpa parsing label.
+        if infra_abort:
+            payload["infra_abort"] = True
+        _write_atomic_json(self.run_dir / "verdict.json", payload)
 
 
 def write_campaign(artifacts_root: Path | str, campaign: str,

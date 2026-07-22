@@ -150,6 +150,8 @@ def test_driver_uses_break_not_abort_for_no_progress():
     assert "no_progress_decision" in src
     # Aksi trigger yang persist = `break` biasa (bukan abort).
     assert 'action == "break"' in src
-    # emit_abort tetap HANYA di jalur crash (except) — 1 PEMANGGILAN
+    # emit_abort tetap HANYA di jalur abort sungguhan — 3 PEMANGGILAN sejak
+    # lever infra-abort: preflight gagal, ChatTransportError, crash generik
     # (bentuk `emit_abort(em, ...)`; definisi `def emit_abort(em:` bukan call).
-    assert src.count("emit_abort(em,") == 1
+    # Jalur no-progress TIDAK memanggilnya (break biasa, gate yang memvonis).
+    assert src.count("emit_abort(em,") == 3

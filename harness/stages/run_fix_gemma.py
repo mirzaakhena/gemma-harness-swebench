@@ -19,16 +19,20 @@ Pemakaian (dari root main):
 from __future__ import annotations
 
 import argparse
-import http.client
 import json
 import subprocess
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
 from harness.emit import Emitter
+from harness.stages import chat_transport
+# Pola R12 kini di util bersama (lever infra-abort): klasifikasi transport,
+# konstanta, dan kelas error SATU untuk ketiga driver (R/L/F).
+from harness.stages.chat_transport import (CHAT_BACKOFF_BASE_S, CHAT_RETRIES,
+                                           CHAT_READ_TIMEOUT_S,
+                                           ChatTransportError, chat,
+                                           is_transport_error)
 from harness.stages.fix_gates import compose_fix_md, fix_rejection_message
 from harness.stages.fix_patch_runner import evaluate_patch_in_fresh_world
 from harness.stages.fix_watchers import (DEGENERATE_REPLY_STREAK,
@@ -40,13 +44,7 @@ from harness.stages.gemma_protocol import (done_rejection_fix, exact_status,
                                            retry_reason, token_format_note)
 from harness.stages.localize_gates import parse_candidates_md
 
-# --- R12: konstanta timeout/retry (docs/rekomendasi-lever §7 butir 3) -------
-# Bukti 12184 r11 & 15388 r9: koneksi HTTP ke vLLM jadi half-open (host
-# sleep) dan driver menunggu SELAMANYA. Kebijakan: gagal CEPAT dan jujur.
-CHAT_READ_TIMEOUT_S = 600   # read-timeout HTTP model — generasi FIX bisa
-                            # lama, jadi longgar TAPI berhingga.
-CHAT_RETRIES = 3            # retry transport maksimal setelah gagal pertama.
-CHAT_BACKOFF_BASE_S = 5     # jeda backoff naik: 5, 10, 20 dtk (x2 per retry).
+# --- R12: konstanta docker (transport/chat pindah ke chat_transport) --------
 DOCKER_EXEC_TIMEOUT_S = 180  # guard exec perintah model di container kerja.
 DOCKER_WRITE_TIMEOUT_S = 60  # guard tulis file ke container kerja.
 DOCKER_CTL_TIMEOUT_S = 120   # guard kontrol docker (run/rm/stop).
@@ -123,68 +121,17 @@ def compose_fix_seed(problem: str, repro_md: str, repro_py: str,
               "commit; the bug is present.")
 
 
-def chat(endpoint: str, model: str, messages: list[dict],
-         timeout: int = CHAT_READ_TIMEOUT_S) -> str:
-    req = urllib.request.Request(
-        endpoint.rstrip("/") + "/chat/completions",
-        data=json.dumps({
-            "model": model,
-            "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 2048,
-        }).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    # timeout = socket timeout urlopen: berlaku utk connect DAN tiap read —
-    # koneksi half-open (R12) berujung timeout, bukan gantung selamanya.
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = json.load(r)
-    return data["choices"][0]["message"]["content"] or ""
-
-
-class ChatTransportError(RuntimeError):
-    """R12: kegagalan TRANSPORT final ke endpoint model — kelas INFRA,
-    bukan kesalahan model. Ditangkap main() utk abort cepat + jujur."""
-
-
-def is_transport_error(e: BaseException) -> bool:
-    """R12: klasifikasi retry — hanya kegagalan TRANSPORT yang boleh
-    diulang (idempoten-aman). HTTPError = server MERESPONS (response valid
-    walau error) -> bukan transport; error parse response juga bukan."""
-    if isinstance(e, urllib.error.HTTPError):
-        return False
-    return isinstance(e, (urllib.error.URLError, http.client.HTTPException,
-                          TimeoutError, OSError))
-
-
 def chat_with_retry(endpoint: str, model: str, messages: list[dict],
                     retries: int = CHAT_RETRIES,
                     backoff_base: int = CHAT_BACKOFF_BASE_S,
                     log=None, sleep=time.sleep) -> str:
-    """R12: panggilan model dengan retry-backoff KHUSUS kegagalan transport.
-
-    Tiap percobaan MEMBUAT ULANG koneksi (urlopen tak me-reuse koneksi) —
-    koneksi half-open lama tidak dipakai lagi. Kegagalan transport final ->
-    ChatTransportError (kelas infra); kegagalan non-transport diteruskan
-    apa adanya tanpa retry."""
-    attempt = 0
-    while True:
-        try:
-            return chat(endpoint, model, messages)
-        except Exception as e:
-            if not is_transport_error(e):
-                raise
-            if attempt >= retries:
-                raise ChatTransportError(
-                    f"model endpoint transport failure after "
-                    f"{attempt + 1} attempts: {e!r}") from e
-            delay = backoff_base * (2 ** attempt)
-            attempt += 1
-            if log is not None:
-                log(f"[driver] chat transport error: {e!r}; "
-                    f"retry {attempt}/{retries} in {delay}s "
-                    "(fresh connection)")
-            sleep(delay)
+    """R12 (kini util bersama chat_transport): wrapper tipis — chat_fn
+    me-resolve `chat` MODUL INI saat dipanggil, jadi monkeypatch test pada
+    drv.chat tetap bekerja; perilaku identik dgn versi lama."""
+    return chat_transport.chat_with_retry(
+        endpoint, model, messages, retries=retries,
+        backoff_base=backoff_base, log=log, sleep=sleep,
+        chat_fn=lambda e, m, ms: chat(e, m, ms))
 
 
 def docker_exec(container: str, cmd: str,

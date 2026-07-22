@@ -155,3 +155,122 @@ def test_tool_call_marker_triggers_strong_reminder():
     assert "```file:" in msg and "```bash" in msg
     for w in ("kamu", "jalankan", "tulis", "berkas"):
         assert w not in msg.lower()
+
+
+# --- lever infra-abort (KH-22): preflight, crash transport, salvage ---------
+# Insiden 15902 r4-r9 & 14855 r4-r9: endpoint mati -> driver crash tervonis
+# repro-missing biasa; varian terburuk 14855 r7: 21 turn kerja nyata
+# TERTELAN karena files/ tak tersalin sebelum crash.
+
+import sys
+
+import harness.stages.chat_transport as ct
+import harness.stages.run_reproduce_gemma as drv
+
+
+def _setup_main(monkeypatch, tmp_path, *, docker_exec=None):
+    problem = tmp_path / "problem.txt"
+    problem.write_text("the bug", encoding="utf-8")
+    art = tmp_path / "artifacts"
+    monkeypatch.setattr(drv.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 0,
+                                                                    "", ""))
+    monkeypatch.setattr(drv, "docker_write_file", lambda *a, **k: None)
+    if docker_exec is None:
+        def docker_exec(container, cmd, timeout=180):
+            if "repro.py" in cmd:
+                return "print('salvaged')\n", 0
+            return "", 0
+    monkeypatch.setattr(drv, "docker_exec", docker_exec)
+    monkeypatch.setattr(sys, "argv", [
+        "run_reproduce_gemma.py", "--case", "django__django-15902",
+        "--rerun", "4", "--image", "img", "--artifacts", str(art),
+        "--problem-file", str(problem), "--max-turns", "5"])
+    return art / "r-dev" / "r-dev--django__django-15902--r4"
+
+
+def _events(run_dir):
+    return [json.loads(l) for l in
+            (run_dir / "events.jsonl").read_text(encoding="utf-8")
+            .splitlines()]
+
+
+def test_preflight_failure_exits_fast_without_container(monkeypatch,
+                                                        tmp_path):
+    run_dir = _setup_main(monkeypatch, tmp_path)
+    docker_calls = []
+    monkeypatch.setattr(drv.subprocess, "run",
+                        lambda argv, **k: docker_calls.append(argv))
+    monkeypatch.setattr(
+        drv, "preflight_endpoint",
+        lambda *a, **k: (_ for _ in ()).throw(
+            ct.ChatTransportError("preflight ping http://x/v1/models "
+                                  "failed after 2 attempts")))
+    monkeypatch.setattr(
+        drv, "chat_with_retry",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("model tak boleh dipanggil saat preflight gagal")))
+    assert drv.main() == 1
+    assert not docker_calls  # container/model TIDAK dibakar
+    marker = json.loads((run_dir / "infra_abort.json")
+                        .read_text(encoding="utf-8"))
+    assert marker["reason"] == "preflight"
+    assert marker["stage"] == "reproduce"
+    assert marker["turns_model_used"] == 0
+    events = _events(run_dir)
+    aborts = [e for e in events if e["event"] == "abort"]
+    assert aborts
+    assert aborts[-1]["detail"]["reason"].startswith(
+        "infra transport failure")
+    v = json.loads((run_dir / "verdict.json").read_text(encoding="utf-8"))
+    assert v["wall"] == "abort"
+
+
+def test_transport_crash_mid_run_writes_marker_and_salvages(monkeypatch,
+                                                            tmp_path):
+    run_dir = _setup_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(drv, "preflight_endpoint", lambda *a, **k: None)
+    calls = []
+
+    def chatting(endpoint, model, messages, **kw):
+        calls.append(1)
+        if len(calls) == 1:
+            return "let me look around first."
+        raise ct.ChatTransportError(
+            "model endpoint transport failure after 4 attempts: "
+            "URLError(TimeoutError(10060))")
+
+    monkeypatch.setattr(drv, "chat_with_retry", chatting)
+    assert drv.main() == 1
+    marker = json.loads((run_dir / "infra_abort.json")
+                        .read_text(encoding="utf-8"))
+    assert marker["stage"] == "reproduce"
+    assert marker["turns_model_used"] == 1  # model AKTIF 1 turn sebelum mati
+    assert "10060" in marker["detail"]
+    # Salvage best-effort: kerja nyata di container TIDAK tertelan
+    # (pelajaran 14855 r7 — 21 turn hilang karena files/ kosong).
+    assert (run_dir / "files" / "repro.py").read_text(
+        encoding="utf-8") == "print('salvaged')\n"
+    aborts = [e for e in _events(run_dir) if e["event"] == "abort"]
+    assert aborts
+    assert aborts[-1]["detail"]["reason"].startswith(
+        "infra transport failure")
+    assert "repro.py" in aborts[-1]["detail"]["salvaged"]
+
+
+def test_salvage_failure_never_changes_exit_path(monkeypatch, tmp_path):
+    def broken_exec(container, cmd, timeout=180):
+        raise RuntimeError("docker daemon is gone")
+
+    run_dir = _setup_main(monkeypatch, tmp_path, docker_exec=broken_exec)
+    monkeypatch.setattr(drv, "preflight_endpoint", lambda *a, **k: None)
+    monkeypatch.setattr(
+        drv, "chat_with_retry",
+        lambda *a, **k: (_ for _ in ()).throw(
+            ct.ChatTransportError("transport down")))
+    assert drv.main() == 1  # salvage gagal MASIH exit jujur, bukan crash lain
+    marker = json.loads((run_dir / "infra_abort.json")
+                        .read_text(encoding="utf-8"))
+    assert marker["stage"] == "reproduce"
+    aborts = [e for e in _events(run_dir) if e["event"] == "abort"]
+    assert aborts and aborts[-1]["detail"]["salvaged"] == []

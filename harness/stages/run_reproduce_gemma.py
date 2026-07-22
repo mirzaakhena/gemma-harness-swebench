@@ -15,13 +15,21 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import urllib.request
+import time
 from pathlib import Path
 
 import tempfile
 
 from harness.emit import Emitter
-from harness.stages import rule_catalog
+from harness.stages import chat_transport, rule_catalog
+# Lever infra-abort (KH-22): pola R12 diporting dari run_fix_gemma —
+# klasifikasi transport, retry-backoff, preflight, penanda infra_abort.json.
+from harness.stages.chat_transport import (CHAT_BACKOFF_BASE_S, CHAT_RETRIES,
+                                           CHAT_READ_TIMEOUT_S,
+                                           ChatTransportError, chat,
+                                           is_transport_error,
+                                           preflight_endpoint,
+                                           write_infra_abort)
 from harness.stages.gemma_protocol import (done_rejection_reason,
                                            exact_status, format_reminder,
                                            fresh_pair_meta,
@@ -109,20 +117,20 @@ If all answers hold, declare DONE again. Otherwise revise your script,
 re-run it to see REPRO_STATUS: FAIL, then declare DONE."""
 
 
-def chat(endpoint: str, model: str, messages: list[dict], timeout: int = 600) -> str:
-    req = urllib.request.Request(
-        endpoint.rstrip("/") + "/chat/completions",
-        data=json.dumps({
-            "model": model,
-            "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 2048,
-        }).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = json.load(r)
-    return data["choices"][0]["message"]["content"] or ""
+def chat_with_retry(endpoint: str, model: str, messages: list[dict],
+                    retries: int = CHAT_RETRIES,
+                    backoff_base: int = CHAT_BACKOFF_BASE_S,
+                    log=None, sleep=time.sleep) -> str:
+    """R12 (util bersama chat_transport): wrapper tipis — chat_fn me-resolve
+    `chat` MODUL INI saat dipanggil, jadi monkeypatch test pada drv.chat
+    tetap bekerja. Kegagalan transport final -> ChatTransportError."""
+    def _chat_here(ep: str, mdl: str, msgs: list[dict]) -> str:
+        return chat(ep, mdl, msgs)
+
+    return chat_transport.chat_with_retry(
+        endpoint, model, messages, retries=retries,
+        backoff_base=backoff_base, log=log, sleep=sleep,
+        chat_fn=_chat_here)
 
 
 def _as_text(s) -> str:
@@ -223,7 +231,9 @@ def judge_review(endpoint: str, model: str, contract: str, problem: str,
             (repro_md_text or "(not submitted)") +
             "\n\nReview now."},
     ]
-    reply = chat(endpoint, model, messages)
+    # R12 juga di jalur judge: endpoint mati saat review = kelas infra
+    # (ChatTransportError), bukan "driver crash" anonim.
+    reply = chat_with_retry(endpoint, model, messages)
     ok, issues = parse_review(reply)
     return ok, issues, reply
 
@@ -246,12 +256,48 @@ def fresh_sandbox_output(container: str, image: str,
     return result["output"], result["exit"]
 
 
-def emit_abort(em: Emitter, reason: str) -> None:
+def emit_abort(em: Emitter, reason: str,
+               salvaged: list[str] | None = None) -> None:
     """Tutup run yang crash sesuai kontrak §8: event abort + verdict
-    wall="abort" + baris end di runs.jsonl."""
-    em.event("reproduce", "abort", detail={"reason": reason})
+    wall="abort" + baris end di runs.jsonl. `salvaged` (lever infra-abort):
+    daftar artefak yang berhasil diselamatkan sebelum exit — tercatat di
+    event supaya autopsi tak perlu membaca console."""
+    detail: dict = {"reason": reason}
+    if salvaged is not None:
+        detail["salvaged"] = salvaged
+    em.event("reproduce", "abort", detail=detail)
     em.write_verdict(phases={}, wall="abort", pass_l1=None, pass_l2=None)
     em.run_end({"reproduce": "abort"}, "abort")
+
+
+def salvage_artifacts(container: str, files_dir: Path,
+                      repro_md: str | None, observed_fail: bool,
+                      log) -> list[str]:
+    """Best-effort salin kerja nyata dari container ke files/ SEBELUM driver
+    mati (lever infra-abort; pelajaran 14855 r7: model aktif 21 turn, crash
+    endpoint, files/ kosong -> kerja tertelan). Pola copy = jalur sukses.
+    Salvage gagal TIDAK boleh mengubah exit path — semua dibungkus
+    try/except; return daftar nama yang selamat."""
+    salvaged: list[str] = []
+    try:
+        out, code = docker_exec(container, "cat /testbed/.pipe/repro.py")
+        if code == 0:
+            (files_dir / "repro.py").write_text(out, encoding="utf-8",
+                                                newline="\n")
+            salvaged.append("repro.py")
+    except Exception as e:  # best-effort: catat, jangan meledak
+        log(f"[driver] salvage repro.py gagal (diabaikan): {e!r}")
+    try:
+        if repro_md is not None:
+            (files_dir / "repro.md").write_text(
+                compose_repro_md(repro_md, observed_fail=observed_fail),
+                encoding="utf-8", newline="\n")
+            salvaged.append("repro.md")
+    except Exception as e:
+        log(f"[driver] salvage repro.md gagal (diabaikan): {e!r}")
+    log("[driver] salvage: "
+        + (", ".join(salvaged) if salvaged else "tidak ada yang selamat"))
+    return salvaged
 
 
 def main() -> int:
@@ -283,6 +329,21 @@ def main() -> int:
     def log(line: str) -> None:
         with open(console, "a", encoding="utf-8", newline="\n") as f:
             f.write(line.rstrip("\n") + "\n")
+
+    # Lever infra-abort: pre-flight ping SEBELUM container/model dibakar —
+    # endpoint mati terdeteksi dalam detik dengan run dir minimal + penanda,
+    # bukan slot rerun hangus tervonis repro-missing (KH-22: 15902 r4-r9).
+    try:
+        preflight_endpoint(args.endpoint, log=log)
+    except ChatTransportError as e:
+        log(f"[driver] INFRA failure (preflight): {e}")
+        write_infra_abort(em.run_dir, reason="preflight", stage="reproduce",
+                          turns_model_used=0, detail=str(e))
+        em.run_start()
+        emit_abort(em, f"infra transport failure: preflight: {e}")
+        print(json.dumps({"done": False, "aborted": True,
+                          "error": f"infra-preflight: {e}"}))
+        return 1
 
     container = f"gemma-work-{args.campaign}-{args.case}-r{args.rerun}"
     subprocess.run(["docker", "rm", "-f", container], capture_output=True)
@@ -327,11 +388,10 @@ def main() -> int:
     np_injected: set[str] = set()
     try:
         for turn in range(1, args.max_turns + 1):
-            try:
-                reply = chat(args.endpoint, args.model, messages)
-            except Exception as e:  # transient endpoint error -> satu retry per turn
-                log(f"[driver] chat error: {e}; retrying once")
-                reply = chat(args.endpoint, args.model, messages)
+            # R12: retry-backoff khusus transport (dulu: satu retry buta utk
+            # SEMUA exception); gagal final -> ChatTransportError (infra).
+            reply = chat_with_retry(args.endpoint, args.model, messages,
+                                    log=log)
             messages.append({"role": "assistant", "content": reply})
             log(f"[gemma t{turn}] {reply}")
 
@@ -514,10 +574,30 @@ def main() -> int:
                 break
 
             messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
+    except ChatTransportError as e:
+        # R12/lever infra-abort: kegagalan transport final = kelas INFRA,
+        # bukan model — penanda mesin-terbaca utk gate (verdict infra-abort)
+        # + batch (eksklusi denominator), lalu salvage kerja nyata (14855 r7).
+        turns_used = sum(1 for m in messages if m["role"] == "assistant")
+        log(f"[driver] INFRA failure (model endpoint transport): {e}")
+        salvaged = salvage_artifacts(container, em.run_dir / "files",
+                                     repro_md, observed_fail, log)
+        write_infra_abort(em.run_dir, reason="chat transport failure",
+                          stage="reproduce", turns_model_used=turns_used,
+                          detail=str(e))
+        emit_abort(em, f"infra transport failure: {e}", salvaged=salvaged)
+        subprocess.run(["docker", "stop", container], capture_output=True)
+        print(json.dumps({"done": False, "aborted": True,
+                          "error": f"infra-transport: {e}"}))
+        return 1
     except Exception as e:
         import traceback
         log(f"[driver] crash: {e!r}\n{traceback.format_exc()}")
-        emit_abort(em, f"driver crash: {e!r}")
+        # Salvage juga utk exception fatal lain — best-effort, tak pernah
+        # mengubah exit path (bungkus try/except di dalam salvage).
+        salvaged = salvage_artifacts(container, em.run_dir / "files",
+                                     repro_md, observed_fail, log)
+        emit_abort(em, f"driver crash: {e!r}", salvaged=salvaged)
         subprocess.run(["docker", "stop", container], capture_output=True)
         print(json.dumps({"done": False, "aborted": True, "error": str(e)}))
         return 1

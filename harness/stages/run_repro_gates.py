@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from harness.emit import Emitter
+from harness.stages.chat_transport import INFRA_ABORT_FILENAME
 from harness.stages.reproduce_gates import (evaluate_flip, evaluate_gates,
                                             flip_failure_verdict,
                                             parse_repro_status)
@@ -51,10 +52,14 @@ def main() -> int:
         if flip is not None:
             detail["flip"] = flip
         em.event("reproduce", "exit", verdict=verdict, detail=detail)
-        wall = None if verdict == "pass" else "reproduce"
+        # Lever infra-abort: bangkai infra bukan dinding REPRODUCE —
+        # wall="abort" supaya statistik wall tak tercemar (KH-22).
+        infra = verdict == "infra-abort"
+        wall = ("abort" if infra
+                else None if verdict == "pass" else "reproduce")
         em.write_verdict(
             phases={"reproduce": {"verdict": verdict, "duration_s": None}},
-            wall=wall, pass_l1=pass_l1, pass_l2=None)
+            wall=wall, pass_l1=pass_l1, pass_l2=None, infra_abort=infra)
         em.run_end(verdict={"reproduce": verdict}, wall=wall)
         log(f"[harness] gates finished: verdict={verdict}"
             + (f" | {failures}" if failures else "")
@@ -62,6 +67,20 @@ def main() -> int:
         print(json.dumps({"verdict": verdict, "failures": failures,
                           "flip": flip}, ensure_ascii=False))
         return 0
+
+    # Lever infra-abort (KH-22): penanda driver dihormati SEBELUM cek
+    # artefak — run crash transport/preflight TIDAK boleh tervonis
+    # repro-missing (bangkai 15902 r4-r9 menggembungkan hitungan percobaan),
+    # dan artefak tersalvage (14855 r7) tak perlu membakar sandbox gate.
+    marker = em.run_dir / INFRA_ABORT_FILENAME
+    if marker.is_file():
+        try:
+            reason = json.loads(marker.read_text(encoding="utf-8")
+                                ).get("reason", "unknown")
+        except Exception:
+            reason = "unreadable infra_abort.json"
+        return finish("infra-abort", [f"infra abort: {reason}"],
+                      pass_l1=False)
 
     if not repro_py.is_file() or not repro_md_path.is_file():
         missing = [p.name for p in (repro_py, repro_md_path) if not p.is_file()]

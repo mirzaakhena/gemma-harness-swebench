@@ -14,10 +14,19 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import urllib.request
+import time
 from pathlib import Path
 
 from harness.emit import Emitter
+from harness.stages import chat_transport
+# Lever infra-abort (KH-22): pola R12 diporting dari run_fix_gemma —
+# klasifikasi transport, retry-backoff, preflight, penanda infra_abort.json.
+from harness.stages.chat_transport import (CHAT_BACKOFF_BASE_S, CHAT_RETRIES,
+                                           CHAT_READ_TIMEOUT_S,
+                                           ChatTransportError, chat,
+                                           is_transport_error,
+                                           preflight_endpoint,
+                                           write_infra_abort)
 from harness.stages.gemma_protocol import (done_rejection_localize, has_done,
                                            no_action_feedback, parse_actions)
 from harness.stages.localize_gates import (MAX_SPAN,
@@ -72,20 +81,59 @@ what you observed. Keep prose minimal; focus on the next action.
 """
 
 
-def chat(endpoint: str, model: str, messages: list[dict], timeout: int = 600) -> str:
-    req = urllib.request.Request(
-        endpoint.rstrip("/") + "/chat/completions",
-        data=json.dumps({
-            "model": model,
-            "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 2048,
-        }).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = json.load(r)
-    return data["choices"][0]["message"]["content"] or ""
+def chat_with_retry(endpoint: str, model: str, messages: list[dict],
+                    retries: int = CHAT_RETRIES,
+                    backoff_base: int = CHAT_BACKOFF_BASE_S,
+                    log=None, sleep=time.sleep) -> str:
+    """R12 (util bersama chat_transport): wrapper tipis — chat_fn me-resolve
+    `chat` MODUL INI saat dipanggil, jadi monkeypatch test pada drv.chat
+    tetap bekerja. Kegagalan transport final -> ChatTransportError."""
+    def _chat_here(ep: str, mdl: str, msgs: list[dict]) -> str:
+        return chat(ep, mdl, msgs)
+
+    return chat_transport.chat_with_retry(
+        endpoint, model, messages, retries=retries,
+        backoff_base=backoff_base, log=log, sleep=sleep,
+        chat_fn=_chat_here)
+
+
+def emit_abort(em: Emitter, reason: str,
+               salvaged: list[str] | None = None) -> None:
+    """Tutup run crash sesuai kontrak §8 (port dari driver R/F): event abort
+    + verdict wall="abort" + baris end di runs.jsonl. `salvaged` = daftar
+    artefak yang diselamatkan sebelum exit (tercatat utk autopsi)."""
+    detail: dict = {"reason": reason}
+    if salvaged is not None:
+        detail["salvaged"] = salvaged
+    em.event("localize", "abort", detail=detail)
+    em.write_verdict(phases={}, wall="abort", pass_l1=None, pass_l2=None)
+    em.run_end({"localize": "abort"}, "abort")
+
+
+def salvage_artifacts(files_dir: Path, localize_md: str | None,
+                      candidates_md: str | None, repro_md: str,
+                      log) -> list[str]:
+    """Best-effort tulis artefak in-memory ke files/ SEBELUM driver mati
+    (lever infra-abort): localize.md/candidates.md yang SUDAH disetor model
+    tidak boleh tertelan crash (pelajaran 14855 r7 sisi R). candidates.md
+    ditulis MENTAH (tanpa audit N2 — audit butuh container yang mungkin
+    sudah mati). Salvage gagal tak pernah mengubah exit path."""
+    salvaged: list[str] = []
+    for name, body in (("localize.md", localize_md),
+                       ("candidates.md", candidates_md),
+                       ("input-repro.md", repro_md)):
+        if body is None:
+            continue
+        try:
+            (files_dir / name).write_text(
+                body if body.endswith("\n") else body + "\n",
+                encoding="utf-8", newline="\n")
+            salvaged.append(name)
+        except Exception as e:  # best-effort: catat, jangan meledak
+            log(f"[driver] salvage {name} gagal (diabaikan): {e!r}")
+    log("[driver] salvage: "
+        + (", ".join(salvaged) if salvaged else "tidak ada yang selamat"))
+    return salvaged
 
 
 def docker_exec(container: str, cmd: str, timeout: int = 180) -> tuple[str, int]:
@@ -234,6 +282,21 @@ def main() -> int:
         with open(console, "a", encoding="utf-8", newline="\n") as f:
             f.write(line.rstrip("\n") + "\n")
 
+    # Lever infra-abort: pre-flight ping SEBELUM container/trace/model
+    # dibakar — endpoint mati terdeteksi dalam detik dengan run dir minimal
+    # + penanda, bukan slot rerun hangus (KH-22).
+    try:
+        preflight_endpoint(args.endpoint, log=log)
+    except ChatTransportError as e:
+        log(f"[driver] INFRA failure (preflight): {e}")
+        write_infra_abort(em.run_dir, reason="preflight", stage="localize",
+                          turns_model_used=0, detail=str(e))
+        em.run_start()
+        emit_abort(em, f"infra transport failure: preflight: {e}")
+        print(json.dumps({"done": False, "aborted": True,
+                          "error": f"infra-preflight: {e}"}))
+        return 1
+
     container = f"gemma-work-{args.campaign}-{args.case}-r{args.rerun}"
     subprocess.run(["docker", "rm", "-f", container], capture_output=True)
     subprocess.run(["docker", "run", "-d", "--name", container, args.image,
@@ -323,76 +386,114 @@ def main() -> int:
         # Lever L#3: kandidat wajib anggota pool file yang tereksekusi
         # saat repro (subset check mekanis).
         return candidates_pool_error([c["file"] for c in cands], pool_set)
-    for turn in range(1, args.max_turns + 1):
-        try:
-            reply = chat(args.endpoint, args.model, messages)
-        except Exception as e:
-            log(f"[driver] chat error: {e}; retrying once")
-            reply = chat(args.endpoint, args.model, messages)
-        messages.append({"role": "assistant", "content": reply})
-        log(f"[gemma t{turn}] {reply}")
 
-        actions = parse_actions(reply)
-        feedback_parts: list[str] = []
-        for act in actions:
-            if act.kind == "file":
-                if not act.arg.startswith("/testbed/.pipe/"):
+    turn = 0
+    try:
+        for turn in range(1, args.max_turns + 1):
+            # R12: retry-backoff khusus transport (dulu: satu retry buta utk
+            # SEMUA exception); gagal final -> ChatTransportError (infra).
+            reply = chat_with_retry(args.endpoint, args.model, messages,
+                                    log=log)
+            messages.append({"role": "assistant", "content": reply})
+            log(f"[gemma t{turn}] {reply}")
+
+            actions = parse_actions(reply)
+            feedback_parts: list[str] = []
+            for act in actions:
+                if act.kind == "file":
+                    if not act.arg.startswith("/testbed/.pipe/"):
+                        attempt += 1
+                        em.event("localize", "retry", attempt=attempt,
+                                 budget={"msg_used": turn,
+                                         "msg_limit": args.max_turns},
+                                 detail={"why": ("write outside workspace "
+                                                 f"rejected: {act.arg}")})
+                        log("[driver] rejected write outside workspace: "
+                            f"{act.arg}")
+                        feedback_parts.append(
+                            f"Your writable workspace is /testbed/.pipe/ — "
+                            f"put {Path(act.arg).name} there instead.")
+                        continue
+                    docker_write_file(container, act.arg, act.body + "\n")
+                    log(f"[driver] wrote {act.arg} ({len(act.body)} chars)")
+                    feedback_parts.append(f"OK: file {act.arg} written.")
+                elif act.kind == "bash":
+                    ran_any_bash = True
+                    out, code = docker_exec(container, act.body)
+                    log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n"
+                        f"[exit {code}]")
+                    feedback_parts.append(
+                        f"OUTPUT (exit {code}):\n{tail(out)}")
+                elif act.kind == "localize.md":
+                    localize_md = act.body
+                    log("[driver] localize.md candidate received")
+                    feedback_parts.append("OK: localize.md received.")
+                elif act.kind == "candidates.md":
+                    candidates_md = act.body
+                    log("[driver] candidates.md received")
+                    feedback_parts.append("OK: candidates.md received.")
+
+            if has_done(reply):
+                reason = done_rejection_localize(
+                    has_localize_md=localize_md is not None,
+                    ran_any_bash=ran_any_bash,
+                    candidates_error=candidates_error_now(),
+                    localize_error=(None if localize_md is None else
+                                    localize_range_error(container,
+                                                         localize_md)))
+                if reason is not None:
                     attempt += 1
+                    # Telemetri kaya (permintaan Mirza 2026-07-19; pelajaran
+                    # Prinsip Stabilisasi §5): alasan VERBATIM + posisi
+                    # artefak — autopsi tanpa rekonstruksi console.
                     em.event("localize", "retry", attempt=attempt,
                              budget={"msg_used": turn,
                                      "msg_limit": args.max_turns},
-                             detail={"why": ("write outside workspace "
-                                             f"rejected: {act.arg}")})
-                    log(f"[driver] rejected write outside workspace: {act.arg}")
-                    feedback_parts.append(
-                        f"Your writable workspace is /testbed/.pipe/ — put "
-                        f"{Path(act.arg).name} there instead.")
-                    continue
-                docker_write_file(container, act.arg, act.body + "\n")
-                log(f"[driver] wrote {act.arg} ({len(act.body)} chars)")
-                feedback_parts.append(f"OK: file {act.arg} written.")
-            elif act.kind == "bash":
-                ran_any_bash = True
-                out, code = docker_exec(container, act.body)
-                log(f"[exec] $ {act.body}\n{tail(out, 2000)}\n[exit {code}]")
-                feedback_parts.append(f"OUTPUT (exit {code}):\n{tail(out)}")
-            elif act.kind == "localize.md":
-                localize_md = act.body
-                log("[driver] localize.md candidate received")
-                feedback_parts.append("OK: localize.md received.")
-            elif act.kind == "candidates.md":
-                candidates_md = act.body
-                log("[driver] candidates.md received")
-                feedback_parts.append("OK: candidates.md received.")
+                             detail={"why": f"done-rejected: {reason}",
+                                     "has_localize_md":
+                                         localize_md is not None,
+                                     "has_candidates_md":
+                                         candidates_md is not None,
+                                     "ran_any_bash": ran_any_bash})
+                    log(f"[driver] DONE rejected: {reason}")
+                    feedback_parts.append(reason)
+                else:
+                    done = True
+                    log(f"[driver] DONE at turn {turn}")
+                    break
 
-        if has_done(reply):
-            reason = done_rejection_localize(
-                has_localize_md=localize_md is not None,
-                ran_any_bash=ran_any_bash,
-                candidates_error=candidates_error_now(),
-                localize_error=(None if localize_md is None else
-                                localize_range_error(container, localize_md)))
-            if reason is not None:
-                attempt += 1
-                # Telemetri kaya (permintaan Mirza 2026-07-19; pelajaran
-                # Prinsip Stabilisasi §5): alasan VERBATIM + posisi artefak
-                # — autopsi tanpa rekonstruksi console.
-                em.event("localize", "retry", attempt=attempt,
-                         budget={"msg_used": turn, "msg_limit": args.max_turns},
-                         detail={"why": f"done-rejected: {reason}",
-                                 "has_localize_md": localize_md is not None,
-                                 "has_candidates_md": candidates_md is not None,
-                                 "ran_any_bash": ran_any_bash})
-                log(f"[driver] DONE rejected: {reason}")
-                feedback_parts.append(reason)
-            else:
-                done = True
-                log(f"[driver] DONE at turn {turn}")
-                break
-
-        if not actions and not feedback_parts:
-            feedback_parts.append(no_action_feedback(reply, _ACTION_FORMS))
-        messages.append({"role": "user", "content": "\n\n".join(feedback_parts)})
+            if not actions and not feedback_parts:
+                feedback_parts.append(no_action_feedback(reply,
+                                                         _ACTION_FORMS))
+            messages.append({"role": "user",
+                             "content": "\n\n".join(feedback_parts)})
+    except ChatTransportError as e:
+        # R12/lever infra-abort: kegagalan transport final = kelas INFRA,
+        # bukan model — penanda mesin-terbaca utk gate (verdict infra-abort)
+        # + batch (eksklusi denominator), lalu salvage artefak in-memory.
+        turns_used = sum(1 for m in messages if m["role"] == "assistant")
+        log(f"[driver] INFRA failure (model endpoint transport): {e}")
+        salvaged = salvage_artifacts(em.run_dir / "files", localize_md,
+                                     candidates_md, repro_md, log)
+        write_infra_abort(em.run_dir, reason="chat transport failure",
+                          stage="localize", turns_model_used=turns_used,
+                          detail=str(e))
+        emit_abort(em, f"infra transport failure: {e}", salvaged=salvaged)
+        subprocess.run(["docker", "stop", container], capture_output=True)
+        print(json.dumps({"done": False, "aborted": True,
+                          "error": f"infra-transport: {e}"}))
+        return 1
+    except Exception as e:
+        import traceback
+        # Dulu: exception di loop = traceback polos TANPA event abort
+        # (kontrak §8 dilanggar). Kini: salvage best-effort + abort jujur.
+        log(f"[driver] crash: {e!r}\n{traceback.format_exc()}")
+        salvaged = salvage_artifacts(em.run_dir / "files", localize_md,
+                                     candidates_md, repro_md, log)
+        emit_abort(em, f"driver crash: {e!r}", salvaged=salvaged)
+        subprocess.run(["docker", "stop", container], capture_output=True)
+        print(json.dumps({"done": False, "aborted": True, "error": str(e)}))
+        return 1
 
     files_dir = em.run_dir / "files"
     if localize_md is not None:

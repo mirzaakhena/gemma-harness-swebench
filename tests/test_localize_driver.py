@@ -205,6 +205,137 @@ def test_evidence_audit_malformed_candidates_passthrough(monkeypatch):
     assert not calls  # bentuk salah -> biar cek DONE/gate yang memvonis
 
 
+# --- lever infra-abort (KH-22): preflight, crash transport, salvage ---------
+# Port pola R12 dari FIX: crash endpoint di LOCALIZE dulu = traceback polos
+# tanpa event abort + artefak in-memory (localize.md/candidates.md) hilang.
+
+import json
+import sys
+
+import harness.stages.chat_transport as ct
+
+
+def _setup_localize_main(monkeypatch, tmp_path, *, docker_exec=None):
+    inp = tmp_path / "input-files"
+    inp.mkdir()
+    (inp / "repro.md").write_text("SYMPTOM: x\n", encoding="utf-8")
+    (inp / "repro.py").write_text("print('REPRO_STATUS: FAIL')\n",
+                                  encoding="utf-8")
+    problem = tmp_path / "problem.txt"
+    problem.write_text("the bug", encoding="utf-8")
+    art = tmp_path / "artifacts"
+    monkeypatch.setattr(drv.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 0,
+                                                                    "", ""))
+    monkeypatch.setattr(drv, "docker_write_file", lambda *a, **k: None)
+    if docker_exec is None:
+        def docker_exec(container, cmd, timeout=180):
+            return "", 0
+    monkeypatch.setattr(drv, "docker_exec", docker_exec)
+    monkeypatch.setattr(drv, "run_trace",
+                        lambda *a, **k: (["django/urls/base.py"], "raw"))
+    monkeypatch.setattr(sys, "argv", [
+        "run_localize_gemma.py", "--case", "django__django-15902",
+        "--rerun", "4", "--image", "img", "--artifacts", str(art),
+        "--input-files", str(inp), "--problem-file", str(problem),
+        "--max-turns", "5"])
+    return art / "l-dev" / "l-dev--django__django-15902--r4"
+
+
+def _events_of(run_dir):
+    return [json.loads(l) for l in
+            (run_dir / "events.jsonl").read_text(encoding="utf-8")
+            .splitlines()]
+
+
+def test_localize_preflight_failure_exits_fast_without_container(
+        monkeypatch, tmp_path):
+    run_dir = _setup_localize_main(monkeypatch, tmp_path)
+    docker_calls = []
+    monkeypatch.setattr(drv.subprocess, "run",
+                        lambda argv, **k: docker_calls.append(argv))
+    monkeypatch.setattr(
+        drv, "run_trace",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("trace tak boleh jalan saat preflight gagal")))
+    monkeypatch.setattr(
+        drv, "preflight_endpoint",
+        lambda *a, **k: (_ for _ in ()).throw(
+            ct.ChatTransportError("preflight ping failed after 2 attempts")))
+    assert drv.main() == 1
+    assert not docker_calls  # container/model TIDAK dibakar
+    marker = json.loads((run_dir / "infra_abort.json")
+                        .read_text(encoding="utf-8"))
+    assert marker["reason"] == "preflight"
+    assert marker["stage"] == "localize"
+    assert marker["turns_model_used"] == 0
+    aborts = [e for e in _events_of(run_dir) if e["event"] == "abort"]
+    assert aborts
+    assert aborts[-1]["detail"]["reason"].startswith(
+        "infra transport failure")
+    v = json.loads((run_dir / "verdict.json").read_text(encoding="utf-8"))
+    assert v["wall"] == "abort"
+
+
+CANDS_BLOCK = """```candidates.md
+CANDIDATE 1
+file: django/urls/base.py
+evidence: the prefix strip happens here.
+expectation: reverse honors the urlconf.
+
+CANDIDATE 2
+file: django/urls/resolvers.py
+evidence: the per-pattern match lives here.
+expectation: resolving picks the right pattern.
+```"""
+
+
+def test_localize_transport_crash_writes_marker_and_salvages(monkeypatch,
+                                                             tmp_path):
+    run_dir = _setup_localize_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(drv, "preflight_endpoint", lambda *a, **k: None)
+    calls = []
+
+    def chatting(endpoint, model, messages, **kw):
+        calls.append(1)
+        if len(calls) == 1:
+            return CANDS_BLOCK
+        raise ct.ChatTransportError(
+            "model endpoint transport failure after 4 attempts: "
+            "URLError(TimeoutError(10060))")
+
+    monkeypatch.setattr(drv, "chat_with_retry", chatting)
+    assert drv.main() == 1
+    marker = json.loads((run_dir / "infra_abort.json")
+                        .read_text(encoding="utf-8"))
+    assert marker["stage"] == "localize"
+    assert marker["turns_model_used"] == 1
+    # Salvage: shortlist yang SUDAH disetor model tidak tertelan crash.
+    salvaged_md = (run_dir / "files" / "candidates.md").read_text(
+        encoding="utf-8")
+    assert "django/urls/base.py" in salvaged_md
+    aborts = [e for e in _events_of(run_dir) if e["event"] == "abort"]
+    assert aborts
+    assert aborts[-1]["detail"]["reason"].startswith(
+        "infra transport failure")
+    assert "candidates.md" in aborts[-1]["detail"]["salvaged"]
+
+
+def test_localize_generic_crash_still_aborts_honestly(monkeypatch, tmp_path):
+    # Exception fatal non-transport di loop: dulu traceback polos tanpa
+    # event abort (kontrak §8 dilanggar); kini emit_abort + exit 1,
+    # TANPA infra_abort.json (bukan kelas infra transport).
+    run_dir = _setup_localize_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(drv, "preflight_endpoint", lambda *a, **k: None)
+    monkeypatch.setattr(
+        drv, "chat_with_retry",
+        lambda *a, **k: (_ for _ in ()).throw(KeyError("choices")))
+    assert drv.main() == 1
+    assert not (run_dir / "infra_abort.json").is_file()
+    aborts = [e for e in _events_of(run_dir) if e["event"] == "abort"]
+    assert aborts and "driver crash" in aborts[-1]["detail"]["reason"]
+
+
 def test_evidence_audit_event_name_in_emit_whitelist():
     """Regresi insiden 2026-07-22: driver memanggil em.event('localize',
     'evidence-audit') tapi whitelist emit.EVENTS belum memuatnya -> ValueError
