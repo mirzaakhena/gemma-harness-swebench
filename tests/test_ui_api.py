@@ -59,3 +59,27 @@ def test_run_index_verdict_merges_gold_wrong_file(tmp_path):
         json.dumps({"qualified": False}), encoding="utf-8")
     text, icon = run_index_verdict("l-dev", run_dir)
     assert text == "wrong-file" and icon.startswith("❌")
+
+
+# --- api_campaigns ----------------------------------------------------------
+
+def test_api_campaigns_pipeline_order_and_labels(tmp_path):
+    from ui.server import api_campaigns
+    (tmp_path / "r-dev").mkdir()
+    (tmp_path / "z-lain").mkdir()
+    out = api_campaigns(tmp_path)
+    names = [c["name"] for c in out["campaigns"]]
+    # stage pipeline selalu tampil (walau dir belum ada), urut pipeline;
+    # kampanye non-pipeline menyusul
+    assert names == ["r-dev", "l-dev", "f-dev", "z-lain"]
+    assert out["campaigns"][0] == {"name": "r-dev", "label": "REPRODUCE",
+                                   "phase": "R"}
+    assert out["campaigns"][2]["label"] == "FIX and VERIFY"
+    assert out["campaigns"][3] == {"name": "z-lain", "label": "z-lain",
+                                   "phase": ""}
+
+
+def test_api_campaigns_empty_root(tmp_path):
+    from ui.server import api_campaigns
+    names = [c["name"] for c in api_campaigns(tmp_path)["campaigns"]]
+    assert names == ["r-dev", "l-dev", "f-dev"]

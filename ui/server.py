@@ -694,6 +694,21 @@ def render_event_line(ev: dict) -> str:
             f"{dtxt}").rstrip()
 
 
+# --- API JSON (kontrak: docs/api-ui-viewer.md) --------------------------------
+# Read-only, paritas semantik dengan UI HTML: status per run/case dihitung
+# lewat jalur logika yang SAMA (case_status, stage_summary, dst.).
+
+_API_STATUSES = ("PASS", "FAIL", "WAIT", "ANOMALY", "?")
+
+
+def api_campaigns(root: Path) -> dict:
+    """Payload /api/campaigns: daftar kampanye urut pipeline, paritas tab
+    UI (stage pipeline tampil walau direktorinya belum ada)."""
+    campaigns = order_campaigns(with_stage_tabs(list_campaigns(root)))
+    return {"campaigns": [{"name": c, "label": campaign_label(c),
+                           "phase": campaign_phase(c)} for c in campaigns]}
+
+
 # --- rendering HTML ----------------------------------------------------------
 
 _STYLE = """<style>
