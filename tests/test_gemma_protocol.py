@@ -587,3 +587,102 @@ def test_fix_rejection_messages_are_english():
         assert m is not None
         for word in ("Belum", "kamu", "dulu", "serahkan", "jalankan"):
             assert word not in m, f"pesan ke model masih ber-Indonesia: {m!r}"
+
+
+# --- R20: toleransi dialek tool-call native (call:file: + fence-glue) -------
+# Promosi 2026-07-23 (katalog "protocol-drift file-write", spesimen 14855
+# r10-r12; bukti kembar 15851 r4-r6, 15902): Gemma temp-0 meng-emit file-write
+# sebagai `<|tool_call>call:file:<path>` + fence ```python — 0/12 file terparse.
+# Kutipan test = reply NYATA dari console.log (dipendekkan pada body).
+
+R20_SPECIMEN_CALL_FILE = (  # 14855 r10 t4 (bentuk asli, body dipendekkan)
+    "<|tool_call>call:file:/testbed/.pipe/repro.py\n"
+    "```python\n"
+    "import os\n"
+    "import django\n"
+    "from django.conf import settings\n"
+    "print(\"REPRO_STATUS: FAIL\")\n"
+    "```\n"
+    "<tool_call|>\n"
+)
+
+R20_SPECIMEN_GLUED_BASH = (  # 14855 r11 t6 (verbatim)
+    "<|tool_call>call:bash\n"
+    "```bash\n"
+    "python3 /testbed/.pipe/repro.py\n"
+    "```<tool_call|>\n"
+)
+
+
+def test_r20_call_file_marker_maps_python_fence_to_file_action():
+    acts = parse_actions(R20_SPECIMEN_CALL_FILE)
+    assert len(acts) == 1
+    assert acts[0].kind == "file"
+    assert acts[0].arg == "/testbed/.pipe/repro.py"
+    assert acts[0].body.startswith("import os")
+    assert acts[0].body.endswith('print("REPRO_STATUS: FAIL")')
+
+
+def test_r20_glued_closing_fence_tolerated_for_bash():
+    acts = parse_actions(R20_SPECIMEN_GLUED_BASH)
+    assert acts == [Action(kind="bash", arg=None,
+                           body="python3 /testbed/.pipe/repro.py")]
+
+
+def test_r20_glued_closing_fence_tolerated_for_heredoc_bash():
+    # r11 t5: heredoc tulis-file via bash — gagal murni karena fence-glue.
+    text = ("<|tool_call>call:bash\n"
+            "```bash\n"
+            "cat << 'EOF' > /testbed/.pipe/repro.py\n"
+            "print('x')\n"
+            "EOF\n"
+            "python3 /testbed/.pipe/repro.py\n"
+            "```<tool_call|>\n")
+    acts = parse_actions(text)
+    assert len(acts) == 1
+    assert acts[0].kind == "bash"
+    assert acts[0].body.endswith("python3 /testbed/.pipe/repro.py")
+
+
+def test_r20_mixed_reply_recovers_dropped_file_block():
+    # Kelas r12 t5-t10 ("silent partial-parse"): 3 blok — bash komentar +
+    # call:file:+python + bash run; dulu hanya bash yang terparse.
+    text = ("```bash\n# inspecting\n```\n"
+            "<|tool_call>call:file:/testbed/.pipe/repro.py\n"
+            "```python\nprint('hi')\n```\n"
+            "<tool_call|>\n"
+            "```bash\npython3 /testbed/.pipe/repro.py\n```\n")
+    kinds = [(a.kind, a.arg) for a in parse_actions(text)]
+    assert kinds == [("bash", None),
+                     ("file", "/testbed/.pipe/repro.py"),
+                     ("bash", None)]
+
+
+def test_r20_python_fence_without_marker_still_not_action():
+    # Kontrak lama tak berubah: ```python tanpa marker = bukan aksi.
+    text = "```python\nprint('hi')\n```\n"
+    assert parse_actions(text) == []
+
+
+def test_r20_marker_without_fence_yields_nothing():
+    text = "<|tool_call>call:file:/testbed/.pipe/repro.py\n(no fence here)\n"
+    assert parse_actions(text) == []
+
+
+def test_r20_marker_maps_only_next_fence_not_all():
+    text = ("<|tool_call>call:file:/testbed/.pipe/a.py\n"
+            "```python\nA\n```\n"
+            "```python\nB\n```\n")
+    acts = parse_actions(text)
+    assert len(acts) == 1
+    assert acts[0].arg == "/testbed/.pipe/a.py"
+    assert acts[0].body == "A"
+
+
+def test_r20_canonical_file_block_untouched_by_marker():
+    # Marker + fence file: kanonik -> path fence yang menang (kontrak resmi).
+    text = ("<|tool_call>call:file:/testbed/.pipe/wrong.py\n"
+            "```file:/testbed/.pipe/right.py\nX\n```\n")
+    acts = parse_actions(text)
+    assert len(acts) == 1
+    assert acts[0].arg == "/testbed/.pipe/right.py"

@@ -4516,3 +4516,19 @@ bisa memvalidasinya — kandidat benar KALAH oleh oracle** = spesimen kedua kela
 case kuat. (4) Bug eval-realm terpisah: parser log swebench menggabung baris test
 → 2 false-fail di f2p_failed (`index_foo_together`, `supports_functools_partial`
 aslinya "ok") — kandidat fix murah di eval.
+### Status entri "protocol-drift file-write" — R20 TERPASANG (subset sempit, 2026-07-23)
+Parser `gemma_protocol.parse_actions` kini dua-pass: pass kanonik (perilaku lama,
+byte-identik) + pass dialek R20 utk blok yang TIDAK beririsan aksi kanonik —
+(1) marker `call:file:<path>` sebelum fence memetakan fence berikutnya (info-string
+apa pun) jadi aksi file; fence kanonik `file:` MENANG atas marker bila keduanya ada;
+marker hanya menjangkau fence PERTAMA sesudahnya (celah sejak blok terakhir);
+(2) fence penutup ber-glue token asing (` ```<tool_call|> `, baris DIMULAI ```)
+dianggap penutup — memulihkan blok bash/file/artefak yang dulu gagal parse total.
+Content-blind; berlaku otomatis di ketiga driver R/L/F (semua lewat parse_actions).
+Test: 8 baru, 2 di antaranya KUTIPAN NYATA console.log (14855 r10 t4 call:file+
+```python; r11 t6 bash ber-glue verbatim); TDD merah-dulu; suite 619+3skip hijau
+di worktree (skip = env tanpa ../artifacts, bukan efek lever). SENGAJA di luar
+scope (tetap research-gated): pemetaan `call:bash` + fence non-bash; marker tanpa
+fence; glue di baris PEMBUKA fence; dedup blok dialek yang juga punya twin kanonik
+di reply sama (kelas no-silent-drop tercatat terpisah). Retest keluarga KH-12
+(15902 §-A0g "retest-when-installed", 14855, 13265) kini unblocked.
