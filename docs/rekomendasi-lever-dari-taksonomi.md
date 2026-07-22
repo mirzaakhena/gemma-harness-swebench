@@ -280,7 +280,7 @@ tetap bebas meng-expose gold di log/artefak untuk dikonsumsi bot analis.)
   menulis kontrol positif tanpa diminta — bentuknya murah dan sudah terbukti ada.
 - Kompleksitas: sedang; nilai naik bila dipasangkan penguatan kontrak (opt-in didorong).
 
-### R15. LV-14 detektor dua-arah region-hunk (realm EVAL — gold-aware yang SAH)
+### R15. LV-14 detektor dua-arah region-hunk (realm EVAL — gold-aware yang SAH) — TERPASANG 2026-07-23
 
 - **Menyerang:** F-2/F-3 + seluruh H-3 (12 case hijau-longgar): `line_overlap`
   menyesatkan dua arah (11999 superset overlap=true; 12907 rewrite overlap=false).
@@ -288,6 +288,11 @@ tetap bebas meng-expose gold di log/artefak untuk dikonsumsi bot analis.)
   file; mismatch (patch<gold = subset; patch>gold = superset) + `line_overlap=true`
   → flag. Murah, mekanis, hidup di `eval/` (boleh lihat gold — bukan product harness).
 - Kompleksitas: kecil-sedang. Nilai: papan skor & autopsi, bukan loop model.
+- **TERPASANG (claude-mac fork, 2026-07-23):** field `hunk_regions` /
+  `region_mismatch` / `region_flag` di `evaluate_fix_gold` → `gold_eval.json`;
+  flag hanya utk mismatch+overlap=true (overlap merah sudah advisory). Blind-spot
+  12284 (intra-hunk, region sama) TETAP — lihat caveat di addendum bawah; status
+  detail di ekor [[katalog-lever]].
 
 ### R16. Tutup celah pagar edit FIX (harta vault — bug TERBUKA yang belum di katalog)
 

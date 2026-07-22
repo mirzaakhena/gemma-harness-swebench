@@ -4403,3 +4403,20 @@ periode-2 dominan REPRODUCE; intra-reply dominan FIX/LOCALIZE.
   detektor non-exact (mis. similarity file-write beruntun) yang terbukti murah.
 - **Konfirmasi temuan Mirza:** 13230 r3 = streak-31 (a2 t10-t40, top-10 korpus) +
   periode-2 ×9 (a1) — pra-lever murni; 13230 r4 = kelas-4 di atas.
+
+## Status LV-14 — R15 TERPASANG (claude-mac fork, 2026-07-23 dini hari)
+
+Detektor dua-arah region-hunk kini hidup di `eval/fix_gold_eval.py`
+(`evaluate_fix_gold`): per file yang disentuh patch, jumlah region hunk gold
+vs fix dihitung (`hunk_regions`), arah mismatch dilabeli (`region_mismatch`:
+subset = fix<gold, superset = fix>gold), dan `region_flag` menyala HANYA
+untuk kelas hijau-longgar (ada mismatch DAN `line_overlap=true` — overlap
+merah sudah advisory sendiri). File gold yang tak disentuh patch (test file
+resmi) tidak dihitung — mengikuti semantik subset `file_match`. Field baru
+mengalir otomatis ke `gold_eval.json` runs FIX berikutnya; run lama perlu
+re-run script eval bila mau label R15. **Batas tetap sebagaimana didaftar
+di entri ini:** divergensi intra-hunk (12284, jumlah region sama), komentar/
+docstring (11039), dan seluruh perubahan non-lokasi tak terlihat —
+`region_flag=False` BUKAN klaim "patch setara gold". Label-only (papan
+skor & autopsi), loop model tak tersentuh. Suite 614 hijau (6 test baru,
+TDD merah-dulu).
