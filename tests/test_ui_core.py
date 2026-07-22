@@ -154,7 +154,7 @@ def test_page_index_fdev_runs_listed_under_fix_tab(tmp_path):
         "pass_l1": True, "started": "2026-07-20T09:00:00+07:00",
         "finished": "2026-07-20T09:05:00+07:00"}), encoding="utf-8")
     out = page_index(tmp_path, tab="f-dev")
-    # case name is link (task 3); copy button follows
+    # nama case jadi link (task 3); tombol copy menyusul
     assert "href='/?tab=f-dev&q=django__django-11910" in out
     assert ">django__django-11910</a> <button" in out
     assert ">r1</a>" in out                         # kolom run ber-link
@@ -337,7 +337,7 @@ def test_page_index_splits_case_and_run_columns(tmp_path):
     run.mkdir(parents=True)
     out = page_index(tmp_path)
     assert "<th>case</th><th>run</th>" in out
-    # case name is link (task 3); copy button follows
+    # nama case jadi link (task 3); tombol copy menyusul
     assert "href='/?tab=r-dev&q=django__django-13220" in out
     assert ">django__django-13220</a> <button" in out
     assert ">r6</a>" in out                                # rN ber-link
