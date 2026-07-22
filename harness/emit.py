@@ -15,7 +15,11 @@ from pathlib import Path
 SCHEMA_VERSION = "1.0.0"
 
 PHASES = ("reproduce", "localize", "fix", "verify")
-EVENTS = ("enter", "exit", "retry", "skip", "abort")
+# 2026-07-22: + "evidence-audit" (lever N2 — audit evidence↔file shortlist
+# LOCALIZE). Insiden: run_localize_gemma memakai nama ini saat whitelist belum
+# memuatnya → ValueError runtime SETELAH model selesai (slot l-dev 12184 r2
+# hangus parsial); test unit tak menangkap karena emit di-mock.
+EVENTS = ("enter", "exit", "retry", "skip", "abort", "evidence-audit")
 VERDICTS = {
     # R2 split-verdict: symptom-identifying REPRODUCE labels
     # (repro-missing/vacuous-repro/syntax-error/gold-wont-flip/gold-flip-crash)

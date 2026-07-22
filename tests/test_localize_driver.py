@@ -203,3 +203,13 @@ def test_evidence_audit_malformed_candidates_passthrough(monkeypatch):
     text, rows = drv.audit_candidates_evidence("c1", "bukan candidates.md")
     assert text == "bukan candidates.md" and rows is None
     assert not calls  # bentuk salah -> biar cek DONE/gate yang memvonis
+
+
+def test_evidence_audit_event_name_in_emit_whitelist():
+    """Regresi insiden 2026-07-22: driver memanggil em.event('localize',
+    'evidence-audit') tapi whitelist emit.EVENTS belum memuatnya -> ValueError
+    runtime SETELAH model selesai (slot l-dev r2 12184 hangus parsial). Test
+    unit lain tak menangkap karena emit di-mock. Kunci nama event driver ke
+    whitelist sungguhan, tanpa mock."""
+    from harness import emit
+    assert "evidence-audit" in emit.EVENTS
