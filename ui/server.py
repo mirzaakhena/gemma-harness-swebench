@@ -251,6 +251,7 @@ def filter_runs_by_case(runs: list[dict], q: str | None) -> list[dict]:
 
 def paginate(items: list, page: int, per_page: int = 15) -> tuple[list, int]:
     """(potongan halaman, total_halaman); page 1-based, di-clamp."""
+    per_page = max(1, per_page)   # pemanggil langsung bisa kirim 0/negatif
     total = max(1, -(-len(items) // per_page))
     page = max(1, min(page, total))
     start = (page - 1) * per_page

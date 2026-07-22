@@ -306,3 +306,23 @@ def test_http_api_campaigns_internal_error_returns_json_500(
     monkeypatch.setattr(srv, "api_campaigns", boom)
     code, body = _get_json(tmp_path, "/api/campaigns")
     assert code == 500 and "error" in body
+
+
+# --- bundle minor final review ---------------------------------------------
+
+def test_paginate_per_page_zero_is_safe():
+    from ui.server import paginate
+    items = list(range(3))
+    page_items, total = paginate(items, 1, per_page=0)
+    assert page_items == [0] and total == 3   # per_page<=0 -> 1
+
+
+def test_http_api_status_unknown_enum_url_encoded(tmp_path):
+    # status "?" ter-URL-encode (%3F) harus lolos enum dan menyaring
+    # hanya run tanpa verdict.json
+    mk_run(tmp_path, "r-dev", "case-live", "r1")  # tanpa verdict -> "?"
+    mk_run(tmp_path, "r-dev", "case-ok", "r1",
+           verdict="pass", pass_l1=True)
+    code, body = _get_json(tmp_path, "/api/runs?c=r-dev&status=%3F")
+    assert code == 200 and body["total"] == 1
+    assert body["runs"][0]["case"] == "case-live"

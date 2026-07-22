@@ -116,7 +116,8 @@ Parameter sama dengan `/api/runs` (`c`, `status`, `q`, `page`, `per_page`).
 
 Semantik:
 
-- `summary` dihitung SEBELUM filter/paging supaya angka total stabil.
+- `summary` dihitung SETELAH filter `q`, SEBELUM filter `status` dan
+  paging — angka stabil saat pindah halaman/filter status.
 - `total`/paging berlaku pada daftar cases setelah filter.
 - `runs` = jumlah run case itu.
 
