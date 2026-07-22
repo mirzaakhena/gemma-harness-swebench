@@ -67,11 +67,16 @@ kubaca dari state.
 
 ## 6. Yang Akan Dikerjakan (AKAN) — urutan sesi baru
 
-1. **Tutup papan validasi G2**: baca `validasi-g2-mac-p1.json` + p2 + nasib 11422 r10 →
-   papan G1-vs-G2 per-case (rezim `mac-G2`; lajur 12184 = rantai-N2 label terpisah;
-   void/terpotong dieksklusi per KH-22) → tulis `artifacts/papan-skor-validasi-g2-mac.md`
-   → commit → lapor Mirza. Cek juga: event N1/N4 di draw G2 (`grep degenerate-loop\|
-   model-insists` di f-dev r-baru), kanari stabil wajib ≈3/3.
+1. ~~Tutup papan validasi G2~~ **SUDAH DITUTUP di sesi lama** (semua 27 draw mendarat
+   sebelum sesi berakhir): papan `artifacts/papan-skor-validasi-g2-mac.md` + §-A0h
+   (`02c04ee`). Inti: kanari 15/15 hijau (nol regresi); 12184 rantai-N2 1/3 (r15 PASS
+   bersih, turn ~3×); 11910/15388 0/3 (dinding = agenda G3); 11422 0/3 (flaky, pooled
+   2/8). N1 menembak 2× (11910 r12, 11422 r10).
+   **+ SWEEP FREKUENSI REPETISI juga sudah dilakukan** (katalog `649ac60`): ~22% reply
+   korpus = repetisi; **periode-2 & intra-reply MEMENUHI syarat naik** (spesimen penentu
+   12184 r14: periode-2 di FIX pasca-G2, ~29 turn lolos dari N1) + kelas-4 baru
+   "near-duplicate full-file rewrite" (13230 r4, catat-only). **Keputusan promosi
+   kedua kandidat = agenda diskusi Mirza di sesi baru** (bersama R14+N3).
 2. **R15** (LV-14 detektor dua-arah region-hunk, eval-realm label-only) via subagent —
    sudah disetujui Mirza; baca katalog LV-14 dulu.
 3. **Diskusi draft desain R14+N3** (oracle repro) dgn Mirza — bukti-kasus utama 12184
