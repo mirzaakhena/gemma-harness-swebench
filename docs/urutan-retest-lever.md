@@ -354,3 +354,23 @@ bersih; SEMUA draw langsung di file gold, turn ~3× hemat; r13 gagal 1-baris-dar
 observability, tanpa regresi); dinding unlock yang tersisa = weak-oracle (N3/R14) +
 cacat-evidence varian 2/3 (R17) = persis agenda desain G3. N4 belum pernah trigger
 penuh — pantau. Handoff sesi: `.handoff/202607222358-prompt-tutup-papan-g2-desain-g3.md`.
+
+### §-A0i — Peta retest per-lever dari silang frekuensi×verdict (sweep, 2026-07-23 00:2x)
+
+Temuan korelasi (dasar urutan pemasangan): **intra-reply 100% berkorelasi case-menang**
+(lever efisiensi murni); **periode-2 berkorelasi kuat ALL-FAIL** (lever outcome) →
+prioritas pemasangan: p2 dulu. SEMUA keranjang MENUNGGU keputusan Mirza (STOP eksekusi):
+
+- **Keranjang A (lever sudah terpasang — N1+infra-abort+salvage+preflight):**
+  1) 15851 (0/6; r1 streak-37 memakan run), 2) 14855 (0/9, 4 riil; pakai --max-rerun),
+  3) 12470 (0/1; satu-satunya draw dimakan streak-29 — belum pernah dapat draw sehat),
+  4) 14752 (0/3; streak-16). Cukup 1-2 draw/case, denominator per KH-22.
+- **Keranjang B (setelah lever periode-2 dipasang):** 1) 13265 (0/9, 6 riil; p2 murni
+  32 hit maxstreak-1 — paling mungkin flip), 2) 15902 (0/9, 3 riil; + tetap butuh R20
+  utk dinding fence), 3) 14752 ulang bila A gagal; + 12184 1 draw sbg validasi
+  first-firing p2 (bukan utk outcome).
+- **Keranjang C (JANGAN retest — sudah menang di draw lain):** 14411, 11797, 13230,
+  11422, 15388(flip), 13964, 13033, 13448, dan seluruh kelas intra-reply (15347 9/9!,
+  13768, astropy-14365, 13757, 11848, l-dev 11019/13158/15320/12284/12908).
+
+Data penunjang: `scan_out.json` scratchpad sesi claude-mac (angka bisa dihitung ulang).
