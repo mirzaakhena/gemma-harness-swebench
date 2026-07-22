@@ -443,3 +443,29 @@ lever salah-arah di ~3 dari 4 case.
   claude-mac 2026-07-22. (3) Kondisi pemicunya spesifik: kandidat terkunci +
   feedback loop identik (grep exit 1 / reject message sama) — kelas ini mungkin
   lebih sering di case wrong-file-shortlist (akar-LOCALIZE).
+
+## KH-22 — "hitungan rerun mentah = ukuran kedalaman wall" ∧ "REPRODUCE pendek temp-0 ≈ byte-identik antar-run"
+
+- **Yang dinyatakan:** (a) praktik implisit papan skor: jumlah rerun R sebuah case
+  dipakai sebagai proxy kedalaman REPRODUCE-wall ("15902/14855 sampai r9 = wall dalam");
+  (b) sisa pembacaan KH-20: utk REPRODUCE pendek, temp-0 dianggap ≈reproducible antar-run
+  (basis 14411 byte-identik) sehingga single-run dianggap cukup utk segala keperluan.
+- **Derajat: (a) TERBANTAH; (b) DIPERSEMPIT.**
+- **Yang benar (diagnosa 2026-07-22, 15902 & 14855 r1–r9):**
+  (a) Hitungan mentah bisa FIKTIF: 15902 = 9 tercatat, **3 riil** (r4–r9 = void-infra
+  0-token, endpoint mati, tervonis `repro-missing`); 14855 = 9 tercatat, **4 riil**
+  (dan r7 yang riil justru menunjukkan dinding R-2 era-1 sudah PECAH oleh lever G1).
+  (b) REPRODUCE pendek pun TIDAK byte-identik antar-run: 15902 r1 vs r2/r3 rezim-identik
+  jeda 5 menit = trajektori beda total (r1 tembus-tulis via heredoc & menyingkap dinding
+  lapis-2 vacuous-PASS; r2/r3 file-hantu murni). 14411 byte-identik = kasus fixed-point
+  degenerat KHUSUS, bukan sifat umum REPRODUCE.
+- **Bukti pembantah:** `r-dev--django__django-15902--r{4..9}/events.jsonl` (abort
+  `URLError(TimeoutError(10060))`, 0 turn model) + `r-dev--django__django-14855--r7/`
+  (21 turn aktif, fence benar, mati oleh 10054/10060, files/ kosong); md5 repro.py
+  15902/14855 antar-run berbeda; grep "gemma t" = 0 di semua run void.
+- **Pelajaran / kebijakan (dipakai mulai sekarang):**
+  1. **Denominator rate = run-ber-sinyal-model saja**; void-infra dieksklusi dan diberi
+     label sendiri (kandidat verdict `infra-abort`, lihat katalog).
+  2. **Single-run cukup utk MENANDAI wall; n≥3 utk MENGAUTOPSI wall** (tanpa ≥2 run
+     informatif, dinding lapis-2 15902 takkan pernah terlihat).
+  3. Sebelum menyebut "case bandel", pisahkan dulu era/rezim & validitas tiap run.

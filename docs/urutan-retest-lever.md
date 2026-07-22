@@ -330,3 +330,15 @@ endpoint vLLM sama, frozen R/L sama):
 
 **Status: bahan brief G2 LENGKAP — menunggu keputusan Mirza** (threshold "solved" §-A0e.3
 juga masih terbuka; data rate kini tersedia utk mematoknya).
+
+### §-A0g — Update antrean retest (claude-mac, 2026-07-22 malam, pasca-diagnosa 4 case)
+
+| Case | Antrean | Lever ditunggu / status |
+|---|---|---|
+| django-15902 | **retest-when-installed → R20** (parse dialek `call:file:`) | R2/R3/R5 terpasang TIDAK menutup dinding ini (bukti kembar 15851 r4–r6); jangan retest sebelum R20 |
+| django-14855 | **retest-when-stable → DIEKSEKUSI** (r10, 22-jul malam, rezim mac-G2) | Dinding R-2 pecah di r7 (fence benar 24×, R5 efektif); tinggal risiko kompetensi kecil (urutan sys.modules + API AdminReadonlyField) |
+| django-11910 | kandidat **eksperimen falsifikasi evidence** (1 draw, candidates.md dinetralkan) | Bukan retest biasa — menguji kausalitas resep-destruktif (katalog: varian-3 cacat evidence) |
+| django-11422 | tetap di queue R13 (App-ready flaky) | + investigasi repetisi r9 berjalan |
+
+Aturan baru papan skor (KH-22): denominator k/n hanya run-ber-sinyal-model; void-infra
+(0-turn, driver-crash) dieksklusi + diusulkan verdict `infra-abort`.

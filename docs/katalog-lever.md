@@ -4285,3 +4285,65 @@ yang mem-boot dev server Django 3× (~46 dtk/turn vs 21,5 dtk siklus grep 12184)
 → menjelaskan profil 15388 selalu 60–80 mnt/draw; hematan watcher reply-hash di
 sini ~22 mnt hanya utk a1. Bukti: `f-dev--django__django-15388--r9/console.log`
 ln 1644–5457 (a1), ln 8229+ (a2); events 21:08:39→21:30:56 (a1 exhausted 40/40).
+
+## Konsolidasi diagnosa 4-case (claude-mac, 2026-07-22 malam) — 11910, 12184-r13, 15902, 14855
+
+Empat diagnosa subagent paralel pasca-pemasangan G2 (N1/N4/R12/N2). Entri per mekanisme;
+bukti detail di laporan sesi (path artefak dicantumkan per butir).
+
+### Status entri "watcher reply-hash FIX" (N1) — FIRST FIRING TERKONFIRMASI + batas desain
+- **2026-07-22 23:0x, 11910 r12 a1:** N1 menembak perdana di produksi — event
+  `degenerate-loop reply-hash x3`, **turns_saved=25**, rotasi ke kandidat 2. Validasi
+  empiris dua arah KH-21.
+- **12184 r13 (rantai N2): N1/N4 TIDAK menyala dan itu bukti positif** — prasyarat loop
+  (kandidat salah + feedback reject monoton) dihilangkan N2 di hulu; 15/15 md5 reply unik.
+  Watcher tak punya efek samping pada run sehat.
+- **⚠ Batas desain (dari 15902 r2/r3, berlaku juga utk R5 REPRODUCE):** siklus
+  **periode-2** (dua bentuk reply berselang-seling A-B-A-B) LOLOS dari semua trigger
+  "3-identik-beruntun". Kandidat perbaikan mekanis: tambah cek `md5(reply_N)==md5(reply_N-2)`
+  (deteksi periode-2) di N1 dan `no_progress.py`. Belum dipasang — menunggu spesimen
+  periode-2 di FIX (11422 r9 sedang diinvestigasi).
+
+### Entri BARU — kelas operasional "bangkai ber-verdict" (void-infra run) + lever `infra-abort`
+**Spesimen masif:** 15902 r4–r9 (6 run, 0 token model) & 14855 r4–r6,r8–r9 (5 run, 0 turn)
+— semua driver crash `URLError/10060` pra-turn-1 (endpoint mati 22-jul 14:12–15:15 Win),
+namun tervonis `repro-missing` biasa. **Bahaya observability:** hitungan "percobaan" case
+menggembung fiktif (15902: 9 tercatat vs 3 riil; 14855: 9 vs 4) → salah-vonis
+"REPRODUCE-wall dalam". Varian ekstrem: 14855 r7 — model AKTIF 21 turn, fence `file:`
+benar 24×, repro.py hidup di container, lalu endpoint mati → crash sebelum copy final →
+`files/` kosong → tervonis `repro-missing` (pekerjaan nyata TERTELAN).
+**Usulan mekanis (kandidat, kompleksitas kecil):**
+1. Verdict khusus `infra-abort` utk driver-crash (perluasan R2 split-verdict / R11
+   graceful-shutdown; R12 sudah menutup sisi FIX dgn ChatTransportError+abort — port
+   pola yang sama ke run_reproduce/localize).
+2. **Salvage copy `files/` saat crash** (best-effort sebelum driver mati) — 14855 r7
+   adalah bukti kerugian forensiknya.
+3. Pre-flight ping endpoint sebelum meluncurkan rerun batch (5 slot terbakar dalam 2
+   gelombang flapping).
+**Aturan rate (dipakai papan skor mulai sekarang):** denominator k/n WAJIB hanya
+run-ber-sinyal-model; void-infra dieksklusi. Lihat KH-22.
+
+### Status entri "cacat evidence shortlist LOCALIZE" — VARIAN KETIGA (11910) + bukti kausal terkuat
+11910 `l-dev r4 candidates.md` CANDIDATE 1 **secara harfiah meresepkan fix yang salah**:
+"The autodetector should not revert the field_name" → 8/8 flip-draw lintas G1/G2 menghapus
+guard repoint yang justru gold pertahankan+tambahi (`remote_field.model = old...`);
+r8=r9=r10=r11 **byte-identik lintas rezim** — sumber determinisme = INPUT SEMANTIK, bukan
+temp-0. Plus `input-repro.md` EXPECTED memuat disjungsi yang melegalkan cabang salah
+("...or update it to the new field name"). Tiga varian kini: (1) 12184 salah-file
+[tertutup N2-simbol], (2) 15388 salah-mekanisme di file benar, (3) 11910 **resep-destruktif
+eksplisit** — varian 2&3 di luar jangkauan cek-simbol N2. Kandidat eksperimen falsifikasi
+(murah, §3d-style): 1 draw FIX dgn candidates.md yang evidence-nya dinetralkan → modus
+hapus-guard hilang = kausalitas terbukti. Koreksi taksonomi: 11910 era-R1 BUKAN F-2
+rewrite-destruktif → F-3 wrong-mechanism (hapus-guard, sekelas 15202/12284) + blind-spot
+repro (jalur FK→to_field non-PK tak pernah diuji repro beku r-dev r3 → flip lolos 8/8).
+Penguat kandidat lama "gate jalankan subset P2P" (Kelas-C): 11910 = spesimen kalibrasi
+sempurna (1 test P2P deterministik 8/8; regresi P2P memang mustahil ditangkap gate yang
+tak menjalankan P2P).
+
+### Status entri "weak-oracle false-accept" — spesimen bersih PASCA-N2 (12184 r13) → prioritas N3/R14 NAIK
+r13 = draw pertama rantai N2 penuh: attempt-1 langsung `resolvers.py` (file gold),
+**15 turn vs 44–46 era-G1 (~3×)**, file_match/line_overlap true, patch varian kelima
+TERDEKAT-gold — gagal hanya karena lupa filter None kwargs (SATU baris), dan repro lemah
+(status-200=PASS) menerimanya → `pair PASS,PASS` tapi resolved=false. Dengan wrong-file
+tereliminasi, **satu-satunya penyebab gagal tersisa = oracle repro** → bukti-kasus bersih
+utk menaikkan N3/R14 (perketat oracle) ke kandidat utama gelombang berikutnya.
