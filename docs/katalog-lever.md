@@ -4493,3 +4493,26 @@ dedup-intra-reply (keputusan tetap di Mirza). Sub-form jinak: 61× kebocoran tok
 (catat-only): auto-inject `git diff --stat` file kandidat pasca-aksi-tulis
 (deteksi no-op/destruktif); nudge pivot setelah k× grep zero-hit simbol sama.
 Vonis: BUKAN murni kompetensi.
+
+### Diagnosa 13265 draw-1 (23-jul dini hari) — dinding R PECAH via G-gate; dinding baru = weak-oracle → R14/N3 makin kuat
+Kemajuan besar + FAIL akhir: r11 R qualified (vs 0/9 historis) → L pass → F FLIP
+(L1 menang) → **L2 resolved=False**. (1) **Pemecah dinding R bukan p2** — p2 tak
+pernah menembak r10/r11 (pola periode-2 lama tak muncul lagi); yang bekerja =
+G-gate (`done-rejected: PASS_OBSERVABLE not declared` + `done-deferred:
+independent review`) memaksa artefak lengkap: mode repro-missing (r4-r9, loop
+tulis-file/bash sampai budget) terkonversi jadi done=True. Kualifikasi r11 =
+varians strategi (beralih ke `makemigrations`). (2) r10 gold-flip-crash: repro
+menulis-tangan 0001_initial.py (AddIndex sebelum AlterOrderWithRespectTo) —
+gold hanya menyentuh autodetector → patched tetap crash → kandidat lever BARU
+(catat-only): **repro wajib jalur generatif** (makemigrations/autodetector),
+larang migrasi hand-written. (3) **Inti FAIL: wrong-mechanism wrong-layer +
+weak-oracle false-accept** — fix.diff menambah `_reorder_order_with_respect_to()`
+di optimizer.py; gold di autodetector.py (2 hunk). Oracle satu-skenario (Index
+polos) PASS,PASS padahal patch menutup 1 dari 4 permukaan gold; f2p riil gagal di
+CheckConstraint (tanpa `.fields`) + AlterUnique/IndexTogether. **Attempt-1 justru
+di file gold (autodetector, mirip hunk-1) tapi exhausted karena oracle sempit tak
+bisa memvalidasinya — kandidat benar KALAH oleh oracle** = spesimen kedua kelas
+12184-r13 → bukti-kasus R14/N3 (oracle multi-skenario dari test tetangga) kini 2
+case kuat. (4) Bug eval-realm terpisah: parser log swebench menggabung baris test
+→ 2 false-fail di f2p_failed (`index_foo_together`, `supports_functools_partial`
+aslinya "ok") — kandidat fix murah di eval.
