@@ -7,6 +7,17 @@ Aksi = fenced block dengan info-string khusus:
 Fenced block dengan bahasa lain (python, dsb.) BUKAN aksi.
 Penanda selesai: baris `DONE` di LUAR fenced block.
 
+R20 (2026-07-23, katalog "protocol-drift file-write"; spesimen 14855
+r10-r12, bukti kembar 15851 r4-r6 & 15902): toleransi dialek tool-call
+NATIVE model — content-blind, dua bentuk:
+  1. marker `call:file:<path>` sebelum sebuah fence -> fence berikutnya
+     diperlakukan sebagai aksi file utk path tsb, apa pun info-string-nya
+     (fence file:/bash/artefak kanonik TETAP menang atas marker);
+  2. fence penutup yang ditempeli token asing (mis. ```<tool_call|>)
+     tetap dianggap penutup (baris DIMULAI ```).
+Parse kanonik berjalan dulu dan tak berubah; dialek hanya menambah blok
+yang dulu jatuh senyap (0 aksi).
+
 Seluruh teks yang dilihat model (penanda + pesan penolakan) berbahasa Inggris
 (keputusan Mirza 2026-07-18); komentar/docstring internal tetap Indonesia.
 """
@@ -19,6 +30,14 @@ _FENCE_RE = re.compile(
     r"^```([^\r\n]*)\r?\n(.*?)^```\s*$",
     re.MULTILINE | re.DOTALL,
 )
+# R20: fence dgn penutup toleran — baris yang DIMULAI ``` dianggap penutup
+# meski ada token menempel (spesimen nyata: ```<tool_call|> di 14855 r11).
+_TOL_FENCE_RE = re.compile(
+    r"^```([^\r\n]*)\r?\n(.*?)^```[^\r\n]*$",
+    re.MULTILINE | re.DOTALL,
+)
+# R20: marker dialek native file-write (spesimen: <|tool_call>call:file:/path).
+_CALL_FILE_RE = re.compile(r"call:file:(\S+)")
 
 
 @dataclass(frozen=True)
@@ -32,19 +51,48 @@ def _normalize(body: str) -> str:
     return body.replace("\r\n", "\n").rstrip("\n")
 
 
+def _classify(info: str, body: str) -> Action | None:
+    """Klasifikasi kanonik info-string fence -> Action (None = bukan aksi)."""
+    if info == "bash":
+        return Action(kind="bash", arg=None, body=body)
+    if info.startswith("file:"):
+        return Action(kind="file", arg=info[len("file:"):].strip(), body=body)
+    if info in ("repro.md", "localize.md", "candidates.md", "fix.md"):
+        return Action(kind=info, arg=None, body=body)
+    return None
+
+
 def parse_actions(text: str) -> list[Action]:
-    actions = []
+    # Pass kanonik (perilaku lama, tak berubah).
+    results: list[tuple[int, int, Action]] = []
     for m in _FENCE_RE.finditer(text):
-        info = m.group(1).strip()
+        act = _classify(m.group(1).strip(), _normalize(m.group(2)))
+        if act is not None:
+            results.append((m.start(), m.end(), act))
+    spans = [(s, e) for s, e, _ in results]
+
+    # Pass R20 (dialek): hanya blok yang TIDAK beririsan dgn aksi kanonik —
+    # blok yang dulu jatuh senyap. Dua pemulihan: (a) fence aksi sah yang
+    # penutupnya digelung token asing; (b) fence non-aksi (python/kosong)
+    # yang didahului marker `call:file:<path>` di celah sejak blok terakhir.
+    for m in _TOL_FENCE_RE.finditer(text):
+        if any(m.start() < e and s < m.end() for s, e in spans):
+            continue
         body = _normalize(m.group(2))
-        if info == "bash":
-            actions.append(Action(kind="bash", arg=None, body=body))
-        elif info.startswith("file:"):
-            actions.append(Action(kind="file", arg=info[len("file:"):].strip(),
-                                  body=body))
-        elif info in ("repro.md", "localize.md", "candidates.md", "fix.md"):
-            actions.append(Action(kind=info, arg=None, body=body))
-    return actions
+        act = _classify(m.group(1).strip(), body)
+        if act is None:
+            gap_start = max((e for _, e, _ in results if e <= m.start()),
+                            default=0)
+            last = None
+            for last in _CALL_FILE_RE.finditer(text[gap_start:m.start()]):
+                pass
+            if last is not None:
+                act = Action(kind="file", arg=last.group(1).strip(), body=body)
+        if act is not None:
+            results.append((m.start(), m.end(), act))
+
+    results.sort(key=lambda t: t[0])
+    return [a for _, _, a in results]
 
 
 def has_done(text: str) -> bool:

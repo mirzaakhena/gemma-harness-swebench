@@ -335,8 +335,14 @@ tetap bebas meng-expose gold di log/artefak untuk dikonsumsi bot analis.)
   — **riset-lanjutan mini-SWE-agent WAJIB dulu** untuk menginformasikan desain (a) vs
   pendekatan bash-only. Lihat [[adopsi-eksternal-dari-riset]].
 - **Risiko:** format native mungkin tak memetakan bersih ke grammar aksi kita (ambiguitas
-  parse); butuh contoh riil `<|tool_call>` model + TDD. **Status: KANDIDAT, research-gated**
-  (butuh riset mini-SWE-agent + desain). Kompleksitas: sedang-besar.
+  parse); butuh contoh riil `<|tool_call>` model + TDD. **Status: TERPASANG (subset
+  sempit, 2026-07-23)** — prasyarat "contoh riil + TDD" terpenuhi oleh spesimen 14855
+  r10-r12 (katalog "protocol-drift file-write"): (1) marker `call:file:<path>` sebelum
+  fence -> fence berikutnya = aksi file utk path tsb; (2) fence penutup ber-glue token
+  (```<tool_call|>) tetap penutup. Arah (a) adaptasi-ke-model; parse kanonik tak
+  berubah, dialek hanya menambah blok yang dulu jatuh senyap (0 aksi). Pemetaan penuh
+  dialek native lain (call:bash+fence non-bash, dsb.) TETAP research-gated
+  (riset mini-SWE-agent). Kompleksitas terpasang: kecil.
 
 ---
 
