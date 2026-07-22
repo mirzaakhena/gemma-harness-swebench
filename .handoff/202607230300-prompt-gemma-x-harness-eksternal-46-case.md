@@ -26,7 +26,18 @@ kandidat lever импор (dgn disiplin: serap KELAS mekanismenya, bukan tiru bu
 Jika kita > x di case tertentu → bukti nilai lever spesifik kita. **Log tetap
 deliverable utama** (prinsip korpus komparatif).
 
-## 2. LANGKAH 1 sesi baru: riset & pilih "x" (WAJIB verifikasi ulang di internet)
+## 2. KEPUTUSAN MIRZA (2026-07-23): x = **mini-SWE-agent** ✅
+
+Mirza sudah ACC pilihan **mini-SWE-agent** (dari shortlist di bawah). Sesi baru
+TIDAK perlu memilih ulang — langkah risetmu menyempit jadi: (a) verifikasi cara
+resmi konfigurasi mini-SWE-agent utk vLLM endpoint custom
+(`hosted_vllm/gemma-4-31B-it` + `api_base http://10.8.0.86:8000/v1`, temp 0.0,
+dokumen mini-swe-agent.com/latest/models/local_models/), (b) versi/commit stabil
+terbaru + cara menjalankannya per-case pada image SWE-bench lokal, (c) format
+trajectory/log native-nya utk pipeline logging kita. Shortlist di bawah
+dipertahankan sebagai konteks sejarah keputusan.
+
+### Shortlist historis (riset 2026-07-23, utk arsip)
 
 Shortlist hasil riset awal (2026-07-23, sesi lama — angka = SWE-bench Verified,
 backbone Claude, sebagai bukti kematangan scaffold, BUKAN prediksi utk Gemma):
@@ -101,8 +112,9 @@ Regenerasi (dari `main/`): `grep -l '"resolved": true' ../artifacts/f-dev/*/sweb
 
 ## 5. Alur kerja yang kusarankan
 
-1. **Riset & verifikasi x** (§2) → tulis `gemma-x/README.md` §"Pemilihan x"
-   (kandidat, bukti, keputusan + alasan) → **lapor Mirza, minta ACC pilihan x.**
+1. **Verifikasi konfigurasi mini-SWE-agent** (§2 — pilihan SUDAH di-ACC Mirza) →
+   tulis `gemma-x/README.md` §"Pemilihan x" (keputusan + hasil verifikasi
+   konfigurasi vLLM/versi/format log).
 2. Install x di `gemma-x/` (venv/uv sendiri; JANGAN cemari venv main; dep via
    pyproject/lockfile x sendiri).
 3. **Smoke 1-2 case kanari** (15347 / 11049 — image sudah ada): validasi
@@ -145,9 +157,9 @@ Regenerasi (dari `main/`): `grep -l '"resolved": true' ../artifacts/f-dev/*/sweb
 
 ## 8. Pertanyaan terbuka utk Mirza (tanyakan di awal)
 
-1. ACC pilihan x setelah verifikasi (rekomendasi awal: mini-SWE-agent; alternatif
-   OpenHands/SWE-agent/Live-SWE-agent)?
-2. Budget langkah/turn x: default resmi x, atau paritas dgn harness kita (±60)?
+1. ~~ACC pilihan x~~ **SUDAH DIPUTUSKAN: mini-SWE-agent** (Mirza, 2026-07-23).
+2. Budget langkah/turn x: default resmi mini-SWE-agent, atau paritas dgn harness
+   kita (±60)?
 3. Paralel berapa lane (endpoint bersama task lain)?
 4. Setelah 46: lanjut ke 57 case gagal (ini justru paling menarik — apakah x
    memecahkan yang kita belum) / 103 penuh?
