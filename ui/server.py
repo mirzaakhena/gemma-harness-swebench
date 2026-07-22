@@ -1260,7 +1260,11 @@ def make_handler(root: Path):
         def _api(self, path: str, qs: dict) -> None:
             """Routing /api/* (kontrak: docs/api-ui-viewer.md)."""
             if path == "/api/campaigns":
-                self._send_json(api_campaigns(root))
+                try:
+                    self._send_json(api_campaigns(root))
+                except Exception:  # fail-soft: kontrak JSON semua respons
+                    self._send_json({"error": "kesalahan internal server"},
+                                    500)
                 return
             if path not in ("/api/runs", "/api/cases"):
                 self._send_json({"error": "tidak ditemukan"}, 404)

@@ -293,3 +293,16 @@ def test_http_api_internal_error_returns_json_500(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "api_runs", boom)
     code, body = _get_json(tmp_path, "/api/runs?c=r-dev")
     assert code == 500 and "error" in body
+
+
+def test_http_api_campaigns_internal_error_returns_json_500(
+        tmp_path, monkeypatch):
+    # api_campaigns meledak -> JSON 500 juga (paritas guard api_runs)
+    import ui.server as srv
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("meledak")
+
+    monkeypatch.setattr(srv, "api_campaigns", boom)
+    code, body = _get_json(tmp_path, "/api/campaigns")
+    assert code == 500 and "error" in body
