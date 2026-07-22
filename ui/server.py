@@ -897,6 +897,10 @@ def _row_status_from_icon(icon: str) -> str:
         return "WAIT"
     if icon.startswith("⚠"):
         return "ANOMALY"
+    if icon.startswith("➖"):
+        # run tanpa verdict.json yg STALE (dibunuh) — belum resolved & perlu
+        # diperiksa, jadi ikut kelompok WAIT (permintaan Mirza 2026-07-22).
+        return "WAIT"
     return "?"
 
 
@@ -986,6 +990,11 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
             # console.log/events.jsonl baru) dari yang beku (dibunuh) —
             # jangan lagi cap semuanya "(live)" selamanya.
             dur += _live_label(root / active / rid)
+            # ikon marker STALE (dibunuh/ditinggalkan) supaya beda secara
+            # visual dari run yg benar-benar jalan (yg tetap kosong) & dari
+            # pass/fail (✅/❌) — permintaan Mirza 2026-07-22. Live: kosong.
+            if run_liveness(root / active / rid) == "stale":
+                icon = "➖ "
         turns = run_turns(root / active / rid)
         case_id, rerun = split_run_id(rid)
         # status baris utk data-status (radio filter) & modal alasan: dari

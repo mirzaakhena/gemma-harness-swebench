@@ -459,3 +459,50 @@ def test_page_index_missing_gold_shows_no_eval_pending(tmp_path):
     _mk_localize_run(tmp_path, "l-dev", "django__django-11422", None)
     out = page_index(tmp_path, tab="l-dev")
     assert "pass (no-eval)" in out and "⏳" in out and "✅" not in out
+
+
+# --- ikon marker STALE utk run tanpa verdict.json (permintaan Mirza 2026-07-22)
+# STALE (dibunuh/ditinggalkan) harus beda secara visual dari run yg benar-benar
+# jalan; dulu ikon-nya sama-sama kosong sehingga tertukar. Ikon "➖ " (U+2796).
+
+def _mk_noverdict_run(tmp_path, campaign, run_id, *, age_seconds):
+    """Buat run dir tanpa verdict.json dgn console.log/events.jsonl yg mtime-nya
+    di-set `age_seconds` detik lampau (utk memicu live vs stale via run_liveness).
+    """
+    import os
+    import time
+    run = tmp_path / campaign / run_id
+    run.mkdir(parents=True)
+    (run / "console.log").write_text("x\n", encoding="utf-8")
+    (run / "events.jsonl").write_text(
+        json.dumps({"ts": "2026-07-22T00:00:00+07:00"}) + "\n",
+        encoding="utf-8")
+    old = time.time() - age_seconds
+    for name in ("console.log", "events.jsonl"):
+        os.utime(run / name, (old, old))
+    return run
+
+
+def test_page_index_stale_noverdict_run_shows_stale_icon(tmp_path):
+    from ui.server import page_index, STALE_THRESHOLD_SECONDS
+    _mk_noverdict_run(tmp_path, "r-dev", "r-dev--django__django-100--r1",
+                      age_seconds=STALE_THRESHOLD_SECONDS + 120)
+    out = page_index(tmp_path, tab="r-dev")
+    assert "➖" in out                       # ikon marker stale muncul
+    assert "(stale?)" in out                 # sufiks durasi tetap dipertahankan
+    assert 'data-status="WAIT"' in out       # baris ikut filter WAIT
+
+
+def test_page_index_live_noverdict_run_has_no_stale_icon(tmp_path):
+    from ui.server import page_index
+    _mk_noverdict_run(tmp_path, "r-dev", "r-dev--django__django-101--r1",
+                      age_seconds=5)
+    out = page_index(tmp_path, tab="r-dev")
+    assert "➖" not in out                    # run hidup: ikon tetap kosong
+    assert "(live)" in out                    # sufiks live tetap ada
+
+
+def test_row_status_from_icon_stale_maps_to_wait():
+    from ui.server import _row_status_from_icon
+    assert _row_status_from_icon("➖ ") == "WAIT"
+    assert _row_status_from_icon("➖") == "WAIT"
