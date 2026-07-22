@@ -150,3 +150,56 @@ def test_api_runs_run_without_verdict_is_unknown(tmp_path):
     r = out["runs"][0]
     assert r["status"] == "?" and r["verdict"] == "-"
     assert r["category"] == "tanpa verdict.json"
+
+
+# --- api_cases --------------------------------------------------------------
+
+def test_api_cases_ever_qualified_semantics(tmp_path):
+    from ui.server import api_cases
+    # case A: r1 gagal, r2 pass -> status case PASS (pernah qualified)
+    mk_run(tmp_path, "r-dev", "case-A", "r1", verdict="wrong-logic",
+           started="2026-07-20T10:00:00+07:00")
+    mk_run(tmp_path, "r-dev", "case-A", "r2", verdict="pass", pass_l1=True,
+           started="2026-07-21T10:00:00+07:00")
+    # case B: hanya gagal
+    mk_run(tmp_path, "r-dev", "case-B", "r1", verdict="wrong-logic")
+    out = api_cases(tmp_path, "r-dev")
+    assert out["summary"] == {"PASS": 1, "FAIL": 1, "WAIT": 0,
+                              "ANOMALY": 0, "?": 0}
+    by_id = {c["case_id"]: c for c in out["cases"]}
+    assert by_id["case-A"]["status"] == "PASS"
+    assert by_id["case-A"]["runs"] == 2
+    assert by_id["case-B"]["status"] == "FAIL"
+    assert by_id["case-B"]["category"] == "wrong-logic"
+    assert by_id["case-B"]["latest_run"] == "r-dev--case-B--r1"
+
+
+def test_api_cases_summary_stable_under_status_filter(tmp_path):
+    from ui.server import api_cases
+    mk_run(tmp_path, "r-dev", "case-A", "r1", verdict="pass", pass_l1=True)
+    mk_run(tmp_path, "r-dev", "case-B", "r1", verdict="wrong-logic")
+    out = api_cases(tmp_path, "r-dev", status="FAIL")
+    # summary TIDAK berubah oleh filter status; daftar cases berubah
+    assert out["summary"]["PASS"] == 1 and out["summary"]["FAIL"] == 1
+    assert out["total"] == 1
+    assert out["cases"][0]["case_id"] == "case-B"
+
+
+def test_api_cases_q_filter_and_paging(tmp_path):
+    from ui.server import api_cases
+    for i in range(3):
+        mk_run(tmp_path, "r-dev", f"django-{i}", "r1",
+               verdict="pass", pass_l1=True)
+    mk_run(tmp_path, "r-dev", "sympy-9", "r1", verdict="pass", pass_l1=True)
+    out = api_cases(tmp_path, "r-dev", q="django", per_page=2, page=2)
+    assert out["summary"]["PASS"] == 3      # sympy tersaring oleh q
+    assert out["total"] == 3 and out["total_pages"] == 2
+    assert len(out["cases"]) == 1
+
+
+def test_api_cases_empty_campaign(tmp_path):
+    from ui.server import api_cases
+    out = api_cases(tmp_path, "r-dev")
+    assert out["cases"] == [] and out["total"] == 0
+    assert out["summary"] == {"PASS": 0, "FAIL": 0, "WAIT": 0,
+                              "ANOMALY": 0, "?": 0}

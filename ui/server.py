@@ -741,6 +741,41 @@ def api_runs(root: Path, campaign: str, status: str | None = None,
             "total_pages": total_pages, "total": total, "runs": page_items}
 
 
+def api_cases(root: Path, campaign: str, status: str | None = None,
+              q: str | None = None, page: int = 1,
+              per_page: int = PAGE_SIZE) -> dict:
+    """Payload /api/cases: ringkasan per case "pernah qualified" (paritas
+    panel ringkasan UI, via stage_summary). `summary` dihitung SETELAH
+    filter q tapi SEBELUM filter status + paging (angka stabil).
+    `latest_run` = run sumber status (run qualified bila PASS; run terbaru
+    bila tidak)."""
+    campaign_dir = Path(root) / campaign
+    runs = filter_runs_by_case(list_runs(campaign_dir), q)
+    s = stage_summary(campaign_dir, campaign, runs)
+    run_count: dict[str, int] = {}
+    for r in runs:
+        rid = r.get("run_id")
+        if isinstance(rid, str) and rid:
+            cid, _ = split_run_id(rid)
+            run_count[cid] = run_count.get(cid, 0) + 1
+    cases = [{"case_id": i["case"], "status": i["status"],
+              "category": i["category"], "reasons": i["reasons"],
+              "latest_run": i["run_id"], "started": i["started"],
+              "runs": run_count.get(i["case"], 0)}
+             for i in s["items"]]
+    if status is not None:
+        cases = [c for c in cases if c["status"] == status]
+    total = len(cases)
+    page_items, total_pages = paginate(cases, page, per_page)
+    return {"campaign": campaign,
+            "summary": {"PASS": s["pass"], "FAIL": s["fail"],
+                        "WAIT": s["wait"], "ANOMALY": s["anomaly"],
+                        "?": s["unknown"]},
+            "page": max(1, min(page, total_pages)),
+            "total_pages": total_pages, "total": total,
+            "cases": page_items}
+
+
 # --- rendering HTML ----------------------------------------------------------
 
 _STYLE = """<style>
