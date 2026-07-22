@@ -4270,3 +4270,18 @@ base.py-nya GAGAL cukup lama utk memicu rotasi kandidat ke `resolvers.py`; r10 k
 karena monkey-patch-nya menipu repro lemah (oracle 200→PASS) sebelum rotasi. Repro lemah
 12184 (status-200=PASS, exception→PASS) = bukti penguat keluarga lever perketat-repro
 (LV-01/LV-10), bukan entri baru.
+
+**Status 2026-07-22 (claude-mac) — SPESIMEN KEDUA: 15388 r9 (bukti penguat, sekaligus varian akar).**
+Kedua attempt degenerat byte-identik: a1 t11–t40 = 30 ulangan md5 `8e92e26aa6`
+(menulis-ulang full-file identik ×30, "wrote 1821 chars"), a2 t10/t14–t18+ md5
+`14821ba778` — dua loop dalam satu run. Pembeda penting dari spesimen 12184 r12:
+(a) **varian akar shortlist** — kandidat #1 justru FILE GOLD YANG BENAR
+(`django/template/autoreload.py`) tapi evidence-nya salah-atribusi MEKANISME
+(dibingkai "watch rekursif project root overwhelm" padahal bug = event `.py`
+ditelan `template_changed`), sehingga model mengedit fungsi yang salah di file
+yang benar → audit shortlist wajib mencakup kualitas evidence, bukan hanya
+ketepatan file; (b) **siklus lambat bukan sleep** — tiap turn mengeksekusi repro
+yang mem-boot dev server Django 3× (~46 dtk/turn vs 21,5 dtk siklus grep 12184)
+→ menjelaskan profil 15388 selalu 60–80 mnt/draw; hematan watcher reply-hash di
+sini ~22 mnt hanya utk a1. Bukti: `f-dev--django__django-15388--r9/console.log`
+ln 1644–5457 (a1), ln 8229+ (a2); events 21:08:39→21:30:56 (a1 exhausted 40/40).
