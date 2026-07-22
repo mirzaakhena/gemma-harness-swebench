@@ -4532,3 +4532,37 @@ scope (tetap research-gated): pemetaan `call:bash` + fence non-bash; marker tanp
 fence; glue di baris PEMBUKA fence; dedup blok dialek yang juga punya twin kanonik
 di reply sama (kelas no-silent-drop tercatat terpisah). Retest keluarga KH-12
 (15902 §-A0g "retest-when-installed", 14855, 13265) kini unblocked.
+
+### Falsifikasi 11910 SELESAI (r1+r2) — netralisasi teks GAGAL memadamkan modus; pengikat = ORACLE EKSEKUSI
+r2 (candidates netral + repro.md TANPA disjungsi): modus hapus-guard TETAP —
+patch menghapus seluruh blok if guard (fix.diff r2; region 1:1, file_match true).
+Kesimpulan eksperimen dua-draw: (1) resep-expectation ✗ kausal-tunggal (r1),
+(2) disjungsi EXPECTED ✗ kausal-tunggal (r2) → yang mengikat = **oracle eksekusi
+repro.py yang menerima cabang tanpa-AlterField** + evidence line faktual yang
+menunjuk baris guard + preferensi hapus-sederhana di bawah edit-friction.
+Implikasi: netralisasi/perketat TEKS input tidak cukup — **R14/N3 harus menyerang
+repro.py (oracle eksekusi multi-skenario)**, bukan narasi md. Run eksperimen
+TIDAK masuk denominator papan (kampanye f-exp-neutral).
+
+### Diagnosa 12470 f-r3 (draw-2) — wrong-mechanism lolos oracle arah-saja; recovery R17 stokastik
+Flip (L1 menang) tapi resolved=false: f2p `test_inherited_ordering_pk_desc` —
+gold MEMOTONG rekursi saat name=='pk' (order kolom FK lokal); model TETAP rekursi
++ hardcode default_order="ASC" utk membatalkan double-flip. Repro beku hanya cek
+ARAH DESC di SQL 2-level → PASS,PASS; gold test cek IDENTITAS KOLOM 3-level →
+FAIL. Kelas: wrong-mechanism (varian-2) lolos weak-oracle false-accept (kelas
+12184-r13/13265) — oracle direction-only vs gold SQL-shape. +Regresi laten:
+hardcode ASC utk relasi non-pk tak tercakup p2p scope sempit. Catatan R17: evidence
+terfabrikasi SAMA (compile_order_by) yang membunuh draw-1 ter-recover 3 turn di
+draw-2 (pivot grep "ORDER BY" → find_ordering_name riil; DONE-rejection gate 2×
+berperan) → kegagalan akibat evidence-busuk bersifat STOKASTIK; R17 = pengurang
+varians, bukan opsional. Lever baru: TIDAK ADA (semua tercakup R14/N3 + R17).
+
+### Delta 13265 d2 — replay wrong-layer + anomali BARU "truncation whole-file-write"
+Patch d2 = mekanisme sama d1 (optimizer.py `_reorder_order_with_respect_to`,
+beda byte implementasi) — oracle sempit sama meloloskan lagi → R14/N3 makin kuat
+(kini 3 spesimen draw utk 13265+12470 dalam satu malam). Anomali BARU (catat-only,
+serumpun kelas-4 near-duplicate rewrite): attempt-1 d1... KOREKSI: attempt-1 D2
+menulis-ulang autodetector.py dgn hunk `@@ -333,985 +333,4` — 984 baris TERHAPUS
+(body _sort_migrations dst jadi `pass`), loop FAIL "makemigrations not picking up"
+konsisten modul tergerus. Kandidat: guard anti-truncation file-write (tolak tulis
+yang menghapus >N% baris file tanpa konfirmasi diff eksplisit).
