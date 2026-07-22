@@ -308,3 +308,25 @@ Berikutnya: **retest batch-1 per §2** (origin 11422/11910/15388/12184 + 12856 +
 kanari) oleh bot-02, menunggu konfirmasi Mirza. Semua retest berlabel rezim
 Gelombang-1 (§0.4). Analisa/autopsi hasil + refresh taksonomi: bot-04.
 Gelombang 2/3 tetap catat-only.*
+
+### §-A0f — HASIL gating G2 (claude-mac, 2026-07-22 malam): rate origin R1 & kanari FINAL
+
+Eksekusi arahan §-A0e butir 2 (+perluasan n=5 & kanari stabil same-session atas arahan
+Mirza "maksimalkan endpoint idle"). Papan lengkap + label rezim + ledger invalid:
+`artifacts/papan-skor-rate-origin-r1-mac-g1.md`. Ringkas (pooled W=win-x64 + M=mac-arm64-rosetta,
+endpoint vLLM sama, frozen R/L sama):
+
+- **Origin R1:** 11422 **2/5** · 11910 **0/5** (signature P2P identik 5/5:
+  `test_rename_field_foreign_key_to_field`) · 15388 **0/5** · 12184 **1/5** (5 mode gagal
+  berbeda; ✓=r9). **Papan lama "0/4 unlock" TERBANTAH oleh rate** — R1 membuka unlock nyata
+  di 2 dari 4 origin. Konfirmasi telak KH-20 + §-A0d.
+- **Kanari:** goyang 15790 **4/5**, 13230 **2/5** (0/3 blok-W → 2/2 blok-M!); stabil
+  11049/15347/6938 **9/9** same-session M → pagar G1 utuh di rezim baru.
+- **Lever baru dikatalogkan** (2 spesimen loop degenerat byte-identik FIX → watcher
+  reply-hash; 2 varian cacat evidence shortlist LOCALIZE; oracle repro lemah 12184) +
+  **KH-21** (implikasi §-A0d "byte-identik tak akan muncul di FIX" DIPERSEMPIT).
+- **11422 "dinding R13"** terbukti FLAKY (bukan deterministik) — r4/r5 PASS asli tanpa R13;
+  prioritas R13 di G3 layak ditinjau ulang.
+
+**Status: bahan brief G2 LENGKAP — menunggu keputusan Mirza** (threshold "solved" §-A0e.3
+juga masih terbuka; data rate kini tersedia utk mematoknya).
