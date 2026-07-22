@@ -198,6 +198,7 @@ ikon/durasi/turns, panel infografik status per stage. Biasanya hidup
 sebagai proses detached. Tab kampanye `f-*` berlabel **"FIX and VERIFY"**
 karena VERIFY (checker L2) hidup sebagai lapisan kedua di dalam tab yang
 sama, bukan tab terpisah (lihat status 2-lapisan di bawah).
+API JSON untuk agent: lihat docs/api-ui-viewer.md.
 
 **KNOWN ISSUE dashboard (2026-07-20) — SELESAI.** Bug lama (`case_status()`
 memetakan verdict `"flip"` ke default FAIL padahal baris tabel menampilkan

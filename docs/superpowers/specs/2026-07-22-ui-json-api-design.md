@@ -80,7 +80,7 @@ Respons:
    {"run_id": "r-dev--django__django-11583--r2",
     "case": "django__django-11583", "rerun": "r2",
     "verdict": "pass", "status": "PASS", "category": "pass",
-    "reasons": [], "wall": 123.4, "started": "2026-07-21 14:03"}
+    "reasons": [], "wall": "reproduce", "started": "2026-07-21 14:03"}
  ]}
 ```
 

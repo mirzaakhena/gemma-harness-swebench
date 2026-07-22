@@ -2,6 +2,8 @@
 
 Stdlib only (Python 3.12). Baca-saja: tidak pernah menulis ke artifacts.
 Kontrak data: docs/kontrak-output.md (schema_version 1.0.0).
+API JSON untuk agent: /api/campaigns /api/runs /api/cases —
+kontrak lengkap di docs/api-ui-viewer.md.
 
 Jalankan:
     python ui\\server.py [--root <artifacts_dir>] [--port 8766]
