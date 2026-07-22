@@ -351,7 +351,7 @@ def test_run_pool_all_draws_executed_same_case_never_concurrent(tmp_path, monkey
     calls: list = []
 
     def fake_run_case(state_path, case, allow_concurrent=False,
-                      prune_localize_miss=False):
+                      prune_localize_miss=False, **kwargs):
         with lock:
             if case in active_now:
                 violations.append(case)  # slot-race: dua draw same-case aktif
@@ -383,7 +383,7 @@ def test_run_pool_exception_in_one_lane_does_not_kill_pool(tmp_path, monkeypatch
     draw lain tetap dieksekusi sampai antrean habis. Entri lama di results
     (resume) tidak boleh hilang dari state."""
     def fake_run_case(state_path, case, allow_concurrent=False,
-                      prune_localize_miss=False):
+                      prune_localize_miss=False, **kwargs):
         if case == "BOOM":
             raise RuntimeError("meledak di lane")
         return {"case": case, "swebench_eval": {"resolved": True}}
@@ -416,3 +416,66 @@ def test_case_paths_portable_no_backslash_on_posix():
         assert "\\" not in prob and "\\" not in gold
     assert prob == str(Path("cases") / "problems" / "django__django-11910.txt")
     assert gold == str(Path("cases") / "gold" / "django__django-11910" / "gold.patch")
+
+
+# --- void-infra & cap MAX_RERUN (KH-22) ------------------------------------
+# Insiden 2026-07-22: 15902/14855 punya 5-6 run "bangkai" (driver crash
+# endpoint mati, 0 turn model) yang tervonis repro-missing biasa -> cap
+# `next_free_rerun > MAX_RERUN` menghitung bangkai sebagai percobaan dan
+# menolak retest sah ("BERHENTI setelah 0 rerun" pada 14855 r10).
+
+def _mk_void_run(tmp_path, name, events_text=None, infra_abort=False):
+    d = tmp_path / name
+    d.mkdir(parents=True)
+    if events_text is not None:
+        (d / "events.jsonl").write_text(events_text, encoding="utf-8")
+    if infra_abort:
+        (d / "infra_abort.json").write_text('{"reason": "preflight"}', encoding="utf-8")
+    return d
+
+def test_void_infra_run_marker_file_wins():
+    import tempfile
+    from pathlib import Path as P
+    with tempfile.TemporaryDirectory() as t:
+        d = _mk_void_run(P(t), "r-dev--c--r1", events_text='{"type":"enter"}\n', infra_abort=True)
+        assert run_rlfv_batch.is_void_infra_run(d) is True
+
+def test_void_infra_run_legacy_crash_no_model_signal():
+    import tempfile
+    from pathlib import Path as P
+    with tempfile.TemporaryDirectory() as t:
+        ev = ('{"type":"enter"}\n'
+              '{"type":"abort","detail":{"reason":"driver crash: URLError(TimeoutError(10060))"}}\n'
+              '{"type":"exit"}\n')
+        d = _mk_void_run(P(t), "r-dev--c--r1", events_text=ev)
+        assert run_rlfv_batch.is_void_infra_run(d) is True
+
+def test_void_infra_run_real_attempt_with_model_signal_not_void():
+    import tempfile
+    from pathlib import Path as P
+    with tempfile.TemporaryDirectory() as t:
+        ev = ('{"type":"enter"}\n'
+              '{"type":"retry","detail":{"why":"x"},"budget":{"msg_used":7}}\n'
+              '{"type":"abort","detail":{"reason":"driver crash: URLError"}}\n')
+        d = _mk_void_run(P(t), "r-dev--c--r1", events_text=ev)
+        # ada sinyal model (msg_used) tapi crash -> legacy: TIDAK void (konservatif);
+        # run era-baru sekelas ini akan ditandai infra_abort.json oleh driver.
+        assert run_rlfv_batch.is_void_infra_run(d) is False
+
+def test_void_infra_run_unreadable_counts_as_attempt():
+    import tempfile
+    from pathlib import Path as P
+    with tempfile.TemporaryDirectory() as t:
+        d = _mk_void_run(P(t), "r-dev--c--r1")  # tanpa events.jsonl
+        assert run_rlfv_batch.is_void_infra_run(d) is False  # gagal-aman: hitung
+
+def test_valid_rerun_attempts_excludes_void(tmp_path):
+    camp = tmp_path
+    ev_real = '{"type":"retry","budget":{"msg_used":3}}\n'
+    ev_void = '{"type":"abort","detail":{"reason":"driver crash: URLError"}}\n'
+    _mk_void_run(camp, "r-dev--case-a--r1", events_text=ev_real)
+    _mk_void_run(camp, "r-dev--case-a--r2", events_text=ev_void)
+    _mk_void_run(camp, "r-dev--case-a--r3", events_text=ev_void)
+    _mk_void_run(camp, "r-dev--case-a--r4", infra_abort=True, events_text='{"type":"enter"}\n')
+    _mk_void_run(camp, "r-dev--case-b--r1", events_text=ev_real)  # case lain: diabaikan
+    assert run_rlfv_batch.valid_rerun_attempts(camp, "r-dev", "case-a") == 1

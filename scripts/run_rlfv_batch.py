@@ -141,6 +141,38 @@ def should_prune_fix(gold_eval, enabled: bool) -> bool:
     return data.get("qualified") is False
 
 
+def is_void_infra_run(run_dir: Path) -> bool:
+    """Run "bangkai" infra (KH-22): driver crash pra/ekstra-model sehingga run
+    tak membawa sinyal model — TIDAK boleh dihitung sebagai percobaan.
+
+    Aturan (konservatif, gagal-aman ke arah MENGHITUNG sebagai percobaan):
+    1. `infra_abort.json` ada (ditulis driver era-baru) → void.
+    2. Legacy (pra-label): events.jsonl memuat abort 'driver crash' DAN tidak
+       ada satu pun sinyal model (`msg_used`) → void. Ada sinyal model → BUKAN
+       void (mis. 14855 r7: 21 turn lalu crash — era-baru akan berlabel
+       infra_abort.json; legacy dihitung percobaan, konservatif).
+    3. events.jsonl tak ada/tak terbaca → BUKAN void (hitung; jangan beri
+       retry gratis atas dir misterius)."""
+    if (run_dir / "infra_abort.json").is_file():
+        return True
+    try:
+        text = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+    except Exception:
+        return False
+    return ("driver crash" in text) and ("msg_used" not in text)
+
+
+def valid_rerun_attempts(campaign_dir: Path, campaign: str, case: str) -> int:
+    """Jumlah percobaan SAH (non-void) sebuah case di kampanye — pengganti
+    proxy lama `next_free_rerun > MAX_RERUN` yang menghitung bangkai infra
+    (insiden 14855 r10: 6 bangkai memblokir retest sah)."""
+    n = 0
+    for p in campaign_dir.glob(f"{campaign}--{case}--r*"):
+        if re.search(r"--r(\d+)$", p.name) and not is_void_infra_run(p):
+            n += 1
+    return n
+
+
 def qualified_rerun(campaign_dir: Path, campaign: str, case: str) -> int | None:
     """Nomor rerun QUALIFIED terakhir (pass_l1 true), bukan nomor terbesar."""
     best = None
@@ -268,7 +300,8 @@ def already_done(case: str) -> bool:
 
 def run_case(state_path: Path, case: str,
              allow_concurrent: bool = False,
-             prune_localize_miss: bool = False) -> dict:
+             prune_localize_miss: bool = False,
+             max_rerun: int = MAX_RERUN) -> dict:
     """Jalankan R -> L -> F -> V untuk satu case. Kembalikan ringkasan."""
     img = IMAGE_TMPL.format(case=case)
     prob, gold = case_paths(case)
@@ -278,10 +311,12 @@ def run_case(state_path: Path, case: str,
     rq = qualified_rerun(ARTIFACTS / "r-dev", "r-dev", case)
     attempts = 0
     while rq is None and attempts < MAX_RERUN:
-        n = next_free_rerun(ARTIFACTS / "r-dev", "r-dev", case)
-        if n > MAX_RERUN:
-            log(state_path, f"  slot rerun R sudah melewati {MAX_RERUN}, berhenti")
+        # KH-22: cap = jumlah percobaan SAH (non-void), bukan nomor slot —
+        # bangkai infra (driver-crash 0-turn) tidak memblokir retest sah.
+        if valid_rerun_attempts(ARTIFACTS / "r-dev", "r-dev", case) >= max_rerun:
+            log(state_path, f"  percobaan R valid sudah >= {max_rerun}, berhenti")
             break
+        n = next_free_rerun(ARTIFACTS / "r-dev", "r-dev", case)
         if not wait_for_gpu(state_path, case, allow_concurrent):
             res["error"] = "gpu-timeout-reproduce"
             return res
@@ -305,9 +340,10 @@ def run_case(state_path: Path, case: str,
     lq = qualified_rerun(ARTIFACTS / "l-dev", "l-dev", case)
     attempts = 0
     while lq is None and attempts < MAX_RERUN:
-        n = next_free_rerun(ARTIFACTS / "l-dev", "l-dev", case)
-        if n > MAX_RERUN:
+        if valid_rerun_attempts(ARTIFACTS / "l-dev", "l-dev", case) >= max_rerun:
+            log(state_path, f"  percobaan L valid sudah >= {max_rerun}, berhenti")
             break
+        n = next_free_rerun(ARTIFACTS / "l-dev", "l-dev", case)
         if not wait_for_gpu(state_path, case, allow_concurrent):
             res["error"] = "gpu-timeout-localize"
             return res
@@ -382,7 +418,8 @@ def run_case(state_path: Path, case: str,
 
 
 def run_pool(state_path: Path, queue: list[str], parallel: int,
-             results: list, prune_localize_miss: bool = False) -> None:
+             results: list, prune_localize_miss: bool = False,
+             max_rerun: int = MAX_RERUN) -> None:
     """Jalankan antrean draw dengan rolling pool `parallel` lane (threading).
 
     Selalu ada <=N draw aktif; begitu satu selesai, slot langsung diisi item
@@ -409,7 +446,8 @@ def run_pool(state_path: Path, queue: list[str], parallel: int,
         log(state_path, f"[{no}/{total}] {case} — mulai")
         try:
             res = run_case(state_path, case, allow_concurrent=True,
-                           prune_localize_miss=prune_localize_miss)
+                           prune_localize_miss=prune_localize_miss,
+                           max_rerun=max_rerun)
         except Exception as exc:  # noqa: BLE001 — pool tidak boleh mati karena satu draw
             res = {"case": case, "error": f"exception: {exc!r}"}
             log(state_path, f"  EXCEPTION: {exc!r}")
@@ -464,6 +502,11 @@ def main(argv=None) -> int:
                          "N draw aktif sekaligus via thread; same-case tetap "
                          "serial (invarian next_free_rerun); tiap lane bypass "
                          "gate GPU ala --allow-concurrent.")
+    ap.add_argument("--max-rerun", type=int, default=MAX_RERUN,
+                    help="cap percobaan SAH (non-void) per fase per case "
+                         "(default 3). Naikkan HANYA utk retest yang disetujui "
+                         "eksplisit (mis. case dgn percobaan valid historis "
+                         "banyak). Bangkai infra tak pernah dihitung (KH-22).")
     ap.add_argument("--prune-localize-miss", action="store_true",
                     help="ORKESTRASI hemat-compute (default OFF): SKIP FIX bila "
                          "gold_eval.json LOCALIZE menandai file_match=false. "
@@ -499,7 +542,7 @@ def main(argv=None) -> int:
                 continue
             queue_run.append(case)
         run_pool(state_path, queue_run, args.parallel, results,
-                 args.prune_localize_miss)
+                 args.prune_localize_miss, args.max_rerun)
         # Jumlah draw per case DI-LOG sebelum ringkasan: dedup_results hanya
         # menyisakan entri terakhir per case (semantik lama, sengaja), jadi
         # info multi-draw harus tercatat di sini agar tak hilang.
@@ -517,7 +560,7 @@ def main(argv=None) -> int:
             log(state_path, f"[{i}/{len(cases)}] {case} — mulai")
             try:
                 res = run_case(state_path, case, args.allow_concurrent,
-                               args.prune_localize_miss)
+                               args.prune_localize_miss, args.max_rerun)
             except Exception as exc:  # noqa: BLE001 — batch tidak boleh mati karena satu case
                 res = {"case": case, "error": f"exception: {exc!r}"}
                 log(state_path, f"  EXCEPTION: {exc!r}")

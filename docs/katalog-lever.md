@@ -4347,3 +4347,23 @@ TERDEKAT-gold — gagal hanya karena lupa filter None kwargs (SATU baris), dan r
 (status-200=PASS) menerimanya → `pair PASS,PASS` tapi resolved=false. Dengan wrong-file
 tereliminasi, **satu-satunya penyebab gagal tersisa = oracle repro** → bukti-kasus bersih
 utk menaikkan N3/R14 (perketat oracle) ke kandidat utama gelombang berikutnya.
+
+### Entri BARU (catat-only) — "batch-repetition intra-reply" (spesimen: 11422 r9, 2026-07-22)
+Kelas repetisi baru, BUKAN loop degenerat antar-reply: Gemma menulis 6 blok bash
+byte-identik (`python /testbed/.pipe/repro.py`) + narasi sukses halusinatif ("It
+passed...") dalam SATU reply (t4); driver mengeksekusi keenamnya (6× boot runserver,
+~3,7 mnt; 5 redundan). Antar-reply md5 semua unik → N1 benar tidak menyala; desain N1
+TIDAK perlu revisi. Harness menahan dgn benar (gate observed_pass menolak DONE
+halusinatif) dan run berakhir WIN L1 6 turn (L2 false — pola lokasi-fix r6/r7).
+**Kandidat lever: dedup eksekusi blok md5-identik dalam satu reply — DITUNDA (keputusan
+Mirza 2026-07-22): versi naif berbahaya** (blok identik tak selalu redundan bila ada aksi
+ber-side-effect di antaranya). **Syarat naik:** spesimen kedua + desain versi aman
+(dedup hanya blok identik BERURUTAN tanpa aksi lain di antaranya).
+
+### Keputusan cakupan pemasangan (Mirza, 2026-07-22 malam)
+Dari kandidat konsolidasi diagnosa: **DIPASANG = (1) infra-abort + salvage files +
+pre-flight ping (REPRODUCE/LOCALIZE, port pola R12) dan (2) fix cap MAX_RERUN batch
+runner (denominator run-ber-sinyal-model, KH-22)** — keduanya general murni, nol risiko
+overfit. **DITUNDA:** trigger periode-2 (menunggu spesimen kedua; mekanisme content-blind
+tapi bukti baru 1 case) dan dedup intra-reply (di atas). Prinsip yang dipegang: lever
+menyerang KELAS taksonomi, tak pernah meng-encode semantik case.
