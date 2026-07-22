@@ -864,13 +864,6 @@ function showInfo(){
   document.getElementById('uiModalBody').innerHTML=b?b.innerHTML:'';
   _openModal();
 }
-function filterRows(v){
-  var rows=document.querySelectorAll('tr[data-status]');
-  for(var i=0;i<rows.length;i++){
-    var s=rows[i].getAttribute('data-status');
-    rows[i].style.display=((v==='All')||(v===s))?'':'none';
-  }
-}
 function _copyFeedback(btn){
   var prev=btn.textContent;
   btn.textContent='✓';
@@ -967,20 +960,46 @@ def _verdict_summary(v) -> str:
     return str(v)
 
 
-def _search_box(active: str, q: str | None) -> str:
-    """Kotak search/filter by nama case (GET form). `tab` dibawa sbg hidden
-    field supaya submit tetap di tab aktif; q terisi ulang. Tautan 'hapus'
-    muncul saat filter aktif."""
+def _search_box(active: str, q: str | None,
+                status: str | None = None) -> str:
+    """Kotak search/filter by nama case (GET form). `tab` (+`status` bila
+    aktif) dibawa sbg hidden field supaya submit tetap di tab & filter
+    status aktif; q terisi ulang. Tautan 'hapus' muncul saat filter aktif."""
     qval = html.escape(q or "", quote=True)
+    ssuffix = ("&status=" + urllib.parse.quote(status)) if status else ""
     clear = ("<a class='clear' href='/?tab=" + urllib.parse.quote(active)
-             + "'>&times; hapus filter</a>") if q else ""
+             + ssuffix + "'>&times; hapus filter</a>") if q else ""
+    hidden_status = (f"<input type='hidden' name='status' "
+                     f"value='{html.escape(status, quote=True)}'>"
+                     if status else "")
     return ("<form class='search' method='get' action='/'>"
             f"<input type='hidden' name='tab' value='{html.escape(active, quote=True)}'>"
+            + hidden_status +
             f"<input type='text' name='q' value='{qval}' "
             "placeholder='cari nama case (mis. 15902 atau django-114)' "
             "autocomplete='off'>"
             "<button type='submit'>cari</button>"
             + clear + "</form>")
+
+
+def _status_filter_form(active: str, q: str | None,
+                        status: str | None) -> str:
+    """Radio filter status server-side All/PASS/FAIL (permintaan Mirza
+    2026-07-22) — GET form auto-submit; tab & q dibawa hidden. Nilai
+    'All' dikirim apa adanya dan dinormalkan jadi None di handler."""
+    opts = []
+    for val in ("All", "PASS", "FAIL"):
+        sel = " checked" if (status or "All") == val else ""
+        opts.append(
+            f"<label><input type='radio' name='status' value='{val}'"
+            f"{sel} onchange='this.form.submit()'> {val}</label>")
+    hidden = [f"<input type='hidden' name='tab' "
+              f"value='{html.escape(active, quote=True)}'>"]
+    if q:
+        hidden.append(f"<input type='hidden' name='q' "
+                      f"value='{html.escape(q, quote=True)}'>")
+    return ("<form class='rfilter' method='get' action='/'>filter: "
+            + "".join(hidden) + "".join(opts) + "</form>")
 
 
 def _row_status_from_icon(icon: str) -> str:
@@ -1004,7 +1023,7 @@ def _row_status_from_icon(icon: str) -> str:
 
 
 def page_index(root: Path, tab: str | None = None, page: int = 1,
-               q: str | None = None) -> str:
+               q: str | None = None, status: str | None = None) -> str:
     parts = ["<h1>gemma-harness log viewer</h1>",
              f"<p class='dim'>root: {html.escape(str(root))}</p>"]
     campaigns = order_campaigns(with_stage_tabs(list_campaigns(root)))
@@ -1015,14 +1034,18 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
     active = tab if tab in campaigns else campaigns[0]
     # q dibawa lintas tab supaya filter berlaku di ketiga tab (permintaan Mirza)
     qsuffix = ("&q=" + urllib.parse.quote(q)) if q else ""
+    # status dibawa lintas tab & halaman — paritas perilaku q
+    # (permintaan Mirza 2026-07-22: filter global utk ketiga stage)
+    ssuffix = ("&status=" + urllib.parse.quote(status)) if status else ""
     tab_links = []
     for camp in campaigns:
         cls = " class='active'" if camp == active else ""
         tab_links.append(
-            f"<a{cls} href='/?tab={urllib.parse.quote(camp)}{qsuffix}'>"
+            f"<a{cls} href='/?tab={urllib.parse.quote(camp)}{qsuffix}"
+            f"{ssuffix}'>"
             f"{html.escape(campaign_label(camp))}</a>")
     parts.append("<div class='tabs'>" + "".join(tab_links) + "</div>")
-    parts.append(_search_box(active, q))
+    parts.append(_search_box(active, q, status))
 
     runs = sort_runs_desc(list_runs(root / active), root / active)
     if not runs:
@@ -1048,51 +1071,63 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
     # dipakai modal saat ikon FAIL/ANOMALY di tabel utama diklik
     reason_by_case = {i["case"]: i for i in summary["items"]}
 
-    # radio filter baris tabel utama (All/PASS/FAIL) — client-side JS
-    # (filterRows) berlaku otomatis di ketiga tab (permintaan Mirza 2026-07-21)
-    parts.append(
-        "<div class='rfilter'>filter: "
-        "<label><input type='radio' name='rowfilter' value='All' checked "
-        "onchange=\"filterRows('All')\"> All</label>"
-        "<label><input type='radio' name='rowfilter' value='PASS' "
-        "onchange=\"filterRows('PASS')\"> PASS</label>"
-        "<label><input type='radio' name='rowfilter' value='FAIL' "
-        "onchange=\"filterRows('FAIL')\"> FAIL</label></div>")
+    # radio filter status — server-side, berlaku ke seluruh data
+    # (permintaan Mirza 2026-07-22; dulu client-side filterRows)
+    parts.append(_status_filter_form(active, q, status))
 
-    page_runs, total_pages = paginate(runs, page, PAGE_SIZE)
-    rows = []
-    for r in page_runs:
+    # pass 1: hitung status baris SEMUA run terfilter q — filter status
+    # harus berlaku lintas seluruh data SEBELUM paginasi; field mahal
+    # (durasi/turns) ditunda ke pass 2 (halaman aktif saja)
+    row_meta = []
+    for r in runs:
         rid = r["run_id"]
-        vpath = root / active / rid / "verdict.json"
-        vtext, icon = run_index_verdict(active, root / active / rid)
+        run_dir = root / active / rid
+        vpath = run_dir / "verdict.json"
+        vtext, icon = run_index_verdict(active, run_dir)
         if vpath.is_file() and active.startswith("f-"):
             # ikon baris disinkronkan ke status 2-lapisan (spec §6)
             # — teks verdict TETAP vonis L1 produk apa adanya
             # (permintaan Mirza: viewer verify-fail jangan lagi ✅).
-            two_status = case_status(active, root / active / rid)
+            two_status = case_status(active, run_dir)
             icon = status_icon(two_status["status"])
+        has_verdict = vpath.is_file()
+        if not has_verdict and run_liveness(run_dir) == "stale":
+            # marker STALE (dibunuh/ditinggalkan) — beda dari run live
+            # (ikon kosong) & dari pass/fail (permintaan Mirza 2026-07-22)
+            icon = "➖ "
+        row_meta.append({"rid": rid, "vtext": vtext, "icon": icon,
+                         "has_verdict": has_verdict,
+                         "status": _row_status_from_icon(icon)})
+
+    if status:
+        row_meta = [m for m in row_meta if m["status"] == status]
+        parts.append(f"<p class='dim'>filter status: "
+                     f"<b>{html.escape(status)}</b> &middot; "
+                     f"{len(row_meta)} run cocok</p>")
+        if not row_meta:
+            parts.append("<p class='dim'>(tidak ada run dengan status "
+                         "ini)</p>")
+            return _page("log viewer", "".join(parts))
+
+    page_meta, total_pages = paginate(row_meta, page, PAGE_SIZE)
+    rows = []
+    for m in page_meta:
+        rid = m["rid"]
+        run_dir = root / active / rid
+        vtext, icon = m["vtext"], m["icon"]
         href = ("/run?c=" + urllib.parse.quote(active)
                 + "&r=" + urllib.parse.quote(rid))
-        dur = fmt_duration(run_duration_seconds(root / active / rid))
-        if not vpath.is_file():
-            # run tanpa verdict.json: bedakan yang masih aktif (mtime
-            # console.log/events.jsonl baru) dari yang beku (dibunuh) —
-            # jangan lagi cap semuanya "(live)" selamanya.
-            dur += _live_label(root / active / rid)
-            # ikon marker STALE (dibunuh/ditinggalkan) supaya beda secara
-            # visual dari run yg benar-benar jalan (yg tetap kosong) & dari
-            # pass/fail (✅/❌) — permintaan Mirza 2026-07-22. Live: kosong.
-            if run_liveness(root / active / rid) == "stale":
-                icon = "➖ "
-        turns = run_turns(root / active / rid)
+        dur = fmt_duration(run_duration_seconds(run_dir))
+        if not m["has_verdict"]:
+            # run tanpa verdict.json: label live/stale (ikon di pass 1)
+            dur += _live_label(run_dir)
+        turns = run_turns(run_dir)
         case_id, rerun = split_run_id(rid)
-        # status baris utk data-status (radio filter) & modal alasan: dari
-        # ikon baris itu sendiri (✅->PASS, ❌->FAIL, ⏳->WAIT, ⚠️->ANOMALY);
-        # utk f-* ikon sudah = status_icon(case_status), jadi konsisten.
-        row_status = _row_status_from_icon(icon)
+        row_status = m["status"]
         if row_status in ("FAIL", "ANOMALY"):
             item = reason_by_case.get(case_id)
-            rtext = _fail_reason_text(item) if item else "(detail tidak terekam)"
+            rtext = (_fail_reason_text(item) if item
+                     else "(detail tidak terekam)")
             icon_cell = (
                 "<button type='button' class='xbtn' "
                 f"data-case=\"{html.escape(case_id, quote=True)}\" "
@@ -1100,8 +1135,8 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
                 f"onclick='showReason(this)'>{icon}</button>")
         else:
             icon_cell = icon
-        # tombol copy-to-clipboard di sebelah nama case: menyalin string JSON
-        # {"case": "<id>", "phase": "<R|L|FV>", "run": "<rN>"} — phase dari
+        # tombol copy-to-clipboard di sebelah nama case: menyalin string
+        # JSON {"case": ..., "phase": ..., "run": ...} — phase dari
         # kampanye aktif, run = rerun baris ini (split_run_id di atas).
         copy_json = copy_case_json(case_id, active, rerun)
         copy_btn = (
@@ -1117,7 +1152,7 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
             f"<td class='dim'>{html.escape(dur)}</td>"
             f"<td class='dim'>{turns if turns is not None else '-'}</td>"
             f"<td class='dim'>"
-            f"{html.escape(run_started_str(root / active / rid))}</td></tr>")
+            f"{html.escape(run_started_str(run_dir))}</td></tr>")
     parts.append("<table><tr><th>case</th><th>run</th><th></th><th>verdict</th>"
                  "<th>durasi</th><th>turns</th><th>mulai</th></tr>"
                  + "".join(rows) + "</table>")
@@ -1125,7 +1160,8 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
     if total_pages > 1:
         nav = []
         page = max(1, min(page, total_pages))
-        base = ("/?tab=" + urllib.parse.quote(active) + qsuffix + "&page=")
+        base = ("/?tab=" + urllib.parse.quote(active) + qsuffix + ssuffix
+                + "&page=")
         if page > 1:
             nav.append(f"<a href='{base}{page - 1}'>&laquo; lebih baru</a>")
         nav.append(f"<span class='dim'>hal {page}/{total_pages}</span>")
@@ -1320,7 +1356,11 @@ def make_handler(root: Path):
                 q = (qs.get("q") or [None])[0]
                 if q is not None:
                     q = q[:100]
-                self._send_html(page_index(root, tab=tab, page=page, q=q))
+                status = (qs.get("status") or [None])[0]
+                if status not in ("PASS", "FAIL"):
+                    status = None   # "All"/nilai lain -> tanpa filter
+                self._send_html(page_index(root, tab=tab, page=page, q=q,
+                                           status=status))
             elif parsed.path == "/run":
                 camp = (qs.get("c") or [""])[0]
                 rid = (qs.get("r") or [""])[0]

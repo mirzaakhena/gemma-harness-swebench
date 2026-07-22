@@ -472,10 +472,11 @@ def test_page_index_has_row_radio_filter(tmp_path):
     _mk_run(tmp_path, "r-dev", "case-a", 1, {"reproduce": "pass"},
             pass_l1=True)
     out = page_index(tmp_path, tab="r-dev")
-    # tiga radio All/PASS/FAIL + JS filterRows + data-status di baris
+    # tiga radio All/PASS/FAIL (server-side, dulu client-side JS filterRows)
+    # + data-status di baris (dipakai test; permintaan Mirza 2026-07-22)
     assert "value='All'" in out and "value='PASS'" in out \
         and "value='FAIL'" in out
-    assert "filterRows(" in out
+    assert "class='rfilter'" in out  # server-side form
     assert 'data-status="PASS"' in out
 
 

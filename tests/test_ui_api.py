@@ -326,3 +326,56 @@ def test_http_api_status_unknown_enum_url_encoded(tmp_path):
     code, body = _get_json(tmp_path, "/api/runs?c=r-dev&status=%3F")
     assert code == 200 and body["total"] == 1
     assert body["runs"][0]["case"] == "case-live"
+
+
+# --- filter status server-side page_index (permintaan Mirza 2026-07-22) ----
+
+def test_page_index_status_filter_across_pages(tmp_path):
+    from ui.server import page_index
+    # 16 FAIL + 5 PASS: tanpa filter 21 run; dengan status=FAIL paging
+    # dihitung dari set terfilter (16 -> 2 halaman) dan PASS tak tampil
+    for i in range(16):
+        mk_run(tmp_path, "r-dev", f"failcase-{i:02d}", "r1",
+               verdict="wrong-logic",
+               started=f"2026-07-01T10:{i:02d}:00+07:00")
+    for i in range(5):
+        mk_run(tmp_path, "r-dev", f"okcase-{i}", "r1", verdict="pass",
+               pass_l1=True, started=f"2026-07-02T10:0{i}:00+07:00")
+    out = page_index(tmp_path, tab="r-dev", page=1, status="FAIL")
+    assert "okcase-" not in out
+    assert "16 run cocok" in out
+    assert "hal 1/2" in out               # paging ikut set terfilter
+    page2 = page_index(tmp_path, tab="r-dev", page=2, status="FAIL")
+    assert "failcase-" in page2 and "okcase-" not in page2
+
+
+def test_page_index_status_carried_in_links(tmp_path):
+    from ui.server import page_index
+    for i in range(16):
+        mk_run(tmp_path, "r-dev", f"failcase-{i:02d}", "r1",
+               verdict="wrong-logic",
+               started=f"2026-07-01T10:{i:02d}:00+07:00")
+    out = page_index(tmp_path, tab="r-dev", page=1, status="FAIL")
+    # link tab lain membawa status (filter global lintas stage)
+    assert "/?tab=l-dev&status=FAIL" in out
+    # pager membawa status
+    assert "status=FAIL&page=2" in out
+    # radio tercentang sesuai param
+    assert "value='FAIL' checked" in out
+
+
+def test_page_index_status_empty_result_safe(tmp_path):
+    from ui.server import page_index
+    mk_run(tmp_path, "r-dev", "case-ok", "r1", verdict="pass",
+           pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev", status="FAIL")
+    assert "tidak ada run dengan status ini" in out
+
+
+def test_page_index_no_status_regression(tmp_path):
+    from ui.server import page_index
+    mk_run(tmp_path, "r-dev", "case-ok", "r1", verdict="pass",
+           pass_l1=True)
+    mk_run(tmp_path, "r-dev", "case-bad", "r1", verdict="wrong-logic")
+    out = page_index(tmp_path, tab="r-dev")
+    assert "case-ok" in out and "case-bad" in out
