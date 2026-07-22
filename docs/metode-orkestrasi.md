@@ -137,7 +137,12 @@ jenis yang sudah dipakai:
   formset)". 11910 tanpa penyesuaian.
 
 Batas: penyesuaian TIDAK boleh menyebut file/fungsi target fix — itu bocoran
-localize.
+localize. Juga TIDAK boleh diturunkan dari hasil eval gold attempt sebelumnya
+(insiden nyata 2026-07-23: prompt sonnet-12284 sempat diberi "jangan rusak
+override manual" — turunan dari P2P gold yang gagal di attempt haiku → agent
+di-stop, run dir di-reset, container segar, diutus ulang dgn prompt bersih.
+Aturan praktis: sumber penyesuaian HANYA problem statement + kendala tooling
+netral).
 
 ## 3. Wasit (orkestrator SENDIRI — subagent tak pernah lihat hasil gold)
 
