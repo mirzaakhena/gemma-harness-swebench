@@ -1123,6 +1123,10 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
             dur += _live_label(run_dir)
         turns = run_turns(run_dir)
         case_id, rerun = split_run_id(rid)
+        # klik nama case -> auto-isi filter "cari nama case"
+        # (permintaan Mirza 2026-07-22); status aktif ikut dibawa
+        case_href = ("/?tab=" + urllib.parse.quote(active)
+                     + "&q=" + urllib.parse.quote(case_id) + ssuffix)
         row_status = m["status"]
         if row_status in ("FAIL", "ANOMALY"):
             item = reason_by_case.get(case_id)
@@ -1145,7 +1149,8 @@ def page_index(root: Path, tab: str | None = None, page: int = 1,
             "onclick='copyCaseJSON(this)'>📋</button>")
         rows.append(
             f"<tr data-status=\"{html.escape(row_status, quote=True)}\">"
-            f"<td>{html.escape(case_id)} {copy_btn}</td>"
+            f"<td><a href='{case_href}'>{html.escape(case_id)}</a> "
+            f"{copy_btn}</td>"
             f"<td><a href='{href}'>{html.escape(rerun or rid)}</a></td>"
             f"<td>{icon_cell}</td>"
             f"<td>{html.escape(vtext)}</td>"

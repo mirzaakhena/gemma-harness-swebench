@@ -379,3 +379,18 @@ def test_page_index_no_status_regression(tmp_path):
     mk_run(tmp_path, "r-dev", "case-bad", "r1", verdict="wrong-logic")
     out = page_index(tmp_path, tab="r-dev")
     assert "case-ok" in out and "case-bad" in out
+
+
+def test_page_index_case_name_links_to_q_filter(tmp_path):
+    from ui.server import page_index
+    mk_run(tmp_path, "r-dev", "django__django-1", "r1",
+           verdict="pass", pass_l1=True)
+    out = page_index(tmp_path, tab="r-dev")
+    assert "href='/?tab=r-dev&q=django__django-1'" in out
+
+
+def test_page_index_case_link_carries_status(tmp_path):
+    from ui.server import page_index
+    mk_run(tmp_path, "r-dev", "case-bad", "r1", verdict="wrong-logic")
+    out = page_index(tmp_path, tab="r-dev", status="FAIL")
+    assert "href='/?tab=r-dev&q=case-bad&status=FAIL'" in out
