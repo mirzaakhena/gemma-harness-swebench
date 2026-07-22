@@ -4420,3 +4420,54 @@ docstring (11039), dan seluruh perubahan non-lokasi tak terlihat —
 `region_flag=False` BUKAN klaim "patch setara gold". Label-only (papan
 skor & autopsi), loop model tak tersentuh. Suite 614 hijau (6 test baru,
 TDD merah-dulu).
+
+## Diagnosa malam retest §-A0i (claude-mac, 2026-07-23 dini hari) — 14855 R-wall + falsifikasi 11910 r1
+
+### Entri BARU — kelas "protocol-drift file-write" (spesimen: 14855 r10-r12) → R20 NAIK PRIORITAS
+Diagnosa subagent 3 run REPRODUCE gagal-kualifikasi (rezim mac-G2+p2): root cause
+TUNGGAL dominan — Gemma temp-0 deterministik meng-emit file-write dalam protokol
+native `<|tool_call>call:file:/testbed/.pipe/repro.py` + fence ```python, BUKAN
+fence `file:` kontrak. **0/12 percobaan tulis-file terparse lintas 3 run**; skrip
+repro yang tak pernah tereksekusi tampak masuk akal → dinding 14855 BUKAN
+kompetensi Django, melainkan dialek protokol. Sama kelas dgn 15902 (§-A0g R20
+"parse dialek call:file:", bukti kembar 15851 r4-r6) → **R20 kini punya ≥2 case
+bukti**. Varian pendukung: (a) fence-glue ` ```<tool_call|> ` (r11 t5-t8) —
+bahkan bash tak terparse; (b) t1 byte-identik lintas 3 run (determinisme rezim).
+Anomali tercatat: fabrikasi output "(The system provides the output)... REPRO_STATUS:
+FAIL" (r10 t2); kebocoran token `<|channel>thought` (r11/r12); debug-masalah-hantu
+atas output kosong (r12 t10-t13). Kelas yang MASIH lolos semua trigger terpasang:
+(1) *silent partial-parse no-progress* — blok file di-drop diam-diam sementara blok
+bash jalan (r12 t5-t10, 6 turn; bukan zero-actions, bukan identical, bukan p2);
+(2) *streak error-hasil identik* — "[pre-check] missing" 7× (r10) tak diawasi
+watcher mana pun (sinyal = tool-result, bukan reply). Kandidat lever turunan
+(catat-only): no-silent-drop reminder utk `call:file:` yang gagal jadi aksi;
+watcher result-signature (N× tool-result identik → inject/break).
+
+### Status entri "cacat evidence 11910 varian-3" — FALSIFIKASI r1: resep-expectation BUKAN kausal tunggal
+Eksperimen f-exp-neutral r1 (candidates.md kedua expectation dinetralkan, repro.md
+asli): **modus hapus-guard TETAP** (`new_field.remote_field.field_name = old...` →
+`pass`, t8). Rekonstruksi console.log: t1 model justru menalar ke arah gold
+("restore the name after the comparison or use a copy") — titik balik = (i) kutipan
+verbatim **disjungsi EXPECTED repro.md** 2× ("either omit to_field ... or update it
+to the new field name", t1 & t3) yang MELEGALKAN hapus-guard, lalu (ii) **tekanan
+operasional**: skrip restore-fix via heredoc dianggap "a bit risky", model menyerah
+ke "simple fix of removing the line" (t4). Expectation ternetralkan TAK pernah
+dikutip. Oracle repro.py meloloskan cabang salah (tanpa AlterField = "omit
+to_field" → PASS). swebench: f2p LULUS, **p2p GAGAL persis 1 test**
+(`test_rename_field_foreign_key_to_field`) → bukti kalibrasi TERKUAT utk kandidat
+"gate subset P2P / regression sniff" (Kelas-C). Dua implikasi lever: (1) **R14/N3
+NAIK** — cacat riil di repro.py yang menerima kedua cabang disjungsi; netralkan
+teks repro.md tanpa ubah repro.py tak menutup celah (prediksi r2: modus bertahan);
+(2) kelas BARU (catat-only): **"gold-shaped plan abandoned under edit-friction"** —
+model tahu fix benar tapi degradasi ke fix degeneratif karena tooling edit gagal;
+bukan wilayah R17 (verifikasi klaim), melainkan gap apply-edit yang mengubah
+preferensi solusi. r2 (candidates netral + repro.md tanpa disjungsi) berjalan.
+
+### Insiden operasional (2026-07-23 dini hari): venv tersapu → wasit L2 hilang senyap
+.venv dibuat ulang `uv` di awal sesi → modul `swebench` hilang → swebench_checker
+gagal "No module named 'swebench'" TANPA menghentikan batch (draw tervonis
+resolved=None). Terdeteksi dari monitor stderr-tail; swebench di-reinstall, checker
+di-re-run utk run terdampak (14752 f-dev r1 → TERNYATA resolved=true; f-exp-neutral
+11910 r1 → resolved=false, 1 p2p fail di atas). Pelajaran: (a) checker exit=1 ≠
+selalu resolved=false — baca detail error; (b) kandidat mekanis: preflight import
+swebench di batch runner (pola preflight ping endpoint), swebench masuk pyproject.
