@@ -4471,3 +4471,25 @@ di-re-run utk run terdampak (14752 f-dev r1 → TERNYATA resolved=true; f-exp-ne
 11910 r1 → resolved=false, 1 p2p fail di atas). Pelajaran: (a) checker exit=1 ≠
 selalu resolved=false — baca detail error; (b) kandidat mekanis: preflight import
 swebench di batch runner (pola preflight ping endpoint), swebench masuk pyproject.
+
+### Diagnosa 12470 f-r2 (draw sehat pertama, 23-jul dini hari) — dua mode gagal, evidence terfabrikasi
+Wall=fix no-flip tanpa fix.diff. **Attempt-1 (query.py):** edit python-rewrite dgn
+matcher kutip-ganda vs sumber kutip-tunggal → cabang `continue` menghapus body 2
+blok if (IndentationError, diff=2 deletion murni), lalu t5-t9 reply identik dgn
+skrip sama (no-op selamanya; model tak pernah re-read hasil edit) → N1 memotong
+t9 (31 turns saved). Pola: **"no-op-edit tak terverifikasi"** — dekat edit-friction
+tapi model BUTA bahwa editnya no-op (bukan abandon). **Attempt-2 (compiler.py =
+file gold!):** anchoring total pada evidence L TERFABRIKASI — `compile_order_by`
+tidak ada (riil: `get_order_by`); 12 turn grep simbol fiktif (235× exit-1), nol
+edit → N1 memotong t12. Kandidat L benar, evidence-nya yang meracuni → varian-2/3
+cacat evidence DI LUAR jangkauan N2 (L beku pra-N2; simbol-level) = **penguat R17/
+LV-13a (verifikasi klaim-ke-kode) + kandidat G-side: L wajib grep-verify simbol
+sebelum emit evidence.** Lever menembak: N1 2× tepat (a1 t9, a2 t12); N4/p2 nol
+(memang tak ada polanya). Anomali: **spesimen intra-reply TERBESAR sejauh ini —
+±70 blok ```bash duplikat dalam SATU reply, 53-71 repro-run/message, ~330 eksekusi
+redundan** (events msg4-msg8) — N1 lintas-turn buta; menambah tekanan promosi
+dedup-intra-reply (keputusan tetap di Mirza). Sub-form jinak: 61× kebocoran token
+`<|channel>thought` membungkus fence (parse tetap jalan). Kandidat lever turunan
+(catat-only): auto-inject `git diff --stat` file kandidat pasca-aksi-tulis
+(deteksi no-op/destruktif); nudge pivot setelah k× grep zero-hit simbol sama.
+Vonis: BUKAN murni kompetensi.
