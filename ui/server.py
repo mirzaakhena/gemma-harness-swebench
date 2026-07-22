@@ -1248,6 +1248,52 @@ def make_handler(root: Path):
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_json(self, obj, status: int = 200) -> None:
+            data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type",
+                             "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _api(self, path: str, qs: dict) -> None:
+            """Routing /api/* (kontrak: docs/api-ui-viewer.md)."""
+            if path == "/api/campaigns":
+                self._send_json(api_campaigns(root))
+                return
+            if path not in ("/api/runs", "/api/cases"):
+                self._send_json({"error": "tidak ditemukan"}, 404)
+                return
+            camp = (qs.get("c") or [""])[0]
+            if not validate_name(camp):
+                self._send_json(
+                    {"error": "parameter c wajib berupa nama campaign "
+                              "yang sah"}, 400)
+                return
+            status = (qs.get("status") or [None])[0]
+            if status is not None and status not in _API_STATUSES:
+                self._send_json(
+                    {"error": "status harus salah satu dari: "
+                              + ", ".join(_API_STATUSES)}, 400)
+                return
+            q = (qs.get("q") or [None])[0]
+            if q is not None:
+                q = q[:100]
+            try:
+                page = int((qs.get("page") or ["1"])[0])
+            except ValueError:
+                page = 1
+            try:
+                per_page = int((qs.get("per_page")
+                                or [str(PAGE_SIZE)])[0])
+            except ValueError:
+                per_page = PAGE_SIZE
+            per_page = max(1, min(per_page, 100))
+            fn = api_runs if path == "/api/runs" else api_cases
+            self._send_json(fn(root, camp, status=status, q=q,
+                               page=page, per_page=per_page))
+
         def do_GET(self) -> None:  # noqa: N802 (nama API stdlib)
             parsed = urllib.parse.urlparse(self.path)
             qs = urllib.parse.parse_qs(parsed.query)
@@ -1278,6 +1324,8 @@ def make_handler(root: Path):
                     nval = DEFAULT_TAIL
                 nval = max(1, min(nval, 5000))
                 self._send_html(page_run(root, camp, rid, nval))
+            elif parsed.path.startswith("/api/"):
+                self._api(parsed.path, qs)
             else:
                 self._send_html(_page("404", "<p>tidak ditemukan</p>"), 404)
 

@@ -203,3 +203,81 @@ def test_api_cases_empty_campaign(tmp_path):
     assert out["cases"] == [] and out["total"] == 0
     assert out["summary"] == {"PASS": 0, "FAIL": 0, "WAIT": 0,
                               "ANOMALY": 0, "?": 0}
+
+
+# --- HTTP layer /api/* ------------------------------------------------------
+
+def _get_json(root, path):
+    """Start server port-0, GET path, return (status_code, parsed_json)."""
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from ui.server import make_handler
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(root))
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    url = f"http://127.0.0.1:{srv.server_port}{path}"
+    try:
+        try:
+            with urllib.request.urlopen(url) as resp:
+                assert resp.headers["Content-Type"].startswith(
+                    "application/json")
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = json.loads(e.read().decode("utf-8"))
+            return e.code, body
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_http_api_campaigns(tmp_path):
+    code, body = _get_json(tmp_path, "/api/campaigns")
+    assert code == 200
+    assert [c["name"] for c in body["campaigns"]] == \
+        ["r-dev", "l-dev", "f-dev"]
+
+
+def test_http_api_runs_full_roundtrip(tmp_path):
+    mk_run(tmp_path, "r-dev", "django__django-1", "r1",
+           verdict="pass", pass_l1=True)
+    mk_run(tmp_path, "r-dev", "sympy__sympy-2", "r1", verdict="wrong-logic")
+    code, body = _get_json(
+        tmp_path, "/api/runs?c=r-dev&status=FAIL&q=sympy&page=1&per_page=5")
+    assert code == 200
+    assert body["total"] == 1
+    assert body["runs"][0]["case"] == "sympy__sympy-2"
+
+
+def test_http_api_cases_roundtrip(tmp_path):
+    mk_run(tmp_path, "r-dev", "case-A", "r1", verdict="pass", pass_l1=True)
+    code, body = _get_json(tmp_path, "/api/cases?c=r-dev")
+    assert code == 200 and body["summary"]["PASS"] == 1
+
+
+def test_http_api_missing_c_is_400(tmp_path):
+    code, body = _get_json(tmp_path, "/api/runs")
+    assert code == 400 and "error" in body
+
+
+def test_http_api_bad_campaign_name_is_400(tmp_path):
+    code, body = _get_json(tmp_path, "/api/runs?c=../etc")
+    assert code == 400 and "error" in body
+
+
+def test_http_api_bad_status_is_400(tmp_path):
+    code, body = _get_json(tmp_path, "/api/runs?c=r-dev&status=MAYBE")
+    assert code == 400 and "error" in body
+
+
+def test_http_api_unknown_path_is_404_json(tmp_path):
+    code, body = _get_json(tmp_path, "/api/tidak-ada")
+    assert code == 404 and "error" in body
+
+
+def test_http_api_bad_page_falls_back(tmp_path):
+    mk_run(tmp_path, "r-dev", "case-A", "r1", verdict="pass", pass_l1=True)
+    code, body = _get_json(tmp_path, "/api/runs?c=r-dev&page=xx&per_page=yy")
+    assert code == 200 and body["page"] == 1
