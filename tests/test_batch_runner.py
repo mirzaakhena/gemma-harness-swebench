@@ -300,3 +300,18 @@ def test_should_prune_fix_real_localize_hit_keeps():
     if hit is None:
         pytest.skip("tak ada run l-dev dgn file_match=true")
     assert should_prune_fix(hit, enabled=True) is False
+
+
+# --- case_paths ------------------------------------------------------------
+# Insiden 2026-07-22 (Mac): path problem/gold di run_case hardcode backslash
+# Windows ("cases\\problems\\...") -> di POSIX jadi nama file literal ->
+# FileNotFoundError, driver FIX crash 0 detik dan slot rerun hangus (r6/r6/r7
+# 11910/15388/12184). Path WAJIB dibangun via pathlib agar portabel.
+
+def test_case_paths_portable_no_backslash_on_posix():
+    prob, gold = run_rlfv_batch.case_paths("django__django-11910")
+    import os
+    if os.sep == "/":
+        assert "\\" not in prob and "\\" not in gold
+    assert prob == str(Path("cases") / "problems" / "django__django-11910.txt")
+    assert gold == str(Path("cases") / "gold" / "django__django-11910" / "gold.patch")

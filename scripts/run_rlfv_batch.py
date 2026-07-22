@@ -55,6 +55,17 @@ GPU_POLL_MAX = 180  # 30 menit
 # util murni (diuji di tests/test_batch_runner.py)
 # --------------------------------------------------------------------------
 
+def case_paths(case: str) -> tuple[str, str]:
+    """Path problem-file & gold-patch, portabel lintas-OS (relatif thd MAIN).
+
+    2026-07-22 (Mac): versi lama hardcode backslash Windows
+    (f"cases\\\\problems\\\\{case}.txt") -> di POSIX jadi nama file literal ->
+    FileNotFoundError, driver FIX crash 0 detik, slot rerun hangus."""
+    prob = str(Path("cases") / "problems" / f"{case}.txt")
+    gold = str(Path("cases") / "gold" / case / "gold.patch")
+    return prob, gold
+
+
 def parse_case_list(text: str) -> list[str]:
     """Baris kosong dan komentar '#' diabaikan; sisanya di-strip."""
     out = []
@@ -222,8 +233,7 @@ def run_case(state_path: Path, case: str,
              prune_localize_miss: bool = False) -> dict:
     """Jalankan R -> L -> F -> V untuk satu case. Kembalikan ringkasan."""
     img = IMAGE_TMPL.format(case=case)
-    prob = f"cases\\problems\\{case}.txt"
-    gold = f"cases\\gold\\{case}\\gold.patch"
+    prob, gold = case_paths(case)
     res: dict = {"case": case, "started": datetime.now(timezone.utc).astimezone().isoformat()}
 
     # --- REPRODUCE (rerun sampai qualified atau MAX_RERUN) ---
