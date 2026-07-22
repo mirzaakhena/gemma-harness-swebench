@@ -281,3 +281,15 @@ def test_http_api_bad_page_falls_back(tmp_path):
     mk_run(tmp_path, "r-dev", "case-A", "r1", verdict="pass", pass_l1=True)
     code, body = _get_json(tmp_path, "/api/runs?c=r-dev&page=xx&per_page=yy")
     assert code == 200 and body["page"] == 1
+
+
+def test_http_api_internal_error_returns_json_500(tmp_path, monkeypatch):
+    # api_runs meledak -> klien tetap dapat JSON 500, bukan koneksi putus
+    import ui.server as srv
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("meledak")
+
+    monkeypatch.setattr(srv, "api_runs", boom)
+    code, body = _get_json(tmp_path, "/api/runs?c=r-dev")
+    assert code == 500 and "error" in body

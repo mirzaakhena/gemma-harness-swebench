@@ -1291,8 +1291,11 @@ def make_handler(root: Path):
                 per_page = PAGE_SIZE
             per_page = max(1, min(per_page, 100))
             fn = api_runs if path == "/api/runs" else api_cases
-            self._send_json(fn(root, camp, status=status, q=q,
-                               page=page, per_page=per_page))
+            try:
+                self._send_json(fn(root, camp, status=status, q=q,
+                                   page=page, per_page=per_page))
+            except Exception:  # fail-soft: kontrak JSON utk semua respons
+                self._send_json({"error": "kesalahan internal server"}, 500)
 
         def do_GET(self) -> None:  # noqa: N802 (nama API stdlib)
             parsed = urllib.parse.urlparse(self.path)
