@@ -4566,3 +4566,33 @@ menulis-ulang autodetector.py dgn hunk `@@ -333,985 +333,4` — 984 baris TERHAP
 (body _sort_migrations dst jadi `pass`), loop FAIL "makemigrations not picking up"
 konsisten modul tergerus. Kandidat: guard anti-truncation file-write (tolak tulis
 yang menghapus >N% baris file tanpa konfirmasi diff eksplisit).
+
+### Diagnosa 12184 r16 (draw p2-val) — p2 validasi-negatif sah; oracle KUAT; fenomena "right-fix-wrong-lane"
+no-flip BUKAN replay r13/r14: pola periode-2 tak muncul (53 turn, satu-satunya
+duplikat eksak berjarak-4 di kuasi-siklus periode-4 fuzzy — di luar desain p2,
+n=1). Oracle r16 KUAT (memblokir 42 DONE; kontra-rekurensi weak-oracle — 12184
+TIDAK menambah bukti R14 malam ini). Attempt-1 (file benar): wrong-mechanism
+downstream + edit-friction varian korupsi-skrip (9+ skrip editor Python,
+IndentationError, guard terbalik `and kwargs`). Attempt-2: **"right-fix-wrong-lane"
+(observasi n=1, belum lever)** — model MENEMUKAN baris mekanisme gold di
+resolvers.py saat terkunci base.py, lalu MERELOKASI seluruh kelas URLPattern ke
+base.py demi memuaskan lock (kepatuhan-kreatif, bukan drift); berakhir
+model-insists-candidate-1.
+
+### Diagnosa 15902 f-r1 — kelas edit-mechanics; **FIRST FIRING reply-hash-p2 (N1b)**; residu R20 = truncation
+Dinding R pecah (R20) → gagal FIX murni **edit-mechanics**: (a) t1 clobber file
+kandidat-gold dgn rewrite halusinatif (import fiktif) → pulih via git checkout;
+(b) **escaping-quicksand** `python3 -c` (\n literal → SyntaxError berulang, t12-t27)
+→ attempt-1 empty-diff 0 byte, dipotong **`reply-hash-p2 x3` t28 = FIRST FIRING
+N1b di produksi** (hemat ~12 turn); attempt-2 arsitektural-mustahil (kandidat-2
+evidence keliru-faktual — SUDAH diflag `evidence_mismatch` oleh N2 tapi flag TAK
+DIKONSUMSI attempt-lock) dipotong reply-hash x3 t18. **R20 kerja parsial sehat:
+16/21 blok file terparse (76%); 5 residu = blok TERPOTONG (fence tak tertutup) —
+truncation, BUKAN dialek baru.** Model sebenarnya punya ide fix yang cukup lolos
+oracle — gagal murni MENULISKAN edit. Kandidat lever (catat-only): (1) paksa kanal
+```file: utk file kandidat setelah 2× SyntaxError edit-inline beruntun (larang
+python -c/sed); (2) anti-clobber: tolak write file kandidat tanpa read di attempt
+sama; (3) konsumsi flag evidence_mismatch N2 utk demosi kandidat; (4) repro 15902
+r10: branch exception mencetak PASS = bom false-flip (input spec R14/N3).
+d2 pembanding: flip, f2p 100% lulus, gagal HANYA p2p formset (as_div/as_p) →
+spesimen ke-3 kandidat "gate subset P2P / regression sniff".
