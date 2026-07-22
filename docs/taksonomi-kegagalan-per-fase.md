@@ -64,10 +64,14 @@ data L/F/V sama sekali.
 **20 case tak pernah qualified:** 10924, 11564, 11630, 11905, 12125, 12856, 13265,
 13933, 14411, 14608, 14667, 14752, 14855, 15252, 15695, 15738, 15781, 15789, 15851,
 15902. **Catatan KH-16:** 12184/13321/14155 KELUAR dari daftar wall — gold.patch-nya
-korup (R-8); pasca-repair ketiganya qualified R dan lanjut ke L/F. **12856: repair
-CONFIRMED bersih (bot-02, 2026-07-22, `git apply --numstat` clean)** — 6 run
-`wrong-logic`-nya semua PRA-repair (flip vacuous); status sesungguhnya menunggu
-re-run pasca-repair, jangan hitung sebagai wall akar-model.
+korup (R-8); pasca-repair ketiganya qualified R dan lanjut ke L/F. **12856: RESOLVED
+2026-07-22 (bot-03, 3 fresh rerun r7-r9 rezim-G1) — REPRODUCE-wall akar-MODEL, BUKAN
+corrupt-gold.** Gold pasca-repair parse-clean → setup lolos (R18 tak salah-blokir),
+9/9 attempt REPRODUCE tetap 0-qualified (`gold-wont-flip`: model tulis repro buggy —
+TypeError `__init__`/AttributeError App/FileNotFoundError). Jadi 12856 tetap di daftar
+wall, tapi akarnya pindah R-8 (data) → **R-4 (won't-flip akar-MODEL)**. Catatan
+robustness: wall REPRODUCE ini **9/9 KONSISTEN** — kontras dgn stokastisitas FIX
+(§-A0d/KH-20): verdict REPRODUCE-wall reliable single-run, verdict FIX tidak.
 
 ### R-1 — Token-loop tanpa fence: repro TAK PERNAH ditulis (keluarga KH-12 "no-fence")
 
@@ -146,12 +150,13 @@ re-run pasca-repair, jangan hitung sebagai wall akar-model.
   precondition; PASS_OBSERVABLE friction). Yang sah: split reason bucket via
   `flip_run.json` ((B) #1) — kini termasuk memisahkan sub-sebab `corrupt-gold`.
 - **Frekuensi (refresh 2026-07-22):** verdict `wrong-logic` = **88 run** (semua
-  tersapu). Terkonfirmasi akar-MODEL: **7 case** — 15789, 10924, 15252, 15781, 13933,
-  15738, 15695 (+11564 di R-3). **KH-16: 12184/13321/14155 DIKELUARKAN dari
+  tersapu). Terkonfirmasi akar-MODEL: **8 case** — 15789, 10924, 15252, 15781, 13933,
+  15738, 15695, **+12856** (bot-03, 9/9 attempt 0-qualified pasca-repair gold; robust
+  9/9, bukan varians) (+11564 di R-3). **KH-16: 12184/13321/14155 DIKELUARKAN dari
   kandidat R-4** (akar-DATA, kini R-8). **⏳ belum-diautopsi tersisa: 11630, 11905
-  (6 run), 14608, 14667, 12856 (gold pasca-repair perlu konfirmasi).**
-- **Anggota (terkonfirmasi):** 15789, 10924, 15252, 15781, 13933, 15738, 15695.
-  (⏳: 11630, 11905, 14608, 14667, 12856.)
+  (6 run), 14608, 14667.**
+- **Anggota (terkonfirmasi):** 15789, 10924, 15252, 15781, 13933, 15738, 15695, 12856.
+  (⏳: 11630, 11905, 14608, 14667.)
 
 ### R-5 — Vacuous / PASS-at-base: gate anti-vacuous menolak (gate BEKERJA BENAR)
 
@@ -210,7 +215,10 @@ re-run pasca-repair, jangan hitung sebagai wall akar-model.
 - **Frekuensi:** **5/97 gold.patch django korup** (scan penuh `git apply --numstat`):
   12184, 12856, 13321, 14155, 15202. Pasca-repair: 15202 tervalidasi flip PASS
   (adjudikasi adil, kini F-3); 12184/13321/14155 qualified R dan lanjut (12184 → F-4
-  no-flip; 13321/14155 → merah VERIFY target-fail, belum diautopsi); 12856 masih wall.
+  no-flip; 13321/14155 → merah VERIFY target-fail, belum diautopsi); **12856 pasca-repair
+  = REPRODUCE-wall akar-MODEL (R-4), BUKAN corrupt-gold** (bot-03 3 fresh rerun; gold
+  parse-clean, R18 tak salah-blokir, 9/9 attempt 0-qualified). R-8 memvalidasi R18
+  bekerja benar: dari 5 gold korup, 0 yang pasca-repair tetap salah-atribusi ke data.
 - **Anggota (historis):** 12184, 12856, 13321, 14155, 15202. **Pelajaran taksonomi:
   3 di antaranya sempat salah kutaruh sebagai kandidat ⏳ R-4 akar-MODEL — koreksi
   KH-16 (bias-3 varian data-korup).**
