@@ -49,22 +49,32 @@ def build_eval_script(spec: dict) -> str:
     if isinstance(test_cmd, list):
         test_cmd = test_cmd[-1]
     tp_files = re.findall(r"--- a/(.*)", spec["test_patch"])
+    # File BARU di test_patch (`--- /dev/null` → `+++ b/<path>`): state base =
+    # ABSEN, jadi reset yang benar = `rm -f` (fix.diff bisa saja membuatnya),
+    # BUKAN checkout (path tak ada di base → checkout gagal → false-RESET).
+    # Populasi nyata: django-10924 (test_patch = satu file test baru).
+    tp_new_files = re.findall(r"--- /dev/null\n\+\+\+ b/(.*)",
+                              spec["test_patch"])
     directives = get_test_directives({"repo": spec["repo"],
                                       "test_patch": spec["test_patch"]})
     nl = "\n"
+    reset_lines = []
     if tp_files:
         # `--` selalu dipasang supaya pathspec tak pernah disalahartikan
         # sbg revision oleh git checkout (final-review hardening).
-        checkout_line = (f"git checkout {spec['base_commit']} -- "
-                         f"{' '.join(tp_files)} || "
-                         f"{{ echo '{RESET_FAILED}'; exit 3; }}")
-    else:
-        # test_patch yang HANYA menambah file baru (`--- /dev/null`) bikin
-        # tp_files kosong — TIDAK BOLEH jatuh ke `git checkout <base>` tanpa
-        # pathspec (reset SELURUH tree, silent-misgrade). Populasi ini di
-        # luar bentuk yang diharapkan; degradasi ke RESET_FAILED supaya
-        # grading tetap dapat sinyal "tak bisa dievaluasi" yang jujur.
-        checkout_line = f"echo '{RESET_FAILED}'; exit 3"
+        reset_lines.append(f"git checkout {spec['base_commit']} -- "
+                           f"{' '.join(tp_files)} || "
+                           f"{{ echo '{RESET_FAILED}'; exit 3; }}")
+    if tp_new_files:
+        reset_lines.append(f"rm -f -- {' '.join(tp_new_files)}")
+    if not reset_lines:
+        # test_patch tanpa file sama sekali (degenerate) — tak ada yang bisa
+        # di-reset/apply; degradasi ke RESET_FAILED supaya grading tetap
+        # dapat sinyal "tak bisa dievaluasi" yang jujur. TIDAK BOLEH jatuh
+        # ke `git checkout <base>` tanpa pathspec (reset SELURUH tree,
+        # silent-misgrade).
+        reset_lines.append(f"echo '{RESET_FAILED}'; exit 3")
+    checkout_line = nl.join(reset_lines)
     return dedent(f"""\
         #!/bin/bash
         set -uo pipefail -x

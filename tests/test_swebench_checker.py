@@ -55,21 +55,54 @@ def test_build_eval_script_shape():
     assert "foo" in script.split(START_TEST_OUTPUT)[1]  # direktif test
 
 
-def test_build_eval_script_empty_test_patch_files_no_bare_checkout():
+def test_build_eval_script_new_file_only_test_patch_resets_via_rm():
     """test_patch yang HANYA menambah file baru (`--- /dev/null`) bikin
-    `tp_files = re.findall(r"--- a/(.*)", ...)` == [] — `git checkout
-    {base_commit} {tp_files}` tanpa pathspec jadi checkout SELURUH tree
-    (silent-misgrade class, temuan review final). Harus TIDAK PERNAH
-    mengeluarkan `git checkout <base>` tanpa `--`/pathspec; wajib degradasi
-    ke guard RESET_FAILED (case ini di luar populasi wajar: test_patch yang
-    tak bisa di-reset)."""
-    from swebench.harness.constants import RESET_FAILED
+    `tp_files = re.findall(r"--- a/(.*)", ...)` == [] — dulu didegradasi ke
+    RESET_FAILED sehingga case populasi nyata (django-10924: test_patch =
+    satu file test BARU) SELAMANYA tak tereval. Reset yang benar utk file
+    baru: state base = ABSEN → `rm -f -- <path>` (fix.diff bisa saja membuat
+    file itu), lalu test_patch resmi di-apply. Invarian lama tetap: TIDAK
+    PERNAH `git checkout <base>` tanpa `--`/pathspec."""
     spec = dict(SPEC)
     spec["test_patch"] = (
         "diff --git a/tests/foo/new_test.py b/tests/foo/new_test.py\n"
         "new file mode 100644\n"
         "--- /dev/null\n+++ b/tests/foo/new_test.py\n"
         "@@ -0,0 +1,2 @@\n+pass\n+pass\n")
+    script = build_eval_script(spec)
+    assert f"git checkout {spec['base_commit']}" not in script
+    assert "rm -f -- tests/foo/new_test.py" in script
+
+
+def test_build_eval_script_mixed_modified_and_new_test_patch():
+    """test_patch campuran (file lama diubah + file baru): file lama di-reset
+    via `git checkout <base> -- <paths>` ber-guard RESET_FAILED; file baru
+    di-`rm -f`. Keduanya harus muncul; path file baru TIDAK boleh ikut ke
+    pathspec checkout (tak ada di base → checkout gagal → false-RESET)."""
+    from swebench.harness.constants import RESET_FAILED
+    spec = dict(SPEC)
+    spec["test_patch"] = (
+        "diff --git a/tests/foo/tests.py b/tests/foo/tests.py\n"
+        "--- a/tests/foo/tests.py\n+++ b/tests/foo/tests.py\n"
+        "@@ -1 +1,2 @@\n pass\n+pass\n"
+        "diff --git a/tests/foo/new_test.py b/tests/foo/new_test.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n+++ b/tests/foo/new_test.py\n"
+        "@@ -0,0 +1,2 @@\n+pass\n+pass\n")
+    script = build_eval_script(spec)
+    assert (f"git checkout {spec['base_commit']} -- tests/foo/tests.py"
+            in script)
+    assert "new_test.py" not in script.split("git checkout")[1].split("\n")[0]
+    assert "rm -f -- tests/foo/new_test.py" in script
+    assert RESET_FAILED in script
+
+
+def test_build_eval_script_no_test_files_at_all_degrades():
+    """test_patch tanpa file sama sekali (degenerate) tetap degradasi jujur
+    ke RESET_FAILED — tak ada yang bisa di-reset ataupun di-apply."""
+    from swebench.harness.constants import RESET_FAILED
+    spec = dict(SPEC)
+    spec["test_patch"] = ""
     script = build_eval_script(spec)
     assert f"git checkout {spec['base_commit']}" not in script
     assert RESET_FAILED in script
