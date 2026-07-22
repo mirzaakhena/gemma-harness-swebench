@@ -62,9 +62,38 @@ berbahaya). R1 tetap valid (pipe_err→0 = cek mekanis deterministik, kebal
 drift-inferensi). Payoff map tak berubah oleh temuan ini; yang berubah = protokol
 ukur (same-session baseline + n≥2-3).
 
+### §-A0b — Cek replan R13 (2026-07-22, disetujui Mirza) — HASIL: peta G2 TETAP
+
+Autopsi origin memunculkan 11422 mentok di R13 (App-ready-timeout, kutaruh di G3).
+Kucek luas: scan `"failed to become ready"` seluruh console (r/l/f-dev).
+- **Terpicu di ~15 case**, TAPI mayoritas **insidental churn**, bukan terminal-wall:
+  11910 (akar P2P regresi), 12184 (kompetensi 37×), 11564 & 14752 (akar judge/R17 —
+  App-ready hilir orkestrasi paksa), 11620 (resolved=true — churn tak fatal),
+  12915/12286/13660 (churn, akar lain).
+- **Terminal-wall R13 sejati = 1 case: 11422.** (Origin R1; sudah di
+  retest-when-installed queue bot-03.)
+- **Baca:** R13 = lever **EFFICIENCY luas** (pangkas turn App-churn di ~15 case) tapi
+  **UNLOCK sempit** (≈1 case terminal). Nilai efficiency-nya tinggi, unlock-nya tidak.
+
+**Keputusan replan: R13 TETAP di G3** (disiplin "butuh desain kontrak `run_once` dulu"
+tak dilanggar hanya demi 1 case) — tapi ditandai **G3-prioritas-#1** (terminal-wall
+11422 + efficiency terluas). **Urutan G2 (R8-R12) TIDAK berubah:** G2 tetap pegang
+taruhan unlock terbaik (R8 → 14580, harness murni) + klaster R-4 won't-flip (R9 → 8
+case). Contoh replan yang jujur: **cek dilakukan, peta dikonfirmasi tetap** (bukan
+tiap data mengubah rencana).
+
 ---
 
 ## §0 — Prinsip pengukuran (WAJIB dibaca sebelum menjalankan urutan)
+
+**§0.0 — Definisi SUKSES per gelombang (disepakati Mirza 2026-07-22).** Ukuran sukses
+sebuah gelombang = **berapa DINDING kegagalan yang tertutup**, BUKAN langsung berapa
+case FAIL→PASS. Alasan: satu case kerap dijaga BEBERAPA dinding berlapis (contoh:
+11422 butuh R1 [✅ G1] DAN R13 [G3] baru bisa PASS). Karena itu **unlock end-to-end
+cenderung menggerombol di AKHIR** program, bukan naik linear tiap gelombang. G1 = 0
+unlock tapi menutup kelas mekanis (pipe_err, corrupt-gold, false-prune, mislabel) —
+itu kemajuan sesuai desain, bukan kegagalan. Target 50-60/103 dinilai di UJUNG, bukan
+per-gelombang.
 
 1. **Tiga jenis ekspektasi — jangan diukur dengan metrik yang sama:**
    - **UNLOCK:** harapan FAIL→PASS di case asal. Metrik: verdict L2
